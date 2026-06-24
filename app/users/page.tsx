@@ -21,6 +21,7 @@ export default function UsersPage() {
     const [page, setPage] = useState(1);
     const [errors, setErrors] = useState<FormErrors>({});
     const [submitError, setSubmitError] = useState("");
+    const [roleFilter, setRoleFilter] = useState("all");
     const router = useRouter();
     const rowsPerPage = 5;
 
@@ -122,11 +123,16 @@ export default function UsersPage() {
         setDrawerOpen(true);
     };
 
-    const filteredUsers = users.filter(
-        (user) =>
+    const filteredUsers = users.filter((user) => {
+        const matchesSearch =
             user.username?.toLowerCase().includes(search.toLowerCase()) ||
-            user.email?.toLowerCase().includes(search.toLowerCase())
-    );
+            user.email?.toLowerCase().includes(search.toLowerCase());
+
+        const matchesRole =
+            roleFilter === "all" || user.role === roleFilter;
+
+        return matchesSearch && matchesRole;
+    });
 
     const totalPages = Math.ceil(filteredUsers.length / rowsPerPage);
     const currentUsers = filteredUsers.slice(
@@ -181,13 +187,29 @@ export default function UsersPage() {
                     </div>
 
                     {/* SEARCH */}
-                    <input
-                        type="text"
-                        placeholder="Search user..."
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        className="w-full border p-3 rounded-lg mb-6"
-                    />
+                    <div className="flex gap-4 mb-6">
+                        <input
+                            type="text"
+                            placeholder="Search user..."
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            className="flex-1 border p-3 rounded-lg"
+                        />
+
+                        <select
+                            value={roleFilter}
+                            onChange={(e) => {
+                                setRoleFilter(e.target.value);
+                                setPage(1);
+                            }}
+                            className="border p-3 rounded-lg"
+                        >
+                            <option value="all">All Roles</option>
+                            <option value="admin">Admin</option>
+                            <option value="user">User</option>
+                            <option value="accountant">Accountant</option>
+                        </select>
+                    </div>
 
                     {/* TABLE */}
                     <div className="overflow-x-auto">
@@ -328,8 +350,8 @@ export default function UsersPage() {
                                     if (errors.username) setErrors({ ...errors, username: undefined });
                                 }}
                                 className={`w-full border p-3 rounded-lg focus:outline-none focus:ring-2 ${errors.username
-                                        ? "border-red-500 focus:ring-red-300"
-                                        : "border-gray-300 focus:ring-blue-300"
+                                    ? "border-red-500 focus:ring-red-300"
+                                    : "border-gray-300 focus:ring-blue-300"
                                     }`}
                             />
                             <FieldError msg={errors.username} />
@@ -348,8 +370,8 @@ export default function UsersPage() {
                                     if (errors.email) setErrors({ ...errors, email: undefined });
                                 }}
                                 className={`w-full border p-3 rounded-lg focus:outline-none focus:ring-2 ${errors.email
-                                        ? "border-red-500 focus:ring-red-300"
-                                        : "border-gray-300 focus:ring-blue-300"
+                                    ? "border-red-500 focus:ring-red-300"
+                                    : "border-gray-300 focus:ring-blue-300"
                                     }`}
                             />
                             <FieldError msg={errors.email} />
@@ -370,8 +392,8 @@ export default function UsersPage() {
                                         if (errors.password) setErrors({ ...errors, password: undefined });
                                     }}
                                     className={`w-full border p-3 rounded-lg pr-12 focus:outline-none focus:ring-2 ${errors.password
-                                            ? "border-red-500 focus:ring-red-300"
-                                            : "border-gray-300 focus:ring-blue-300"
+                                        ? "border-red-500 focus:ring-red-300"
+                                        : "border-gray-300 focus:ring-blue-300"
                                         }`}
                                 />
                                 <button

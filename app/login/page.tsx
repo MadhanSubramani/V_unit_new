@@ -156,10 +156,6 @@ export default function LoginPage() {
             </button>
           </form>
         </div>
-
-        <p className="mt-6 text-center text-xs text-zinc-600">
-          Credentials are verified against Firestore — not Firebase Auth.
-        </p>
       </div>
     </main>
   );
