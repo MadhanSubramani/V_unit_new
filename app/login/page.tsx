@@ -6,11 +6,14 @@ import { loginWithCredentials } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
+
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  
+
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -22,32 +25,29 @@ export default function LoginPage() {
     }
 
     setLoading(true);
+
     const result = await loginWithCredentials(username.trim(), password);
+
     setLoading(false);
 
     if (result.success) {
-      // Store minimal session info (use a proper session lib in production)
       sessionStorage.setItem("user", JSON.stringify(result.user));
-      router.push("/users");
+      router.push("/freight-forward");
     } else {
       setError(result.error ?? "Login failed.");
     }
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-[#0f0f11] px-4">
-      {/* Background grid accent */}
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,rgba(99,102,241,0.15),transparent)]"
-      />
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-zinc-50 via-zinc-100 to-zinc-200 px-4">
+      <div className="absolute top-0 left-0 h-72 w-72 rounded-full bg-zinc-300/30 blur-3xl" />
+      <div className="absolute bottom-0 right-0 h-96 w-96 rounded-full bg-zinc-400/20 blur-3xl" />
 
-      <div className="w-full max-w-sm">
-        {/* Logo mark */}
-        <div className="mb-8 flex flex-col items-center gap-2">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 shadow-lg shadow-indigo-600/30">
+      <div className="relative w-full max-w-md">
+        <div className="mb-6 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-zinc-200 bg-white shadow-sm">
             <svg
-              className="h-6 w-6 text-white"
+              className="h-5 w-5 text-zinc-900"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -60,21 +60,15 @@ export default function LoginPage() {
               />
             </svg>
           </div>
-          <h1 className="text-xl font-semibold tracking-tight text-white">
-            Welcome back
-          </h1>
-          <p className="text-sm text-zinc-500">Sign in to your account</p>
+
+          <h1 className="mt-4 text-xl font-semibold text-zinc-900">Welcome Back</h1>
+          <p className="mt-1 text-xs text-zinc-500">Sign in to access V-Unit Operations</p>
         </div>
 
-        {/* Card */}
-        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.03] p-8 shadow-2xl backdrop-blur-sm">
-          <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
-            {/* Username */}
-            <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor="username"
-                className="text-xs font-medium uppercase tracking-widest text-zinc-400"
-              >
+        <div className="rounded-2xl border border-zinc-200/80 bg-white/90 p-6 shadow-sm backdrop-blur-xl">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+            <div>
+              <label htmlFor="username" className="mb-1 block text-xs font-medium text-zinc-600">
                 Username
               </label>
               <input
@@ -83,17 +77,13 @@ export default function LoginPage() {
                 autoComplete="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="your_username"
-                className="rounded-lg border border-white/[0.08] bg-white/[0.05] px-4 py-2.5 text-sm text-white placeholder-zinc-600 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                placeholder="Enter username"
+                className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-xs text-zinc-900 placeholder-zinc-400 outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-200"
               />
             </div>
 
-            {/* Password */}
-            <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor="password"
-                className="text-xs font-medium uppercase tracking-widest text-zinc-400"
-              >
+            <div>
+              <label htmlFor="password" className="mb-1 block text-xs font-medium text-zinc-600">
                 Password
               </label>
               <div className="relative">
@@ -103,55 +93,51 @@ export default function LoginPage() {
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.05] px-4 py-2.5 pr-10 text-sm text-white placeholder-zinc-600 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  placeholder="Enter password"
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 pr-12 text-xs text-zinc-900 placeholder-zinc-400 outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-200"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition"
-                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-zinc-500 hover:text-zinc-700"
                 >
-                  {showPassword ? (
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
-                    </svg>
-                  ) : (
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                  )}
+                  {showPassword ? "Hide" : "Show"}
                 </button>
               </div>
             </div>
 
-            {/* Error */}
             {error && (
-              <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2.5">
-                <svg className="h-4 w-4 shrink-0 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-                </svg>
-                <p className="text-xs text-red-400">{error}</p>
+              <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2">
+                <p className="text-xs text-red-600">{error}</p>
               </div>
             )}
 
-            {/* Submit */}
             <button
               type="submit"
               disabled={loading}
-              className="mt-1 flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-indigo-600/25 transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-[#0f0f11] disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-1 flex w-full items-center justify-center rounded-xl bg-zinc-900 py-2.5 text-xs font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? (
-                <>
+                <div className="flex items-center gap-2">
                   <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                      className="opacity-25"
+                    />
+                    <path
+                      fill="currentColor"
+                      className="opacity-75"
+                      d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                    />
                   </svg>
-                  Signing in…
-                </>
+                  Signing In...
+                </div>
               ) : (
-                "Sign in"
+                "Sign In"
               )}
             </button>
           </form>

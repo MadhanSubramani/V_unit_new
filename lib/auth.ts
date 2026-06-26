@@ -35,9 +35,16 @@ export async function loginWithCredentials(
   password: string
 ): Promise<LoginResult> {
   try {
+
     const usersRef = collection(db, "users");
+    const querySnapshot = await getDocs(usersRef);
+
+
+    console.log("Attempting login for username:", username);
     const q = query(usersRef, where("username", "==", username));
+    console.log("Firestore query constructed:", q);
     const snapshot = await getDocs(q);
+    console.log("Firestore query executed. Number of matching documents:", snapshot.size);
 
     if (snapshot.empty) {
       return { success: false, error: "Invalid username or password." };
@@ -45,6 +52,7 @@ export async function loginWithCredentials(
 
     const userDoc = snapshot.docs[0];
     const userData = userDoc.data();
+    console.log("User data fetched:", userData);
 
     // Plain password comparison — replace with bcrypt or similar in production
     if (userData.password !== password) {
@@ -54,7 +62,7 @@ export async function loginWithCredentials(
     const { password: _pw, ...safeUser } = userData;
     return { success: true, user: { id: userDoc.id, ...safeUser } };
   } catch (err) {
-    console.error("Firestore login error:", err);
+    console.log("Firestore login error:", err);
     return { success: false, error: "Something went wrong. Please try again." };
   }
 }

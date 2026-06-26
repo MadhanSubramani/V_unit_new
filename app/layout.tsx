@@ -5,8 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Firebase Login",
-  description: "Firestore-based authentication — no Firebase Auth",
+  title: "V-Unit Operations",
+  description: "Freight forward, import, export, and KYC management",
 };
 
 export default function RootLayout({
@@ -16,7 +16,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${inter.className} bg-[#0f0f11] antialiased`}>
+      <body className={`${inter.className} bg-slate-50 antialiased`}>
         {children}
       </body>
     </html>
