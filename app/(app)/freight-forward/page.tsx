@@ -8,7 +8,7 @@ import {
   CreditCard,
   ShieldCheck,
 } from "lucide-react";
-import { DocumentSnapshot } from "firebase/firestore";
+import { DocumentSnapshot, Timestamp } from "firebase/firestore";
 import ModuleHeader from "@/components/ModuleHeader";
 import ActionMenu from "@/components/shared/ActionMenu";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
@@ -22,6 +22,8 @@ import {
   getFreightForwardPage,
   getFreightForwardSearch,
   updateFreightForward,
+  updateWorkflowStatus,
+  getFreightForwardById
 } from "@/lib/freightForward/freightForward";
 import { getSezList } from "@/lib/sez/sez";
 import { Cfs } from "@/types/cfs";
@@ -36,6 +38,7 @@ import {
   FreightForwardStatusObject,
 } from "@/types/freightForward";
 import { Sez } from "@/types/sez";
+import WorkflowTimeline from "@/components/WorkflowTimeline";
 
 type FormErrors = Partial<Record<string, string>>;
 type CardFilter = "inProcess" | "next7Days" | "momentum" | "split_manifest" | "completed" | null;
@@ -327,6 +330,41 @@ export default function FreightForwardPage() {
     [activeCard, dateFrom, dateTo, isSearching, searchField, searchValue]
   );
 
+  const WORKFLOW = [
+    FreightForwardStatusObject.IN_PROCESS,
+    FreightForwardStatusObject.MOMENTUM,
+    FreightForwardStatusObject.SPLIT_MANIFEST,
+    FreightForwardStatusObject.BILLING,
+    FreightForwardStatusObject.RECEIVABLE,
+    FreightForwardStatusObject.PAYABLE,
+    FreightForwardStatusObject.COMPLETED,
+  ];
+
+const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
+    if (!selected || !user) return;
+
+    await updateWorkflowStatus(
+        selected?.id!,
+        nextStatus,
+        user.username!
+    );
+
+    const updated = {
+        ...selected,
+        status: nextStatus,
+        statusTimeline: [
+            ...(selected.statusTimeline ?? []),
+            {
+                status: nextStatus,
+                updatedBy: user.username ?? "Unknown",
+                updatedAt: Timestamp.now(),
+            },
+        ],
+    };
+    setSelected(updated);
+    await reload();
+};
+
   // Re-fetch from scratch whenever filters change
   useEffect(() => {
     if (activeStatus) return;
@@ -401,9 +439,12 @@ export default function FreightForwardPage() {
     setDrawerMode("edit");
   };
 
-  const openView = (item: FreightForward) => {
-    setSelected(item);
-    setDrawerMode("view");
+  const openView = async (item: FreightForward) => {
+      const latest = await getFreightForwardById(item.id!);
+      if (latest) {
+          setSelected(latest);
+      }
+      setDrawerMode("view");
   };
 
   const drawerOpen = drawerMode !== null;
@@ -868,6 +909,12 @@ export default function FreightForwardPage() {
 
       {selected && (
         <div className="mt-6 space-y-6">
+
+        <WorkflowTimeline
+            selected={selected}
+            currentUserRole={userRole}
+            onComplete={handleStatusUpdate}
+        />
 
           {/* Shipment */}
           <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">

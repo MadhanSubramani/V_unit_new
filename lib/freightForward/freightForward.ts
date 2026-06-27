@@ -16,8 +16,10 @@ import {
   updateDoc,
   where,
   DocumentSnapshot,
+  arrayUnion,
+  getDoc
 } from "firebase/firestore";
-import { FreightForward, FreightForwardFormData } from "@/types/freightForward";
+import { FreightForward, FreightForwardFormData, FreightForwardStatus } from "@/types/freightForward";
 
 const REF = () => collection(db, "freightForward");
 
@@ -217,6 +219,13 @@ export async function createFreightForward(
   return addDoc(REF(), {
     ...data,
     status: data.status ?? "in_process",
+    statusTimeline: [
+      {
+        status: "in_process",
+        updatedBy: createdBy,
+        updatedAt: Timestamp.now(),
+      },
+    ],
     createdBy,
     updatedBy: createdBy,
     createdAt: serverTimestamp(),
@@ -234,6 +243,32 @@ export async function updateFreightForward(
     updatedBy,
     updatedAt: serverTimestamp(),
   });
+}
+
+export async function updateWorkflowStatus(
+  id: string,
+  nextStatus: FreightForwardStatus,
+  updatedBy: string
+) {
+  await updateDoc(doc(db, "freightForward", id), {
+    status: nextStatus,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+    statusTimeline: arrayUnion({
+      status: nextStatus,
+      updatedBy,
+      updatedAt: new Date(),
+    }),
+  });
+}
+
+export async function getFreightForwardById(id: string) {
+  const snap = await getDoc(doc(db, "freightForward", id));
+  if (!snap.exists()) return null;
+  return {
+    id: snap.id,
+    ...(snap.data() as FreightForward),
+  };
 }
 
 export async function deleteFreightForward(id: string) {

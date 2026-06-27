@@ -1,3 +1,5 @@
+import { Timestamp } from "firebase/firestore";
+
 export type FreightForwardStatus =
   | "in_process"
   | "momentum"
@@ -56,6 +58,7 @@ export interface FreightForward {
   updatedBy?: string;
   createdAt?: Date;
   updatedAt?: Date;
+  statusTimeline?: StatusTimeline[];
 }
 
 export const CONTAINER_NUMBER_REGEX = /^[A-Z]{4}\d{7}$/;
@@ -73,4 +76,10 @@ export enum FreightForwardStatusObject {
   RECEIVABLE = "receivable",
   PAYABLE = "payable",
   COMPLETED = "completed",
+}
+
+export interface StatusTimeline {
+  status: string;
+  updatedBy: string;
+  updatedAt: Timestamp;
 }
