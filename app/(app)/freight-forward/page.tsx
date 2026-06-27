@@ -1,7 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, Trash2, X } from "lucide-react";
+import { Plus, Trash2, X,  Ship,
+  Package,
+  Route,
+  CreditCard,
+  ShieldCheck, } from "lucide-react";
 import { DocumentSnapshot } from "firebase/firestore";
 import ModuleHeader from "@/components/ModuleHeader";
 import ActionMenu from "@/components/shared/ActionMenu";
@@ -667,7 +671,7 @@ export default function FreightForwardPage() {
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-[11px] font-medium text-zinc-600">Build Amount</label>
+            <label className="mb-1 block text-[11px] font-medium text-zinc-600">billed amount</label>
             <input type="number" value={form.buildAmount ?? ""} onChange={(e) => setForm({ ...form, buildAmount: e.target.value === "" ? undefined : Number(e.target.value) })} className={fieldClass("buildAmount")} />
           </div>
           <div>
@@ -716,56 +720,300 @@ export default function FreightForwardPage() {
 
   // ── Render: view ──────────────────────────────────────────────────────────
   const renderViewDrawer = () => (
-    <div className="p-5">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-zinc-900">Freight Forward Details</h3>
-        <button onClick={closeDrawer} className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700">
-          <X size={16} />
-        </button>
-      </div>
-      {selected && (
-        <div className="mt-3 space-y-1.5 text-xs text-zinc-600">
-          <p><span className="font-medium text-zinc-800">Job Number:</span> {selected.jobNumber || "—"}</p>
-          <p><span className="font-medium text-zinc-800">EZ Ref Number:</span> {selected.ezRefNumber || "—"}</p>
-          <p><span className="font-medium text-zinc-800">Consignment Name:</span> {selected.consignmentName}</p>
-          <p><span className="font-medium text-zinc-800">MBL:</span> {selected.mbl}</p>
-          <p><span className="font-medium text-zinc-800">HBL:</span> {selected.hbl}</p>
-          <p><span className="font-medium text-zinc-800">Container Number:</span> {selected.containerNumber}</p>
-          <p><span className="font-medium text-zinc-800">Container Size:</span> {selected.containerSize || "—"}</p>
-          <p><span className="font-medium text-zinc-800">Container Type:</span> {selected.containerType || "—"}</p>
-          <p><span className="font-medium text-zinc-800">ETD:</span> {formatDate(selected.etd)}</p>
-          <p><span className="font-medium text-zinc-800">ETA:</span> {formatDate(selected.eta)}</p>
-          <p><span className="font-medium text-zinc-800">Vessel Name:</span> {selected.vesselName || "—"}</p>
-          <p><span className="font-medium text-zinc-800">POL:</span> {selected.pol || "—"}</p>
-          <p><span className="font-medium text-zinc-800">POD:</span> {selected.pod || "—"}</p>
-          <p>
-            <span className="font-medium text-zinc-800">Location:</span>{" "}
-            {selected.cfs ? `${selected.cfs}` : selected.sez ? `${selected.sez}` : "—"}
-          </p>
-          <p><span className="font-medium text-zinc-800">Liner:</span> {selected.liner || "—"}</p>
-          <p><span className="font-medium text-zinc-800">Agent:</span> {selected.agent || "—"}</p>
-          <p><span className="font-medium text-zinc-800">Ocean Freight:</span> {selected.oceanFreight || "—"}</p>
-          <p>
-            <span className="font-medium text-zinc-800">Ex-Works:</span>{" "}
-            {(selected.exWorks ?? []).length === 0
-              ? "—"
-              : (selected.exWorks ?? []).map((i) => `${i.name}: ${i.amount}`).join(", ")}
-          </p>
-          <p><span className="font-medium text-zinc-800">Build Amount:</span> {selected.buildAmount ?? "—"}</p>
-          <p><span className="font-medium text-zinc-800">Payment Type:</span> {selected.paymentType || "—"}</p>
-          <p><span className="font-medium text-zinc-800">Payment Date:</span> {formatDate(selected.paymentDate)}</p>
-          <p><span className="font-medium text-zinc-800">Status:</span> {statusLabel(selected.status)}</p>
-          <p><span className="font-medium text-zinc-800">Created By:</span> {selected.createdBy || "—"}</p>
-          <p><span className="font-medium text-zinc-800">Updated By:</span> {selected.updatedBy || "—"}</p>
-        </div>
-      )}
-      <div className="mt-5 flex gap-2">
-        <button onClick={closeDrawer} className="flex-1 rounded-xl border border-zinc-200 py-2 text-xs font-medium text-zinc-600 hover:bg-zinc-50">Close</button>
-        <button onClick={() => selected && openEdit(selected)} className="flex-1 rounded-xl bg-zinc-900 py-2 text-xs font-medium text-white hover:bg-zinc-800">Edit</button>
-      </div>
-    </div>
-  );
+    // <div className="p-5">
+    //   <div className="flex items-center justify-between">
+    //     <h3 className="text-sm font-semibold text-zinc-900">Freight Forward Details</h3>
+    //     <button onClick={closeDrawer} className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700">
+    //       <X size={16} />
+    //     </button>
+    //   </div>
+    //   {selected && (
+    //     <div className="mt-3 space-y-1.5 text-xs text-zinc-600">
+    //       <p><span className="font-medium text-zinc-800">Job Number:</span> {selected.jobNumber || "—"}</p>
+    //       <p><span className="font-medium text-zinc-800">EZ Ref Number:</span> {selected.ezRefNumber || "—"}</p>
+    //       <p><span className="font-medium text-zinc-800">Consignment Name:</span> {selected.consignmentName}</p>
+    //       <p><span className="font-medium text-zinc-800">MBL:</span> {selected.mbl}</p>
+    //       <p><span className="font-medium text-zinc-800">HBL:</span> {selected.hbl}</p>
+    //       <p><span className="font-medium text-zinc-800">Container Number:</span> {selected.containerNumber}</p>
+    //       <p><span className="font-medium text-zinc-800">Container Size:</span> {selected.containerSize || "—"}</p>
+    //       <p><span className="font-medium text-zinc-800">Container Type:</span> {selected.containerType || "—"}</p>
+    //       <p><span className="font-medium text-zinc-800">ETD:</span> {formatDate(selected.etd)}</p>
+    //       <p><span className="font-medium text-zinc-800">ETA:</span> {formatDate(selected.eta)}</p>
+    //       <p><span className="font-medium text-zinc-800">Vessel Name:</span> {selected.vesselName || "—"}</p>
+    //       <p><span className="font-medium text-zinc-800">POL:</span> {selected.pol || "—"}</p>
+    //       <p><span className="font-medium text-zinc-800">POD:</span> {selected.pod || "—"}</p>
+    //       <p>
+    //         <span className="font-medium text-zinc-800">Location:</span>{" "}
+    //         {selected.cfs ? `${selected.cfs}` : selected.sez ? `${selected.sez}` : "—"}
+    //       </p>
+    //       <p><span className="font-medium text-zinc-800">Liner:</span> {selected.liner || "—"}</p>
+    //       <p><span className="font-medium text-zinc-800">Agent:</span> {selected.agent || "—"}</p>
+    //       <p><span className="font-medium text-zinc-800">Ocean Freight:</span> {selected.oceanFreight || "—"}</p>
+    //       <p>
+    //         <span className="font-medium text-zinc-800">Ex-Works:</span>{" "}
+    //         {(selected.exWorks ?? []).length === 0
+    //           ? "—"
+    //           : (selected.exWorks ?? []).map((i) => `${i.name}: ${i.amount}`).join(", ")}
+    //       </p>
+    //       <p><span className="font-medium text-zinc-800">billed amount:</span> {selected.buildAmount ?? "—"}</p>
+    //       <p><span className="font-medium text-zinc-800">Payment Type:</span> {selected.paymentType || "—"}</p>
+    //       <p><span className="font-medium text-zinc-800">Payment Date:</span> {formatDate(selected.paymentDate)}</p>
+    //       <p><span className="font-medium text-zinc-800">Status:</span> {statusLabel(selected.status)}</p>
+    //       <p><span className="font-medium text-zinc-800">Created By:</span> {selected.createdBy || "—"}</p>
+    //       <p><span className="font-medium text-zinc-800">Updated By:</span> {selected.updatedBy || "—"}</p>
+    //     </div>
+    //   )}
+    //   <div className="mt-5 flex gap-2">
+    //     <button onClick={closeDrawer} className="flex-1 rounded-xl border border-zinc-200 py-2 text-xs font-medium text-zinc-600 hover:bg-zinc-50">Close</button>
+    //     <button onClick={() => selected && openEdit(selected)} className="flex-1 rounded-xl bg-zinc-900 py-2 text-xs font-medium text-white hover:bg-zinc-800">Edit</button>
+    //   </div>
+    // </div>
+   
 
+
+<div className="p-6">
+  {/* Header */}
+  <div className="flex items-center justify-between border-b border-zinc-200 pb-4">
+    <div>
+      <h2 className="text-lg font-semibold text-zinc-900">
+        Freight Forward Details
+      </h2>
+      <p className="mt-1 text-xs text-zinc-500">
+        Shipment information and payment details
+      </p>
+    </div>
+
+    <button
+      onClick={closeDrawer}
+      className="rounded-xl p-2 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+    >
+      <X size={18} />
+    </button>
+  </div>
+
+  {selected && (
+    <div className="mt-6 space-y-6">
+
+      {/* Shipment */}
+      <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+        <SectionHeader
+          icon={Ship}
+          title="Shipment"
+          color="bg-blue-600"
+        />
+
+        <div className="grid grid-cols-2 gap-4">
+          <Info label="Job Number" value={selected.jobNumber} />
+          <Info label="EZ Ref" value={selected.ezRefNumber} />
+          <Info
+            label="Consignment"
+            value={selected.consignmentName}
+            full
+          />
+          <Info label="MBL" value={selected.mbl} />
+          <Info label="HBL" value={selected.hbl} />
+        </div>
+      </section>
+
+      {/* Container */}
+      <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+        <SectionHeader
+          icon={Package}
+          title="Container"
+          color="bg-emerald-600"
+        />
+
+        <div className="grid grid-cols-2 gap-4">
+          <Info
+            label="Container No."
+            value={selected.containerNumber}
+          />
+          <Info
+            label="Size"
+            value={selected.containerSize}
+          />
+          <Info
+            label="Type"
+            value={selected.containerType}
+          />
+          <Info
+            label="Vessel"
+            value={selected.vesselName}
+          />
+        </div>
+      </section>
+
+      {/* Route */}
+      <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+        <SectionHeader
+          icon={Route}
+          title="Route"
+          color="bg-violet-600"
+        />
+
+        <div className="grid grid-cols-2 gap-4">
+          <Info label="POL" value={selected.pol} />
+          <Info label="POD" value={selected.pod} />
+          <Info label="ETD" value={formatDate(selected.etd)} />
+          <Info label="ETA" value={formatDate(selected.eta)} />
+          <Info
+            label="Location"
+            value={
+              selected.cfs
+                ? selected.cfs
+                : selected.sez
+                ? selected.sez
+                : "—"
+            }
+            full
+          />
+        </div>
+      </section>
+
+      {/* Payment */}
+      <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+        <SectionHeader
+          icon={CreditCard}
+          title="Payment"
+          color="bg-amber-500"
+        />
+
+        <div className="grid grid-cols-2 gap-4">
+          <Info
+            label="Ocean Freight"
+            value={selected.oceanFreight}
+          />
+          <Info
+            label="Billed Amount"
+            value={selected.buildAmount}
+          />
+          <Info
+            label="Payment Type"
+            value={selected.paymentType}
+          />
+          <Info
+            label="Payment Date"
+            value={formatDate(selected.paymentDate)}
+          />
+
+          <div className="col-span-2">
+            <div className="text-[11px] uppercase tracking-wider text-zinc-500">
+              Ex Works
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              {(selected.exWorks ?? []).length === 0 ? (
+                <span className="text-sm text-zinc-500">—</span>
+              ) : (
+                selected.exWorks!.map((item) => (
+                  <span
+                    key={item.name}
+                    className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-700 ring-1 ring-zinc-200"
+                  >
+                    {item.name} • {item.amount}
+                  </span>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Audit */}
+      <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+        <SectionHeader
+          icon={ShieldCheck}
+          title="Audit"
+          color="bg-zinc-800"
+        />
+
+        <div className="grid grid-cols-2 gap-4">
+          <Info
+            label="Created By"
+            value={selected.createdBy}
+          />
+          <Info
+            label="Updated By"
+            value={selected.updatedBy}
+          />
+
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-zinc-500">
+              Status
+            </div>
+
+            <span className="mt-2 inline-flex rounded-full bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white">
+              {statusLabel(selected.status)}
+            </span>
+          </div>
+        </div>
+      </section>
+    </div>
+  )}
+
+  {/* Footer */}
+  <div className="mt-8 flex gap-3 border-t border-zinc-200 pt-5">
+    <button
+      onClick={closeDrawer}
+      className="flex-1 rounded-xl border border-zinc-300 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100"
+    >
+      Close
+    </button>
+
+    <button
+      onClick={() => selected && openEdit(selected)}
+      className="flex-1 rounded-xl bg-black py-2.5 text-sm font-medium text-white transition hover:bg-zinc-800"
+    >
+      Edit Details
+    </button>
+  </div>
+</div>
+);
+
+ type InfoProps = {
+  label: string;
+  value?: React.ReactNode;
+  full?: boolean;
+};
+
+const Info = ({ label, value, full = false }: InfoProps) => (
+  <div className={full ? "col-span-2" : ""}>
+    <div className="text-[11px] uppercase tracking-wider text-zinc-500">
+      {label}
+    </div>
+
+    <div className="mt-1 break-words text-sm font-medium text-zinc-900">
+      {value || "—"}
+    </div>
+  </div>
+);
+
+ const SectionHeader = ({
+  icon: Icon,
+  title,
+  color,
+}: {
+  icon: any;
+  title: string;
+  color: string;
+}) => (
+  <div className="mb-5 flex items-center gap-3 border-b border-zinc-200 pb-4">
+    <div
+      className={`flex h-10 w-10 items-center justify-center rounded-xl shadow-sm bg-zinc-800`}
+    >
+      <Icon size={18} className="text-white" />
+    </div>
+
+    <div>
+      <h3 className="text-sm font-semibold tracking-wide text-zinc-900">
+        {title}
+      </h3>
+      <p className="text-xs text-zinc-500">
+        {title} Information
+      </p>
+    </div>
+  </div>
+);
   // ── JSX ───────────────────────────────────────────────────────────────────
   return (
     <>
@@ -773,7 +1021,7 @@ export default function FreightForwardPage() {
         <ModuleHeader title="Freight Forward" description="Manage shipments, carriers, and forwarding workflows." />
 
         {/* Summary Cards — counts from getCountFromServer, not from fetched documents */}
-        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {/* <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {summaryCards.map((card) => (
             <button
               key={card.key}
@@ -784,7 +1032,42 @@ export default function FreightForwardPage() {
               <p className="mt-1 text-2xl font-bold">{card.count}</p>
             </button>
           ))}
-        </div>
+        </div> */}
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+  {summaryCards.map((card) => {
+    const isSelected = activeCard === card.key;
+
+    return (
+      <button
+        key={card.key}
+        onClick={() => handleCardClick(card.key)}
+        className={`
+          relative overflow-hidden rounded-xl border
+          px-4 py-3 text-left
+          transition-all duration-200 ease-out
+          ${
+            isSelected
+              ? "bg-white border-zinc-300 shadow-lg scale-[1.015]"
+              : "bg-zinc-100 border-zinc-200 hover:bg-zinc-50 hover:shadow-sm"
+          }
+        `}
+      >
+        {/* Left Accent */}
+        {isSelected && (
+          <div className="absolute left-0 top-0 h-full w-1.5 bg-gradient-to-b from-black via-zinc-700 to-zinc-700" />
+        )}
+
+        <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-zinc-500">
+          {card.label}
+        </p>
+
+        <p className="mt-1 text-2xl font-bold leading-none text-zinc-900">
+          {card.count}
+        </p>
+      </button>
+    );
+  })}
+</div>
 
         {/* Filters */}
         <div className="mt-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
