@@ -4,10 +4,11 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Eye, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
 interface ActionMenuProps {
-  onView: () => void;
+  onView?: () => void;
   onEdit: () => void;
   onDelete: () => void;
   showDelete?: boolean;
+  showView?: boolean;
 }
 
 export default function ActionMenu({
@@ -15,6 +16,7 @@ export default function ActionMenu({
   onEdit,
   onDelete,
   showDelete = true,
+  showView = true,
 }: ActionMenuProps) {
   return (
     <DropdownMenu.Root>
@@ -30,13 +32,15 @@ export default function ActionMenu({
           sideOffset={5}
           className="z-50 w-40 rounded-xl border border-zinc-200 bg-white p-1 shadow-xl"
         >
-          <DropdownMenu.Item
-            onClick={onView}
-            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-xs outline-none hover:bg-zinc-100"
-          >
-            <Eye size={14} />
-            View
-          </DropdownMenu.Item>
+          {showView && (
+            <DropdownMenu.Item
+              onClick={onView}
+              className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-xs outline-none hover:bg-zinc-100"
+            >
+              <Eye size={14} />
+              View
+            </DropdownMenu.Item>
+          )}
 
           <DropdownMenu.Item
             onClick={onEdit}

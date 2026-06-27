@@ -235,6 +235,18 @@ export default function FreightForwardPage() {
     0
   );
 
+  const selectedCfs =
+    form.locationType === "cfs"
+      ? cfsList.find((item) => item.code === form.cfs)
+      : undefined;
+
+  const selectedSez =
+    form.locationType === "sez"
+      ? sezList.find((item) => item.code === form.sez)
+      : undefined;
+
+  const selectedLocation = selectedCfs ?? selectedSez;
+
   // ── Derived ───────────────────────────────────────────────────────────────
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -589,6 +601,58 @@ export default function FreightForwardPage() {
               </select>
             )}
           </div>
+
+          {selectedLocation && (
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-zinc-600">
+                  Name
+                </label>
+                <input
+                  readOnly
+                  value={selectedLocation.name}
+                  className={`${fieldClass("location-name")} bg-zinc-100 cursor-not-allowed`}
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-zinc-600">
+                  Code
+                </label>
+                <input
+                  readOnly
+                  value={selectedLocation.code}
+                  className={`${fieldClass("location-code")} bg-zinc-100 cursor-not-allowed`}
+                />
+              </div>
+              {(form.locationType === "cfs" && selectedCfs) && (
+                <>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-medium text-zinc-600">
+                      PAN
+                    </label>
+                    <input
+                      readOnly
+                      value={selectedCfs.pan || '-'}
+                      className={`${fieldClass("location-pan")} bg-zinc-100 cursor-not-allowed`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-[11px] font-medium text-zinc-600">
+                      Bond
+                    </label>
+                    <input
+                      readOnly
+                      value={selectedCfs.bond || '-'}
+                      className={`${fieldClass("location-bond")} bg-zinc-100 cursor-not-allowed`}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
@@ -905,14 +969,14 @@ export default function FreightForwardPage() {
               {(selected.exWorks ?? []).length === 0 ? (
                 <span className="text-sm text-zinc-500">—</span>
               ) : (
-                selected.exWorks!.map((item) => (
-                  <span
-                    key={item.name}
-                    className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-700 ring-1 ring-zinc-200"
-                  >
-                    {item.name} • {item.amount}
-                  </span>
-                ))
+                selected?.exWorks?.map((item, index) => (
+                <span
+                  key={`${item.name}-${index}`}
+                  className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-700 ring-1 ring-zinc-200"
+                >
+                  {item.name} • {item.amount}
+                </span> 
+              ))
               )}
             </div>
           </div>
@@ -1146,7 +1210,7 @@ const Info = ({ label, value, full = false }: InfoProps) => (
                   <tr><td colSpan={8} className="py-10 text-center text-zinc-400">No freight forward records found.</td></tr>
                 ) : (
                   rows.map((item) => (
-                    <tr key={item.id} className="border-b border-zinc-100 hover:bg-zinc-50">
+                    <tr key={item.id} onClick={() => openView(item)} className="cursor-pointer border-b border-zinc-100 hover:bg-zinc-50 transition-colors">
                       <td className="px-4 py-3 text-zinc-600">{item.ezRefNumber || "—"}</td>
                       <td className="px-4 py-3 text-zinc-600">{formatDate(item.eta)}</td>
                       <td className="px-4 py-3 font-medium text-zinc-800">{item.consignmentName}</td>
@@ -1154,10 +1218,13 @@ const Info = ({ label, value, full = false }: InfoProps) => (
                       <td className="px-4 py-3 text-zinc-600">{item.hbl}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.containerNumber}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.vesselName || "—"}</td>
-                      <td className="px-4 py-3 text-center">
+                      <td
+                        className="px-4 py-3 text-center"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <ActionMenu
+                          showView={false}
                           showDelete={isAdmin}
-                          onView={() => openView(item)}
                           onEdit={() => openEdit(item)}
                           onDelete={() => setDeleteId(item.id!)}
                         />
