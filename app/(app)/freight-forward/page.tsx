@@ -78,7 +78,7 @@ const emptyForm = (): FreightForwardFormData => ({
   buildAmount: undefined,
   paymentType: "",
   paymentDate: "",
-  status: "created",
+  status: "in_process",
 });
 
 function formatDate(value?: string) {
@@ -115,7 +115,7 @@ function toFormData(item: FreightForward): FreightForwardFormData {
     buildAmount: item.buildAmount,
     paymentType: item.paymentType ?? "",
     paymentDate: item.paymentDate ?? "",
-    status: item.status ?? "created",
+    status: item.status ?? "in_process",
   };
 }
 
@@ -216,10 +216,10 @@ export default function FreightForwardPage() {
   type UserRole = "admin" | "user" | "accountant";
   const userRole: UserRole = (user?.role as UserRole) ?? "admin";
   const allowedStatuses: Record<UserRole, FreightForwardStatus[]> = {
-    admin: [FreightForwardStatusObject.CREATED, FreightForwardStatusObject.MOMENTUM, FreightForwardStatusObject.SPLIT_MANIFEST],
-    user: [FreightForwardStatusObject.CREATED, FreightForwardStatusObject.MOMENTUM, FreightForwardStatusObject.SPLIT_MANIFEST],
+    admin: [FreightForwardStatusObject.IN_PROCESS, FreightForwardStatusObject.MOMENTUM, FreightForwardStatusObject.SPLIT_MANIFEST],
+    user: [FreightForwardStatusObject.IN_PROCESS, FreightForwardStatusObject.MOMENTUM, FreightForwardStatusObject.SPLIT_MANIFEST],
     accountant: [
-      FreightForwardStatusObject.CREATED,
+      FreightForwardStatusObject.IN_PROCESS,
       FreightForwardStatusObject.MOMENTUM,
       FreightForwardStatusObject.SPLIT_MANIFEST,
       FreightForwardStatusObject.BILLING,
@@ -782,25 +782,6 @@ export default function FreightForwardPage() {
           <input type="date" value={form.paymentDate ?? ""} onChange={(e) => setForm({ ...form, paymentDate: e.target.value })} className={fieldClass("paymentDate")} />
         </div>
 
-        <div>
-          <label className="mb-1 block text-[11px] font-medium text-zinc-600">Status</label>
-          <select
-            value={form.status}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                status: e.target.value as FreightForwardStatus,
-              })
-            }
-            className={fieldClass("status")}
-          >
-            {availableStatuses.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-        </div>
       </div>
 
       <div className="mt-5 flex gap-2">

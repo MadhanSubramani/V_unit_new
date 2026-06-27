@@ -32,7 +32,7 @@ export async function getFreightForwardCardCounts() {
 
   const [inProcess, momentum, splitManifest, completed, next7Days] = await Promise.all([
     // inProcess = everything that is NOT completed
-    getCountFromServer(query(ref, where("status", "!=", "completed"))),
+    getCountFromServer(query(ref, where("status", "==", "in_process"))),
     getCountFromServer(query(ref, where("status", "==", "momentum"))),
     getCountFromServer(query(ref, where("status", "==", "split_manifest"))),
     getCountFromServer(query(ref, where("status", "==", "completed"))),
@@ -91,7 +91,7 @@ export async function getFreightForwardPage({
 
   // ── Card filter → server constraints ──────────────────────────────────
   if (activeCard === "inProcess") {
-    constraints.push(where("status", "!=", "completed"));
+    constraints.push(where("status", "==", "in_process"));
   } else if (activeCard === "completed") {
     constraints.push(where("status", "==", "completed"));
   } else if (activeCard === "momentum") {
@@ -165,7 +165,7 @@ export async function getFreightForwardSearch({
   const ref = REF();
   const constraints: QueryConstraint[] = [];
 
-  if (activeCard === "inProcess") constraints.push(where("status", "!=", "completed"));
+  if (activeCard === "inProcess") constraints.push(where("status", "==", "in_process"));
   else if (activeCard === "completed") constraints.push(where("status", "==", "completed"));
   else if (activeCard === "momentum") constraints.push(where("status", "==", "momentum"));
   else if (activeCard === "split_manifest") constraints.push(where("status", "==", "split_manifest"));
@@ -216,7 +216,7 @@ export async function createFreightForward(
 ) {
   return addDoc(REF(), {
     ...data,
-    status: data.status ?? "created",
+    status: data.status ?? "in_process",
     createdBy,
     updatedBy: createdBy,
     createdAt: serverTimestamp(),

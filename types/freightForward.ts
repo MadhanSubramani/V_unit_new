@@ -1,5 +1,5 @@
 export type FreightForwardStatus =
-  | "created"
+  | "in_process"
   | "momentum"
   | "split_manifest"
   | "billing"
@@ -12,7 +12,7 @@ export const FREIGHT_FORWARD_STATUSES: {
   label: string;
   order: number;
 }[] = [
-  { value: "created", label: "Created", order: 1 },
+  { value: "in_process", label: "IN_PROCESS", order: 1 },
   { value: "momentum", label: "Momentum", order: 2 },
   { value: "split_manifest", label: "Split Manifest", order: 3 },
   { value: "billing", label: "Billing", order: 4 },
@@ -66,7 +66,7 @@ export type FreightForwardFormData = Omit<
 >;
 
 export enum FreightForwardStatusObject {
-  CREATED = "created",
+  IN_PROCESS = "in_process",
   MOMENTUM = "momentum",
   SPLIT_MANIFEST = "split_manifest",
   BILLING = "billing",
