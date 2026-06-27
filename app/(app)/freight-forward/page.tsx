@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, Trash2, X,  Ship,
+import {
+  Plus, Trash2, X, Ship,
   Package,
   Route,
   CreditCard,
-  ShieldCheck, } from "lucide-react";
+  ShieldCheck,
+} from "lucide-react";
 import { DocumentSnapshot } from "firebase/firestore";
 import ModuleHeader from "@/components/ModuleHeader";
 import ActionMenu from "@/components/shared/ActionMenu";
@@ -15,6 +17,7 @@ import { getConfigByCategory } from "@/lib/configurations/configurations";
 import {
   createFreightForward,
   deleteFreightForward,
+  getFreightForwardByStatus,
   getFreightForwardCardCounts,
   getFreightForwardPage,
   getFreightForwardSearch,
@@ -247,6 +250,31 @@ export default function FreightForwardPage() {
 
   const selectedLocation = selectedCfs ?? selectedSez;
 
+  const STATUS_CHIPS = [
+    { label: "BILLING", value: "billing" },
+    { label: "RECEIVABLE", value: "receivable" },
+    { label: "PAYABLE", value: "payable" },
+  ];
+
+  const [activeStatus, setActiveStatus] = useState<string | null>(null);
+  const loadStatusRecords = async (status: string) => {
+    setActiveCard(null);
+    setActiveStatus(status);
+    setLoading(true);
+    try {
+      const data = await getFreightForwardByStatus(status);
+      setRows(data);
+      setTotal(data.length);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const clearStatusFilter = () => {
+    setActiveStatus(null);
+    loadPage(0, null);
+  };
+
   // ── Derived ───────────────────────────────────────────────────────────────
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -301,6 +329,7 @@ export default function FreightForwardPage() {
 
   // Re-fetch from scratch whenever filters change
   useEffect(() => {
+    if (activeStatus) return;
     setCursors([null]);
     setPage(0);
     loadCounts();
@@ -452,6 +481,7 @@ export default function FreightForwardPage() {
   };
 
   const handleCardClick = (card: CardFilter) => {
+    setActiveStatus(null);
     setActiveCard((prev) => (prev === card ? null : card));
   };
 
@@ -832,252 +862,252 @@ export default function FreightForwardPage() {
     //     <button onClick={() => selected && openEdit(selected)} className="flex-1 rounded-xl bg-zinc-900 py-2 text-xs font-medium text-white hover:bg-zinc-800">Edit</button>
     //   </div>
     // </div>
-   
 
 
-<div className="p-6">
-  {/* Header */}
-  <div className="flex items-center justify-between border-b border-zinc-200 pb-4">
-    <div>
-      <h2 className="text-lg font-semibold text-zinc-900">
-        Freight Forward Details
-      </h2>
-      <p className="mt-1 text-xs text-zinc-500">
-        Shipment information and payment details
-      </p>
-    </div>
 
-    <button
-      onClick={closeDrawer}
-      className="rounded-xl p-2 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
-    >
-      <X size={18} />
-    </button>
-  </div>
-
-  {selected && (
-    <div className="mt-6 space-y-6">
-
-      {/* Shipment */}
-      <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-        <SectionHeader
-          icon={Ship}
-          title="Shipment"
-          color="bg-blue-600"
-        />
-
-        <div className="grid grid-cols-2 gap-4">
-          <Info label="Job Number" value={selected.jobNumber} />
-          <Info label="EZ Ref" value={selected.ezRefNumber} />
-          <Info
-            label="Consignment"
-            value={selected.consignmentName}
-            full
-          />
-          <Info label="MBL" value={selected.mbl} />
-          <Info label="HBL" value={selected.hbl} />
+    <div className="p-6">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-zinc-200 pb-4">
+        <div>
+          <h2 className="text-lg font-semibold text-zinc-900">
+            Freight Forward Details
+          </h2>
+          <p className="mt-1 text-xs text-zinc-500">
+            Shipment information and payment details
+          </p>
         </div>
-      </section>
 
-      {/* Container */}
-      <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-        <SectionHeader
-          icon={Package}
-          title="Container"
-          color="bg-emerald-600"
-        />
+        <button
+          onClick={closeDrawer}
+          className="rounded-xl p-2 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+        >
+          <X size={18} />
+        </button>
+      </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <Info
-            label="Container No."
-            value={selected.containerNumber}
-          />
-          <Info
-            label="Size"
-            value={selected.containerSize}
-          />
-          <Info
-            label="Type"
-            value={selected.containerType}
-          />
-          <Info
-            label="Vessel"
-            value={selected.vesselName}
-          />
-        </div>
-      </section>
+      {selected && (
+        <div className="mt-6 space-y-6">
 
-      {/* Route */}
-      <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-        <SectionHeader
-          icon={Route}
-          title="Route"
-          color="bg-violet-600"
-        />
+          {/* Shipment */}
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+            <SectionHeader
+              icon={Ship}
+              title="Shipment"
+              color="bg-blue-600"
+            />
 
-        <div className="grid grid-cols-2 gap-4">
-          <Info label="POL" value={selected.pol} />
-          <Info label="POD" value={selected.pod} />
-          <Info label="ETD" value={formatDate(selected.etd)} />
-          <Info label="ETA" value={formatDate(selected.eta)} />
-          <Info
-            label="Location"
-            value={
-              selected.cfs
-                ? selected.cfs
-                : selected.sez
-                ? selected.sez
-                : "—"
-            }
-            full
-          />
-        </div>
-      </section>
-
-      {/* Payment */}
-      <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-        <SectionHeader
-          icon={CreditCard}
-          title="Payment"
-          color="bg-amber-500"
-        />
-
-        <div className="grid grid-cols-2 gap-4">
-          <Info
-            label="Ocean Freight"
-            value={selected.oceanFreight}
-          />
-          <Info
-            label="Billed Amount"
-            value={selected.buildAmount}
-          />
-          <Info
-            label="Payment Type"
-            value={selected.paymentType}
-          />
-          <Info
-            label="Payment Date"
-            value={formatDate(selected.paymentDate)}
-          />
-
-          <div className="col-span-2">
-            <div className="text-[11px] uppercase tracking-wider text-zinc-500">
-              Ex Works
+            <div className="grid grid-cols-2 gap-4">
+              <Info label="Job Number" value={selected.jobNumber} />
+              <Info label="EZ Ref" value={selected.ezRefNumber} />
+              <Info
+                label="Consignment"
+                value={selected.consignmentName}
+                full
+              />
+              <Info label="MBL" value={selected.mbl} />
+              <Info label="HBL" value={selected.hbl} />
             </div>
+          </section>
 
-            <div className="mt-3 flex flex-wrap gap-2">
-              {(selected.exWorks ?? []).length === 0 ? (
-                <span className="text-sm text-zinc-500">—</span>
-              ) : (
-                selected?.exWorks?.map((item, index) => (
-                <span
-                  key={`${item.name}-${index}`}
-                  className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-700 ring-1 ring-zinc-200"
-                >
-                  {item.name} • {item.amount}
-                </span> 
-              ))
-              )}
+          {/* Container */}
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+            <SectionHeader
+              icon={Package}
+              title="Container"
+              color="bg-emerald-600"
+            />
+
+            <div className="grid grid-cols-2 gap-4">
+              <Info
+                label="Container No."
+                value={selected.containerNumber}
+              />
+              <Info
+                label="Size"
+                value={selected.containerSize}
+              />
+              <Info
+                label="Type"
+                value={selected.containerType}
+              />
+              <Info
+                label="Vessel"
+                value={selected.vesselName}
+              />
             </div>
-          </div>
-        </div>
-      </section>
+          </section>
 
-      {/* Audit */}
-      <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-        <SectionHeader
-          icon={ShieldCheck}
-          title="Audit"
-          color="bg-zinc-800"
-        />
+          {/* Route */}
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+            <SectionHeader
+              icon={Route}
+              title="Route"
+              color="bg-violet-600"
+            />
 
-        <div className="grid grid-cols-2 gap-4">
-          <Info
-            label="Created By"
-            value={selected.createdBy}
-          />
-          <Info
-            label="Updated By"
-            value={selected.updatedBy}
-          />
-
-          <div>
-            <div className="text-[11px] uppercase tracking-wider text-zinc-500">
-              Status
+            <div className="grid grid-cols-2 gap-4">
+              <Info label="POL" value={selected.pol} />
+              <Info label="POD" value={selected.pod} />
+              <Info label="ETD" value={formatDate(selected.etd)} />
+              <Info label="ETA" value={formatDate(selected.eta)} />
+              <Info
+                label="Location"
+                value={
+                  selected.cfs
+                    ? selected.cfs
+                    : selected.sez
+                      ? selected.sez
+                      : "—"
+                }
+                full
+              />
             </div>
+          </section>
 
-            <span className="mt-2 inline-flex rounded-full bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white">
-              {statusLabel(selected.status)}
-            </span>
-          </div>
+          {/* Payment */}
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+            <SectionHeader
+              icon={CreditCard}
+              title="Payment"
+              color="bg-amber-500"
+            />
+
+            <div className="grid grid-cols-2 gap-4">
+              <Info
+                label="Ocean Freight"
+                value={selected.oceanFreight}
+              />
+              <Info
+                label="Billed Amount"
+                value={selected.buildAmount}
+              />
+              <Info
+                label="Payment Type"
+                value={selected.paymentType}
+              />
+              <Info
+                label="Payment Date"
+                value={formatDate(selected.paymentDate)}
+              />
+
+              <div className="col-span-2">
+                <div className="text-[11px] uppercase tracking-wider text-zinc-500">
+                  Ex Works
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(selected.exWorks ?? []).length === 0 ? (
+                    <span className="text-sm text-zinc-500">—</span>
+                  ) : (
+                    selected?.exWorks?.map((item, index) => (
+                      <span
+                        key={`${item.name}-${index}`}
+                        className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-700 ring-1 ring-zinc-200"
+                      >
+                        {item.name} • {item.amount}
+                      </span>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Audit */}
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+            <SectionHeader
+              icon={ShieldCheck}
+              title="Audit"
+              color="bg-zinc-800"
+            />
+
+            <div className="grid grid-cols-2 gap-4">
+              <Info
+                label="Created By"
+                value={selected.createdBy}
+              />
+              <Info
+                label="Updated By"
+                value={selected.updatedBy}
+              />
+
+              <div>
+                <div className="text-[11px] uppercase tracking-wider text-zinc-500">
+                  Status
+                </div>
+
+                <span className="mt-2 inline-flex rounded-full bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white">
+                  {statusLabel(selected.status)}
+                </span>
+              </div>
+            </div>
+          </section>
         </div>
-      </section>
+      )}
+
+      {/* Footer */}
+      <div className="mt-8 flex gap-3 border-t border-zinc-200 pt-5">
+        <button
+          onClick={closeDrawer}
+          className="flex-1 rounded-xl border border-zinc-300 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100"
+        >
+          Close
+        </button>
+
+        <button
+          onClick={() => selected && openEdit(selected)}
+          className="flex-1 rounded-xl bg-black py-2.5 text-sm font-medium text-white transition hover:bg-zinc-800"
+        >
+          Edit Details
+        </button>
+      </div>
     </div>
-  )}
+  );
 
-  {/* Footer */}
-  <div className="mt-8 flex gap-3 border-t border-zinc-200 pt-5">
-    <button
-      onClick={closeDrawer}
-      className="flex-1 rounded-xl border border-zinc-300 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100"
-    >
-      Close
-    </button>
+  type InfoProps = {
+    label: string;
+    value?: React.ReactNode;
+    full?: boolean;
+  };
 
-    <button
-      onClick={() => selected && openEdit(selected)}
-      className="flex-1 rounded-xl bg-black py-2.5 text-sm font-medium text-white transition hover:bg-zinc-800"
-    >
-      Edit Details
-    </button>
-  </div>
-</div>
-);
+  const Info = ({ label, value, full = false }: InfoProps) => (
+    <div className={full ? "col-span-2" : ""}>
+      <div className="text-[11px] uppercase tracking-wider text-zinc-500">
+        {label}
+      </div>
 
- type InfoProps = {
-  label: string;
-  value?: React.ReactNode;
-  full?: boolean;
-};
-
-const Info = ({ label, value, full = false }: InfoProps) => (
-  <div className={full ? "col-span-2" : ""}>
-    <div className="text-[11px] uppercase tracking-wider text-zinc-500">
-      {label}
+      <div className="mt-1 break-words text-sm font-medium text-zinc-900">
+        {value || "—"}
+      </div>
     </div>
+  );
 
-    <div className="mt-1 break-words text-sm font-medium text-zinc-900">
-      {value || "—"}
-    </div>
-  </div>
-);
+  const SectionHeader = ({
+    icon: Icon,
+    title,
+    color,
+  }: {
+    icon: any;
+    title: string;
+    color: string;
+  }) => (
+    <div className="mb-5 flex items-center gap-3 border-b border-zinc-200 pb-4">
+      <div
+        className={`flex h-10 w-10 items-center justify-center rounded-xl shadow-sm bg-zinc-800`}
+      >
+        <Icon size={18} className="text-white" />
+      </div>
 
- const SectionHeader = ({
-  icon: Icon,
-  title,
-  color,
-}: {
-  icon: any;
-  title: string;
-  color: string;
-}) => (
-  <div className="mb-5 flex items-center gap-3 border-b border-zinc-200 pb-4">
-    <div
-      className={`flex h-10 w-10 items-center justify-center rounded-xl shadow-sm bg-zinc-800`}
-    >
-      <Icon size={18} className="text-white" />
+      <div>
+        <h3 className="text-sm font-semibold tracking-wide text-zinc-900">
+          {title}
+        </h3>
+        <p className="text-xs text-zinc-500">
+          {title} Information
+        </p>
+      </div>
     </div>
-
-    <div>
-      <h3 className="text-sm font-semibold tracking-wide text-zinc-900">
-        {title}
-      </h3>
-      <p className="text-xs text-zinc-500">
-        {title} Information
-      </p>
-    </div>
-  </div>
-);
+  );
   // ── JSX ───────────────────────────────────────────────────────────────────
   return (
     <>
@@ -1098,40 +1128,39 @@ const Info = ({ label, value, full = false }: InfoProps) => (
           ))}
         </div> */}
         <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-  {summaryCards.map((card) => {
-    const isSelected = activeCard === card.key;
+          {summaryCards.map((card) => {
+            const isSelected = activeCard === card.key;
 
-    return (
-      <button
-        key={card.key}
-        onClick={() => handleCardClick(card.key)}
-        className={`
+            return (
+              <button
+                key={card.key}
+                onClick={() => handleCardClick(card.key)}
+                className={`
           relative overflow-hidden rounded-xl border
           px-4 py-3 text-left
           transition-all duration-200 ease-out
-          ${
-            isSelected
-              ? "bg-white border-zinc-300 shadow-lg scale-[1.015]"
-              : "bg-zinc-100 border-zinc-200 hover:bg-zinc-50 hover:shadow-sm"
-          }
+          ${isSelected
+                    ? "bg-white border-zinc-300 shadow-lg scale-[1.015]"
+                    : "bg-zinc-100 border-zinc-200 hover:bg-zinc-50 hover:shadow-sm"
+                  }
         `}
-      >
-        {/* Left Accent */}
-        {isSelected && (
-          <div className="absolute left-0 top-0 h-full w-1.5 bg-gradient-to-b from-black via-zinc-700 to-zinc-700" />
-        )}
+              >
+                {/* Left Accent */}
+                {isSelected && (
+                  <div className="absolute left-0 top-0 h-full w-1.5 bg-gradient-to-b from-black via-zinc-700 to-zinc-700" />
+                )}
 
-        <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-zinc-500">
-          {card.label}
-        </p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-zinc-500">
+                  {card.label}
+                </p>
 
-        <p className="mt-1 text-2xl font-bold leading-none text-zinc-900">
-          {card.count}
-        </p>
-      </button>
-    );
-  })}
-</div>
+                <p className="mt-1 text-2xl font-bold leading-none text-zinc-900">
+                  {card.count}
+                </p>
+              </button>
+            );
+          })}
+        </div>
 
         {/* Filters */}
         <div className="mt-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -1181,15 +1210,49 @@ const Info = ({ label, value, full = false }: InfoProps) => (
           </button>
         </div>
 
-        {activeCard && (
-          <div className="mt-3 flex items-center gap-2">
-            <span className="text-xs text-zinc-500">
-              Showing: <span className="font-medium text-zinc-800">{summaryCards.find((c) => c.key === activeCard)?.label}</span>
-            </span>
-            <button onClick={() => setActiveCard(null)} className="text-[11px] text-zinc-400 underline hover:text-zinc-700">Clear</button>
+        <div className="mt-3 flex items-center justify-between">
+          <div className="flex gap-2">
+            {STATUS_CHIPS.map((chip) => (
+              <button
+                key={chip.value}
+                onClick={() => loadStatusRecords(chip.value)}
+                className={`rounded-full px-4 py-2 text-xs font-medium transition
+          ${activeStatus === chip.value
+                    ? "bg-black text-white"
+                    : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                  }`}
+              >
+                {chip.label}
+              </button>
+            ))}
           </div>
-        )}
 
+          {(activeStatus || activeCard) && (
+            <div className="mt-3 flex items-center gap-2">
+              <span className="text-xs text-zinc-500">
+                Showing:
+                <span className="ml-1 font-medium text-zinc-800">
+                  {activeStatus
+                    ? activeStatus.charAt(0).toUpperCase() + activeStatus.slice(1)
+                    : summaryCards.find((c) => c.key === activeCard)?.label}
+                </span>
+              </span>
+
+              <button
+                onClick={() => {
+                  if (activeStatus) {
+                    clearStatusFilter();
+                  } else {
+                    setActiveCard(null);
+                  }
+                }}
+                className="text-[11px] text-zinc-400 underline hover:text-zinc-700"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+        </div>
         {/* Table */}
         <div className="mt-6 overflow-hidden rounded-2xl border border-zinc-200">
           <div className="overflow-x-auto">

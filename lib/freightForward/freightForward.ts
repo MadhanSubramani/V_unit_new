@@ -195,6 +195,20 @@ export async function getFreightForwardSearch({
   });
 }
 
+export async function getFreightForwardByStatus(status: string) {
+  const q = query(
+    collection(db, "freightForward"),
+    where("status", "==", status)
+  );
+
+  const snap = await getDocs(q);
+
+  return snap.docs.map(d => ({
+    id: d.id,
+    ...(d.data() as Omit<FreightForward, "id">),
+  }));
+}
+
 // ── CRUD ───────────────────────────────────────────────────────────────────
 export async function createFreightForward(
   data: FreightForwardFormData,
