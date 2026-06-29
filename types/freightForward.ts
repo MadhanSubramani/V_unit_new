@@ -23,9 +23,16 @@ export const FREIGHT_FORWARD_STATUSES: {
   { value: "completed", label: "Completed", order: 7 },
 ];
 
-export interface ExWorksItem {
+export interface ExpenseItem {
   name: string;
   amount: number;
+}
+
+export type ExWorksItem = ExpenseItem;
+
+export interface FreightForwardDocument {
+  name: string;
+  url: string;
 }
 
 export interface FreightForward {
@@ -35,6 +42,8 @@ export interface FreightForward {
   consignmentName: string;
   mbl: string;
   hbl: string;
+  mblUrl?: FreightForwardDocument;
+  hblUrl?: FreightForwardDocument;
   containerNumber: string;
   containerSize?: string;
   containerType?: string;
@@ -48,8 +57,15 @@ export interface FreightForward {
   sez?: string;
   liner?: string;
   agent?: string;
-  oceanFreight?: string;
+  oceanFreight?: number;
   exWorks?: ExWorksItem[];
+  otherExpenses?: ExpenseItem[];
+  totalExpenses?: number;
+  billedAmount?: number;
+  billedAmountUrl?: FreightForwardDocument;
+  creditNote?: number;
+  creditNoteUrl?: FreightForwardDocument;
+  /** @deprecated use billedAmount */
   buildAmount?: number;
   paymentType?: string;
   paymentDate?: string;

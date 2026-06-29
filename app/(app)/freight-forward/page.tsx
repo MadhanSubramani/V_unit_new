@@ -7,6 +7,9 @@ import {
   Route,
   CreditCard,
   ShieldCheck,
+  Paperclip,
+  Download,
+  FileSpreadsheet,
 } from "lucide-react";
 import { DocumentSnapshot, Timestamp } from "firebase/firestore";
 import ModuleHeader from "@/components/ModuleHeader";
@@ -23,16 +26,30 @@ import {
   getFreightForwardSearch,
   updateFreightForward,
   updateWorkflowStatus,
-  getFreightForwardById
+  getFreightForwardById,
+  getFreightForwardForExport,
 } from "@/lib/freightForward/freightForward";
+import { generateJobNumber } from "@/lib/freightForward/generateJobNumber";
+import {
+  computeTotalExpenses,
+  formatDollar,
+  getRecordProfitLoss,
+  getRecordTotalExpenses,
+  parseAmount,
+  sumExpenseItems,
+} from "@/lib/freightForward/amounts";
+import { exportFreightForwardToExcel } from "@/lib/freightForward/exportFreightForwardExcel";
+import { uploadDocument } from "@/lib/kyc/uploadDocument";
 import { getSezList } from "@/lib/sez/sez";
 import { Cfs } from "@/types/cfs";
 import { ConfigItem } from "@/types/configuration";
 import {
   CONTAINER_NUMBER_REGEX,
+  ExpenseItem,
   ExWorksItem,
   FREIGHT_FORWARD_STATUSES,
   FreightForward,
+  FreightForwardDocument,
   FreightForwardFormData,
   FreightForwardStatus,
   FreightForwardStatusObject,
@@ -55,7 +72,22 @@ const SEARCH_FIELDS = [
 
 const PAGE_SIZE = 10;
 
-const emptyExWorks = (): ExWorksItem => ({ name: "", amount: 0 });
+const emptyExpenseItem = (): ExpenseItem => ({ name: "", amount: 0 });
+
+function formatProfitLossChip(amount: number) {
+  const isProfit = amount > 0;
+  return {
+    label: isProfit ? "Profit" : "Loss",
+    value: formatDollar(Math.abs(amount)) || "$0",
+    className: isProfit
+      ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+      : "bg-red-50 text-red-700 ring-red-200",
+  };
+}
+
+function displayDollar(value?: number | string | null) {
+  return formatDollar(value) || "—";
+}
 
 const emptyForm = (): FreightForwardFormData => ({
   jobNumber: "",
@@ -76,9 +108,12 @@ const emptyForm = (): FreightForwardFormData => ({
   sez: undefined,
   liner: "",
   agent: "",
-  oceanFreight: "",
+  oceanFreight: undefined,
   exWorks: [],
-  buildAmount: undefined,
+  otherExpenses: [],
+  totalExpenses: undefined,
+  billedAmount: undefined,
+  creditNote: undefined,
   paymentType: "",
   paymentDate: "",
   status: "in_process",
@@ -113,9 +148,17 @@ function toFormData(item: FreightForward): FreightForwardFormData {
     sez: item.sez,
     liner: item.liner ?? "",
     agent: item.agent ?? "",
-    oceanFreight: item.oceanFreight ?? "",
+    oceanFreight: parseAmount(item.oceanFreight),
     exWorks: item.exWorks ?? [],
-    buildAmount: item.buildAmount,
+    otherExpenses: item.otherExpenses ?? [],
+    billedAmount: parseAmount(item.billedAmount ?? item.buildAmount),
+    creditNote: parseAmount(item.creditNote),
+    totalExpenses: computeTotalExpenses(
+      item.exWorks,
+      item.otherExpenses,
+      parseAmount(item.oceanFreight),
+      item.totalExpenses
+    ),
     paymentType: item.paymentType ?? "",
     paymentDate: item.paymentDate ?? "",
     status: item.status ?? "in_process",
@@ -145,16 +188,17 @@ function buildPayload(form: FreightForwardFormData): Record<string, unknown> {
     pod: form.pod?.trim() || undefined,
     liner: form.liner?.trim() || undefined,
     agent: form.agent?.trim() || undefined,
-    oceanFreight: form.oceanFreight?.trim() || undefined,
+    oceanFreight: parseAmount(form.oceanFreight),
     paymentType: form.paymentType || undefined,
     paymentDate: form.paymentDate || undefined,
-    buildAmount:
-      form.buildAmount !== undefined &&
-        form.buildAmount !== null &&
-        !Number.isNaN(form.buildAmount)
-        ? Number(form.buildAmount)
-        : undefined,
+    totalExpenses:
+      sumExpenseItems(form.exWorks) +
+      sumExpenseItems(form.otherExpenses) +
+      (parseAmount(form.oceanFreight) ?? 0),
+    billedAmount: parseAmount(form.billedAmount),
+    creditNote: parseAmount(form.creditNote),
     exWorks: (form.exWorks ?? []).filter((i) => i.name.trim() || i.amount),
+    otherExpenses: (form.otherExpenses ?? []).filter((i) => i.name.trim() || i.amount),
     locationType: form.locationType,
     cfs: form.locationType === "cfs" && form.cfs ? form.cfs : undefined,
     sez: form.locationType === "sez" && form.sez ? form.sez : undefined,
@@ -189,6 +233,7 @@ export default function FreightForwardPage() {
   const [searchValue, setSearchValue] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [exporting, setExporting] = useState(false);
 
   const isSearching = searchValue.trim().length > 0;
 
@@ -208,6 +253,15 @@ export default function FreightForwardPage() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitError, setSubmitError] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const [mblFile, setMblFile] = useState<File | null>(null);
+  const [hblFile, setHblFile] = useState<File | null>(null);
+  const [billedAmountFile, setBilledAmountFile] = useState<File | null>(null);
+  const [creditNoteFile, setCreditNoteFile] = useState<File | null>(null);
+  const [existingMblDoc, setExistingMblDoc] = useState<FreightForwardDocument | undefined>();
+  const [existingHblDoc, setExistingHblDoc] = useState<FreightForwardDocument | undefined>();
+  const [existingBilledAmountDoc, setExistingBilledAmountDoc] = useState<FreightForwardDocument | undefined>();
+  const [existingCreditNoteDoc, setExistingCreditNoteDoc] = useState<FreightForwardDocument | undefined>();
 
   // ── Delete ────────────────────────────────────────────────────────────────
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -236,10 +290,14 @@ export default function FreightForwardPage() {
     allowedStatuses[userRole].includes(status.value)
   );
 
-  const totalExWorksAmount = (form.exWorks ?? []).reduce(
-    (total, item) => total + (item.amount || 0),
-    0
-  );
+  const totalExWorksAmount = sumExpenseItems(form.exWorks);
+  const totalOtherExpensesAmount = sumExpenseItems(form.otherExpenses);
+  const totalExpensesAmount =
+    totalExWorksAmount + totalOtherExpensesAmount + (parseAmount(form.oceanFreight) ?? 0);
+  const profitLossAmount = getRecordProfitLoss({
+    ...form,
+    totalExpenses: totalExpensesAmount,
+  } as FreightForward);
 
   const selectedCfs =
     form.locationType === "cfs"
@@ -421,19 +479,48 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
     setForm(emptyForm());
     setErrors({});
     setSubmitError("");
+    resetDocumentFiles();
   };
 
-  const openAdd = () => {
+  const resetDocumentFiles = () => {
+    setMblFile(null);
+    setHblFile(null);
+    setBilledAmountFile(null);
+    setCreditNoteFile(null);
+    setExistingMblDoc(undefined);
+    setExistingHblDoc(undefined);
+    setExistingBilledAmountDoc(undefined);
+    setExistingCreditNoteDoc(undefined);
+  };
+
+  const loadDocumentFiles = (item: FreightForward) => {
+    setMblFile(null);
+    setHblFile(null);
+    setBilledAmountFile(null);
+    setCreditNoteFile(null);
+    setExistingMblDoc(item.mblUrl);
+    setExistingHblDoc(item.hblUrl);
+    setExistingBilledAmountDoc(item.billedAmountUrl);
+    setExistingCreditNoteDoc(item.creditNoteUrl);
+  };
+
+  const openAdd = async () => {
     setSelected(null);
-    setForm(emptyForm());
     setErrors({});
     setSubmitError("");
     setDrawerMode("add");
+    try {
+      const jobNumber = await generateJobNumber();
+      setForm({ ...emptyForm(), jobNumber });
+    } catch {
+      setForm(emptyForm());
+    }
   };
 
   const openEdit = (item: FreightForward) => {
     setSelected(item);
     setForm(toFormData(item));
+    loadDocumentFiles(item);
     setErrors({});
     setSubmitError("");
     setDrawerMode("edit");
@@ -478,9 +565,32 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
     setSubmitError("");
     if (!validate()) return;
     const username = user?.username ?? "unknown";
-    const payload = buildPayload(form);
     setSaving(true);
     try {
+      const uploadIfNeeded = async (
+        file: File | null,
+        folder: string,
+        existing?: FreightForwardDocument
+      ) => {
+        if (!file) return existing;
+        return uploadDocument(file, folder);
+      };
+
+      const [mblUrl, hblUrl, billedAmountUrl, creditNoteUrl] = await Promise.all([
+        uploadIfNeeded(mblFile, "freight-forward/mbl", existingMblDoc),
+        uploadIfNeeded(hblFile, "freight-forward/hbl", existingHblDoc),
+        uploadIfNeeded(billedAmountFile, "freight-forward/billed-amount", existingBilledAmountDoc),
+        uploadIfNeeded(creditNoteFile, "freight-forward/credit-note", existingCreditNoteDoc),
+      ]);
+
+      const payload = removeUndefined({
+        ...buildPayload(form),
+        mblUrl,
+        hblUrl,
+        billedAmountUrl,
+        creditNoteUrl,
+      });
+
       if (selected?.id) {
         await updateFreightForward(selected.id, payload as Partial<FreightForwardFormData>, username);
       } else {
@@ -496,6 +606,18 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
     }
   };
 
+  const handleGenerateReport = async () => {
+    if (!dateFrom || !dateTo) return;
+    setExporting(true);
+    try {
+      const data = await getFreightForwardForExport(dateFrom, dateTo);
+      if (!data.length) return;
+      exportFreightForwardToExcel(data, dateFrom, dateTo);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleteId) return;
     await deleteFreightForward(deleteId);
@@ -507,7 +629,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
     setForm({ ...form, locationType: type, cfs: undefined, sez: undefined });
   };
 
-  const addExWorks = () => setForm({ ...form, exWorks: [...(form.exWorks ?? []), emptyExWorks()] });
+  const addExWorks = () => setForm({ ...form, exWorks: [...(form.exWorks ?? []), emptyExpenseItem()] });
 
   const updateExWorks = (index: number, field: keyof ExWorksItem, value: string | number) => {
     const items = [...(form.exWorks ?? [])];
@@ -520,6 +642,24 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
     items.splice(index, 1);
     setForm({ ...form, exWorks: items });
   };
+
+  const addOtherExpenses = () =>
+    setForm({ ...form, otherExpenses: [...(form.otherExpenses ?? []), emptyExpenseItem()] });
+
+  const updateOtherExpenses = (index: number, field: keyof ExpenseItem, value: string | number) => {
+    const items = [...(form.otherExpenses ?? [])];
+    items[index] = { ...items[index], [field]: value };
+    setForm({ ...form, otherExpenses: items });
+  };
+
+  const removeOtherExpenses = (index: number) => {
+    const items = [...(form.otherExpenses ?? [])];
+    items.splice(index, 1);
+    setForm({ ...form, otherExpenses: items });
+  };
+
+  const currencyInputClass = (key: string, extra = "") =>
+    `pl-7 ${extra} ${fieldClass(key)}`;
 
   const handleCardClick = (card: CardFilter) => {
     setActiveStatus(null);
@@ -564,7 +704,11 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-[11px] font-medium text-zinc-600">Job Number</label>
-            <input value={form.jobNumber ?? ""} onChange={(e) => { setForm({ ...form, jobNumber: e.target.value }); clearError("jobNumber"); }} className={fieldClass("jobNumber")} />
+            <input
+              value={form.jobNumber ?? ""}
+              readOnly
+              className={`${fieldClass("jobNumber")} bg-zinc-100 cursor-not-allowed`}
+            />
           </div>
           <div>
             <label className="mb-1 block text-[11px] font-medium text-zinc-600">EZ Ref Number</label>
@@ -579,16 +723,42 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-zinc-600">MBL <span className="text-red-500">*</span></label>
-            <input value={form.mbl} onChange={(e) => { setForm({ ...form, mbl: e.target.value }); clearError("mbl"); }} className={fieldClass("mbl")} />
-            {errors.mbl && <p className="mt-1 text-[11px] text-red-500">{errors.mbl}</p>}
-          </div>
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-zinc-600">HBL <span className="text-red-500">*</span></label>
-            <input value={form.hbl} onChange={(e) => { setForm({ ...form, hbl: e.target.value }); clearError("hbl"); }} className={fieldClass("hbl")} />
-            {errors.hbl && <p className="mt-1 text-[11px] text-red-500">{errors.hbl}</p>}
-          </div>
+          <FieldWithUpload
+            label="MBL"
+            required
+            value={form.mbl}
+            onChange={(v) => {
+              setForm({ ...form, mbl: v });
+              clearError("mbl");
+            }}
+            file={mblFile}
+            existingFile={existingMblDoc}
+            onFileChange={(f) => {
+              setMblFile(f);
+              if (f) setExistingMblDoc(undefined);
+            }}
+            onRemoveExisting={() => setExistingMblDoc(undefined)}
+            error={errors.mbl}
+            fieldClass={fieldClass("mbl")}
+          />
+          <FieldWithUpload
+            label="HBL"
+            required
+            value={form.hbl}
+            onChange={(v) => {
+              setForm({ ...form, hbl: v });
+              clearError("hbl");
+            }}
+            file={hblFile}
+            existingFile={existingHblDoc}
+            onFileChange={(f) => {
+              setHblFile(f);
+              if (f) setExistingHblDoc(undefined);
+            }}
+            onRemoveExisting={() => setExistingHblDoc(undefined)}
+            error={errors.hbl}
+            fieldClass={fieldClass("hbl")}
+          />
         </div>
 
         <div>
@@ -739,7 +909,20 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
 
         <div>
           <label className="mb-1 block text-[11px] font-medium text-zinc-600">Ocean Freight</label>
-          <input value={form.oceanFreight ?? ""} onChange={(e) => setForm({ ...form, oceanFreight: e.target.value })} className={fieldClass("oceanFreight")} />
+          <div className="relative">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
+            <input
+              type="number"
+              value={form.oceanFreight ?? ""}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  oceanFreight: e.target.value === "" ? undefined : Number(e.target.value),
+                })
+              }
+              className={currencyInputClass("oceanFreight")}
+            />
+          </div>
         </div>
 
         <div>
@@ -764,19 +947,22 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
                     className={`w-64 ${fieldClass(`exWorks-name-${index}`)}`}
                   />
 
-                  <input
-                    type="number"
-                    placeholder="Amount"
-                    value={item.amount || ""}
-                    onChange={(e) =>
-                      updateExWorks(
-                        index,
-                        "amount",
-                        e.target.value === "" ? 0 : Number(e.target.value)
-                      )
-                    }
-                    className={`w-28 ${fieldClass(`exWorks-amount-${index}`)}`}
-                  />
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
+                    <input
+                      type="number"
+                      placeholder="Amount"
+                      value={item.amount || ""}
+                      onChange={(e) =>
+                        updateExWorks(
+                          index,
+                          "amount",
+                          e.target.value === "" ? 0 : Number(e.target.value)
+                        )
+                      }
+                      className={currencyInputClass(`exWorks-amount-${index}`, "w-28")}
+                    />
+                  </div>
 
                   <button
                     type="button"
@@ -795,20 +981,161 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
           <label className="mb-1 block text-[11px] font-medium text-zinc-600">
             Total Ex-Works Amount
           </label>
+          <div className="relative">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
+            <input
+              type="number"
+              value={totalExWorksAmount}
+              readOnly
+              className={`${currencyInputClass("totalExWorks")} bg-zinc-100 cursor-not-allowed`}
+            />
+          </div>
+        </div>
 
-          <input
-            type="number"
-            value={totalExWorksAmount}
-            readOnly
-            className={`${fieldClass("totalExWorks")} bg-zinc-100 cursor-not-allowed`}
-          />
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <label className="text-[11px] font-medium text-zinc-600">Other Expenses</label>
+            <button type="button" onClick={addOtherExpenses} className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-[11px] text-zinc-600 hover:bg-zinc-50">
+              <Plus size={12} /> Add row
+            </button>
+          </div>
+          {(form.otherExpenses ?? []).length === 0 ? (
+            <p className="rounded-xl border border-dashed border-zinc-200 px-3 py-4 text-center text-[11px] text-zinc-400">
+              No Other Expenses entries. Click &quot;Add row&quot; to add one.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {(form.otherExpenses ?? []).map((item, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <input
+                    placeholder="Name"
+                    value={item.name}
+                    onChange={(e) => updateOtherExpenses(index, "name", e.target.value)}
+                    className={`w-64 ${fieldClass(`otherExpenses-name-${index}`)}`}
+                  />
+
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
+                    <input
+                      type="number"
+                      placeholder="Amount"
+                      value={item.amount || ""}
+                      onChange={(e) =>
+                        updateOtherExpenses(
+                          index,
+                          "amount",
+                          e.target.value === "" ? 0 : Number(e.target.value)
+                        )
+                      }
+                      className={currencyInputClass(`otherExpenses-amount-${index}`, "w-28")}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => removeOtherExpenses(index)}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-zinc-200"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4">
+          <label className="mb-1 block text-[11px] font-medium text-zinc-600">
+            Total Other Expenses Amount
+          </label>
+          <div className="relative">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
+            <input
+              type="number"
+              value={totalOtherExpensesAmount}
+              readOnly
+              className={`${currencyInputClass("totalOtherExpenses")} bg-zinc-100 cursor-not-allowed`}
+            />
+          </div>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-[11px] font-medium text-zinc-600">billed amount</label>
-            <input type="number" value={form.buildAmount ?? ""} onChange={(e) => setForm({ ...form, buildAmount: e.target.value === "" ? undefined : Number(e.target.value) })} className={fieldClass("buildAmount")} />
+            <label className="mb-1 block text-[11px] font-medium text-zinc-600">Total Expenses</label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
+              <input
+                type="number"
+                value={totalExpensesAmount}
+                readOnly
+                className={`${currencyInputClass("totalExpenses")} bg-zinc-100 cursor-not-allowed`}
+              />
+            </div>
           </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-zinc-600">Billed Amount</label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
+              <input
+                type="number"
+                value={form.billedAmount ?? ""}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    billedAmount: e.target.value === "" ? undefined : Number(e.target.value),
+                  })
+                }
+                className={currencyInputClass("billedAmount")}
+              />
+            </div>
+            <DocumentFileUpload
+              file={billedAmountFile}
+              existingFile={existingBilledAmountDoc}
+              onFileChange={(f) => {
+                setBilledAmountFile(f);
+                if (f) setExistingBilledAmountDoc(undefined);
+              }}
+              onRemoveExisting={() => setExistingBilledAmountDoc(undefined)}
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-zinc-600">Credit Note</label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
+              <input
+                type="number"
+                value={form.creditNote ?? ""}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    creditNote: e.target.value === "" ? undefined : Number(e.target.value),
+                  })
+                }
+                className={currencyInputClass("creditNote")}
+              />
+            </div>
+            <DocumentFileUpload
+              file={creditNoteFile}
+              existingFile={existingCreditNoteDoc}
+              onFileChange={(f) => {
+                setCreditNoteFile(f);
+                if (f) setExistingCreditNoteDoc(undefined);
+              }}
+              onRemoveExisting={() => setExistingCreditNoteDoc(undefined)}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-zinc-600">Profit / Loss</label>
+            <div className="mt-1">
+              <ProfitLossChip amount={profitLossAmount} />
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-[11px] font-medium text-zinc-600">Payment Type</label>
             <select value={form.paymentType ?? ""} onChange={(e) => setForm({ ...form, paymentType: e.target.value })} className={fieldClass("paymentType")}>
@@ -930,6 +1257,8 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
               />
               <Info label="MBL" value={selected.mbl} />
               <Info label="HBL" value={selected.hbl} />
+              <DocInfo label="MBL Document" doc={selected.mblUrl} />
+              <DocInfo label="HBL Document" doc={selected.hblUrl} />
             </div>
           </section>
 
@@ -999,12 +1328,30 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
             <div className="grid grid-cols-2 gap-4">
               <Info
                 label="Ocean Freight"
-                value={selected.oceanFreight}
+                value={displayDollar(selected.oceanFreight)}
+              />
+              <Info
+                label="Total Expenses"
+                value={displayDollar(getRecordTotalExpenses(selected))}
               />
               <Info
                 label="Billed Amount"
-                value={selected.buildAmount}
+                value={displayDollar(selected.billedAmount ?? selected.buildAmount)}
               />
+              <DocInfo label="Billed Amount Document" doc={selected.billedAmountUrl} />
+              <Info
+                label="Credit Note"
+                value={displayDollar(selected.creditNote)}
+              />
+              <DocInfo label="Credit Note Document" doc={selected.creditNoteUrl} />
+              <div>
+                <div className="text-[11px] uppercase tracking-wider text-zinc-500">
+                  Profit / Loss
+                </div>
+                <div className="mt-2">
+                  <ProfitLossChip amount={getRecordProfitLoss(selected)} />
+                </div>
+              </div>
               <Info
                 label="Payment Type"
                 value={selected.paymentType}
@@ -1028,7 +1375,28 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
                         key={`${item.name}-${index}`}
                         className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-700 ring-1 ring-zinc-200"
                       >
-                        {item.name} • {item.amount}
+                        {item.name} • {displayDollar(item.amount)}
+                      </span>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="col-span-2">
+                <div className="text-[11px] uppercase tracking-wider text-zinc-500">
+                  Other Expenses
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(selected.otherExpenses ?? []).length === 0 ? (
+                    <span className="text-sm text-zinc-500">—</span>
+                  ) : (
+                    selected?.otherExpenses?.map((item, index) => (
+                      <span
+                        key={`${item.name}-${index}`}
+                        className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-700 ring-1 ring-zinc-200"
+                      >
+                        {item.name} • {displayDollar(item.amount)}
                       </span>
                     ))
                   )}
@@ -1068,11 +1436,13 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
           </section>
         </div>
       )}
-       <WorkflowTimeline
-            selected={selected}
-            currentUserRole={userRole}
-            onComplete={handleStatusUpdate}
+      {selected && (
+        <WorkflowTimeline
+          selected={selected}
+          currentUserRole={userRole}
+          onComplete={handleStatusUpdate}
         />
+      )}
 
       {/* Footer */}
       <div className="mt-8 flex gap-3 border-t border-zinc-200 pt-5">
@@ -1234,9 +1604,19 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
               className="rounded-xl border border-zinc-200 px-3 py-2 text-xs outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
             />
           </div>
-          <button onClick={openAdd} className="inline-flex items-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-xs font-medium text-white hover:bg-zinc-800">
-            <Plus size={14} /> Add
-          </button>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <button
+              onClick={handleGenerateReport}
+              disabled={!dateFrom || !dateTo || exporting}
+              className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 px-4 py-2 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-40"
+            >
+              <FileSpreadsheet size={16} />
+              {exporting ? "Generating..." : "Generate Report"}
+            </button>
+            <button onClick={openAdd} className="inline-flex items-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-xs font-medium text-white hover:bg-zinc-800">
+              <Plus size={14} /> Add
+            </button>
+          </div>
         </div>
 
         <div className="mt-3 flex items-center justify-between">
@@ -1362,5 +1742,174 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
         onConfirm={handleDelete}
       />
     </>
+  );
+}
+
+function ProfitLossChip({ amount }: { amount: number }) {
+  const chip = formatProfitLossChip(amount);
+  return (
+    <span
+      className={`inline-flex rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ${chip.className}`}
+    >
+      {chip.label} • {chip.value}
+    </span>
+  );
+}
+
+function DocumentFileChip({
+  name,
+  onRemove,
+  onDownload,
+}: {
+  name: string;
+  onRemove?: () => void;
+  onDownload?: () => void;
+}) {
+  return (
+    <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[11px] text-zinc-700">
+      <span className="truncate">{name}</span>
+      {onDownload && (
+        <button type="button" onClick={onDownload} className="shrink-0 text-zinc-500 hover:text-zinc-900">
+          <Download size={12} />
+        </button>
+      )}
+      {onRemove && (
+        <button type="button" onClick={onRemove} className="shrink-0 text-zinc-400 hover:text-red-500">
+          <X size={12} />
+        </button>
+      )}
+    </span>
+  );
+}
+
+function FieldWithUpload({
+  label,
+  required,
+  value,
+  onChange,
+  file,
+  existingFile,
+  onFileChange,
+  onRemoveExisting,
+  error,
+  fieldClass,
+}: {
+  label: string;
+  required?: boolean;
+  value: string;
+  onChange: (value: string) => void;
+  file: File | null;
+  existingFile?: FreightForwardDocument;
+  onFileChange: (file: File | null) => void;
+  onRemoveExisting?: () => void;
+  error?: string;
+  fieldClass: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div>
+      <label className="mb-1 block text-[11px] font-medium text-zinc-600">
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
+      <div className="flex gap-2">
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={fieldClass}
+        />
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className="shrink-0 rounded-xl border border-zinc-200 px-2.5 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"
+        >
+          <Paperclip size={16} />
+        </button>
+        <input
+          ref={inputRef}
+          hidden
+          type="file"
+          onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
+        />
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {file && <DocumentFileChip name={file.name} onRemove={() => onFileChange(null)} />}
+        {existingFile && !file && (
+          <DocumentFileChip
+            name={existingFile.name}
+            onDownload={() => window.open(existingFile.url, "_blank")}
+            onRemove={onRemoveExisting}
+          />
+        )}
+      </div>
+      {error && <p className="mt-1 text-[11px] text-red-500">{error}</p>}
+    </div>
+  );
+}
+
+function DocumentFileUpload({
+  file,
+  existingFile,
+  onFileChange,
+  onRemoveExisting,
+}: {
+  file: File | null;
+  existingFile?: FreightForwardDocument;
+  onFileChange: (file: File | null) => void;
+  onRemoveExisting?: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] text-zinc-600 hover:bg-zinc-50"
+      >
+        <Paperclip size={14} />
+        Upload document
+      </button>
+      <input
+        ref={inputRef}
+        hidden
+        type="file"
+        onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
+      />
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {file && <DocumentFileChip name={file.name} onRemove={() => onFileChange(null)} />}
+        {existingFile && !file && (
+          <DocumentFileChip
+            name={existingFile.name}
+            onDownload={() => window.open(existingFile.url, "_blank")}
+            onRemove={onRemoveExisting}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DocInfo({
+  label,
+  doc,
+}: {
+  label: string;
+  doc?: FreightForwardDocument;
+}) {
+  return (
+    <div>
+      <div className="text-[11px] uppercase tracking-wider text-zinc-500">{label}</div>
+      <div className="mt-2">
+        {doc ? (
+          <DocumentFileChip
+            name={doc.name}
+            onDownload={() => window.open(doc.url, "_blank")}
+          />
+        ) : (
+          <span className="text-sm text-zinc-500">—</span>
+        )}
+      </div>
+    </div>
   );
 }

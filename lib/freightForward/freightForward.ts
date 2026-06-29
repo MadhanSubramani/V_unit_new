@@ -20,8 +20,15 @@ import {
   getDoc
 } from "firebase/firestore";
 import { FreightForward, FreightForwardFormData, FreightForwardStatus } from "@/types/freightForward";
+import { generateJobNumber } from "./generateJobNumber";
 
 const REF = () => collection(db, "freightForward");
+
+function stripUndefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, value]) => value !== undefined)
+  ) as Partial<T>;
+}
 
 // ── Card counts ────────────────────────────────────────────────────────────
 // Uses getCountFromServer so no documents are transferred — just integer counts.
@@ -216,18 +223,22 @@ export async function createFreightForward(
   data: FreightForwardFormData,
   createdBy: string
 ) {
+  const jobNumber = data.jobNumber?.trim() || (await generateJobNumber());
   return addDoc(REF(), {
-    ...data,
-    status: data.status ?? "in_process",
-    statusTimeline: [
-      {
-        status: "in_process",
-        updatedBy: createdBy,
-        updatedAt: Timestamp.now(),
-      },
-    ],
-    createdBy,
-    updatedBy: createdBy,
+    ...stripUndefined({
+      ...data,
+      jobNumber,
+      status: data.status ?? "in_process",
+      statusTimeline: [
+        {
+          status: "in_process",
+          updatedBy: createdBy,
+          updatedAt: Timestamp.now(),
+        },
+      ],
+      createdBy,
+      updatedBy: createdBy,
+    } as Record<string, unknown>),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -239,7 +250,7 @@ export async function updateFreightForward(
   updatedBy: string
 ) {
   await updateDoc(doc(db, "freightForward", id), {
-    ...data,
+    ...stripUndefined(data as Record<string, unknown>),
     updatedBy,
     updatedAt: serverTimestamp(),
   });
@@ -269,6 +280,18 @@ export async function getFreightForwardById(id: string) {
     id: snap.id,
     ...(snap.data() as FreightForward),
   };
+}
+
+export async function getFreightForwardForExport(etaFrom: string, etaTo: string) {
+  const ref = REF();
+  const constraints: QueryConstraint[] = [];
+  if (etaFrom) constraints.push(where("eta", ">=", etaFrom));
+  if (etaTo) constraints.push(where("eta", "<=", etaTo));
+  const snap = await getDocs(query(ref, ...constraints));
+  return snap.docs.map((d) => ({
+    id: d.id,
+    ...(d.data() as Omit<FreightForward, "id">),
+  }));
 }
 
 export async function deleteFreightForward(id: string) {
