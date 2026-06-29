@@ -4,6 +4,7 @@ import {
   FreightForwardStatus,
   StatusTimeline,
 } from "@/types/freightForward";
+import { Check,Clock3 } from "lucide-react";
 
 const WORKFLOW: {
   key: FreightForwardStatus;
@@ -11,7 +12,7 @@ const WORKFLOW: {
   role: "operations" | "accountant";
 }[] = [
     { key: "in_process", label: "In Process", role: "operations" },
-    { key: "momentum", label: "Momentum", role: "operations" },
+    { key: "momentum", label: "Movement", role: "operations" },
     { key: "split_manifest", label: "Split Manifest", role: "operations" },
     { key: "billing", label: "Billing", role: "accountant" },
     { key: "receivable", label: "Receivable", role: "accountant" },
@@ -43,7 +44,7 @@ export default function WorkflowTimeline({
         Workflow Timeline
       </h3>
 
-      {WORKFLOW.map((step, index) => {
+      {/* {WORKFLOW.map((step, index) => {
 
         const history =
           selected.statusTimeline?.find(
@@ -143,7 +144,133 @@ export default function WorkflowTimeline({
           </div>
 
         );
-      })}
+      })} */}
+      {WORKFLOW.map((step, index) => {
+  const history = selected.statusTimeline?.find(
+    (x: TimelineItem) => x.status === step.key
+  );
+
+  const completed = index < currentIndex;
+  const current = index === currentIndex;
+  const next = index === currentIndex + 1;
+
+  const canUpdate =
+    next &&
+    (
+      (step.role === "operations" &&
+        (
+          currentUserRole === "operations" ||
+          currentUserRole === "admin" ||
+          currentUserRole === "user"
+        )) ||
+      (step.role === "accountant" &&
+        currentUserRole === "accountant")
+    );
+
+  return (
+    <div key={step.key} className="flex gap-4">
+      {/* Timeline */}
+      <div className="flex flex-col items-center">
+
+        {/* Circle */}
+        {/* <div
+          className={`relative flex h-7 w-7 items-center justify-center rounded-full transition-all
+            ${
+              completed
+                ? "bg-black text-white"
+                : current
+                ? "bg-black text-white ring-4 ring-zinc-200"
+                : "border-2 border-zinc-300 bg-white"
+            }`}
+        >
+          {completed && <Check size={15} strokeWidth={3} />}
+        </div> */}
+        <div
+  className={`relative flex h-7 w-7 items-center justify-center rounded-full transition-all
+    ${
+      completed
+        ? "bg-black text-white"
+        : current
+        ? "bg-black text-white ring-4 ring-zinc-200"
+        : "border-2 border-zinc-300 bg-white"
+    }`}
+>
+  {completed && <Check size={15} strokeWidth={3} />}
+
+  {current && <Clock3 size={14} strokeWidth={2.5} />}
+
+  {!completed && !current && (
+    <div className="h-2.5 w-2.5 rounded-full bg-zinc-300" />
+  )}
+</div>
+
+        {/* Line */}
+        {index !== WORKFLOW.length - 1 && (
+          <div
+            className={`mt-1 w-0.5 flex-1 ${
+              completed ? "bg-black" : "bg-zinc-300"
+            }`}
+            style={{ minHeight: 52 }}
+          />
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 pb-8">
+        <div className="flex items-center justify-between">
+          <h4 className="font-semibold text-zinc-900">
+            {step.label}
+          </h4>
+
+          {completed && (
+            <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-700">
+              Completed
+            </span>
+          )}
+
+          {current && (
+            <span className="rounded-full bg-black px-2 py-0.5 text-[10px] font-medium text-white">
+              Current
+            </span>
+          )}
+        </div>
+
+        {history && (
+          <>
+            <p className="mt-2 text-xs text-zinc-500">
+              Updated by <span className="font-medium">{history.updatedBy}</span>
+            </p>
+
+            <p className="text-xs text-zinc-400">
+              {history.updatedAt?.toDate().toLocaleString()}
+            </p>
+          </>
+        )}
+
+        {next && canUpdate && (
+          <button
+            onClick={() => onComplete(step.key)}
+            className="mt-3 rounded-lg bg-black px-4 py-2 text-xs font-medium text-white transition hover:bg-zinc-800"
+          >
+            Complete Stage
+          </button>
+        )}
+
+        {next && !canUpdate && (
+          <p className="mt-3 text-xs text-red-500">
+            Only <span className="font-medium">{step.role}</span> can complete this stage.
+          </p>
+        )}
+
+        {!completed && !current && !next && (
+          <p className="mt-2 text-xs text-zinc-400">
+            Waiting for previous stage...
+          </p>
+        )}
+      </div>
+    </div>
+  );
+})}
 
     </div>
   );

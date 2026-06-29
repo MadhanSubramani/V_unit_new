@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { X, UploadCloud } from "lucide-react";
-import { Kyc } from "@/types/kyc";
+import { useEffect, useRef, useState } from "react";
+import { X, UploadCloud, Paperclip, Plus, Download } from "lucide-react";
+import { Kyc, KycDocument } from "@/types/kyc";
 import { addKyc } from "@/lib/kyc/createKyc";
 import { updateKyc } from "@/lib/kyc/updateKyc";
 import { uploadDocument } from "@/lib/kyc/uploadDocument";
 import { checkDuplicateGstin } from "@/lib/gst/checkDuplicateGstin";
 import { getGstinDetails } from "@/lib/gst/getGstinDetails";
+import { generateFileNo } from "@/lib/kyc/generateFileNo";
+import { normalizeDocArray } from "@/lib/kyc/normalizeKyc";
 
 interface Props {
   open: boolean;
@@ -16,54 +18,81 @@ interface Props {
   onSaved: () => void;
 }
 
-type FormErrors = {
-  gstin?: string;
-  companyName?: string;
-  billingAddress?: string;
-  deliveryAddress?: string;
-  pan?: string;
-  iec?: string;
-  adCode?: string;
-  email?: string;
-  phone?: string;
-  directorAadhar?: string;
-  directorPan?: string;
-  loi?: string;
-  form?: string;
-};
+type FormErrors = Partial<Record<string, string>> & { form?: string };
 
 export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
   const [loading, setLoading] = useState(false);
   const [loadingGST, setLoadingGST] = useState(false);
+  const [errors, setErrors] = useState<FormErrors>({});
+
   const [gstin, setGstin] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [billingAddress, setBillingAddress] = useState("");
-  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [branchAddresses, setBranchAddresses] = useState<string[]>([""]);
   const [pan, setPan] = useState("");
   const [iec, setIec] = useState("");
   const [adCode, setAdCode] = useState("");
+  const [loiNo, setLoiNo] = useState("");
+  const [loiDate, setLoiDate] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [directorAadhar, setDirectorAadhar] = useState<File | null>(null);
-  const [directorPan, setDirectorPan] = useState<File | null>(null);
-  const [loi, setLoi] = useState<File | null>(null);
+
+  const [gstinFile, setGstinFile] = useState<File | null>(null);
+  const [panFile, setPanFile] = useState<File | null>(null);
+  const [iecFile, setIecFile] = useState<File | null>(null);
+  const [adCodeFile, setAdCodeFile] = useState<File | null>(null);
+  const [loiFile, setLoiFile] = useState<File | null>(null);
+  const [directorAadharFiles, setDirectorAadharFiles] = useState<File[]>([]);
+  const [directorPanFiles, setDirectorPanFiles] = useState<File[]>([]);
   const [supportingDocs, setSupportingDocs] = useState<File[]>([]);
-  const [errors, setErrors] = useState<FormErrors>({});
+
+  const [existingGstinDoc, setExistingGstinDoc] = useState<KycDocument | undefined>();
+  const [existingPanDoc, setExistingPanDoc] = useState<KycDocument | undefined>();
+  const [existingIecDoc, setExistingIecDoc] = useState<KycDocument | undefined>();
+  const [existingAdCodeDoc, setExistingAdCodeDoc] = useState<KycDocument | undefined>();
+  const [existingLoiDoc, setExistingLoiDoc] = useState<KycDocument | undefined>();
+  const [existingAadharDocs, setExistingAadharDocs] = useState<KycDocument[]>([]);
+  const [existingPanDocs, setExistingPanDocs] = useState<KycDocument[]>([]);
+  const [existingSupportingDocs, setExistingSupportingDocs] = useState<KycDocument[]>([]);
 
   useEffect(() => {
+    if (!open) return;
     if (!selected) {
       resetForm();
       return;
     }
+
     setGstin(selected.gstin);
     setCompanyName(selected.companyName);
     setBillingAddress(selected.billingAddress);
-    setDeliveryAddress(selected.deliveryAddress);
+    setBranchAddresses(
+      selected.branchAddresses?.length ? selected.branchAddresses : [""]
+    );
     setPan(selected.pan);
     setIec(selected.iec);
     setAdCode(selected.adCode);
+    setLoiNo(selected.loiNo);
+    setLoiDate(selected.loiDate);
     setEmail(selected.email);
     setPhone(selected.phone);
+
+    setExistingGstinDoc(selected.gstinDocument);
+    setExistingPanDoc(selected.panDocument);
+    setExistingIecDoc(selected.iecDocument);
+    setExistingAdCodeDoc(selected.adCodeDocument);
+    setExistingLoiDoc(selected.loiDocument);
+    setExistingAadharDocs(normalizeDocArray(selected.directorAadhar));
+    setExistingPanDocs(normalizeDocArray(selected.directorPan));
+    setExistingSupportingDocs(normalizeDocArray(selected.supportingDocuments));
+
+    setGstinFile(null);
+    setPanFile(null);
+    setIecFile(null);
+    setAdCodeFile(null);
+    setLoiFile(null);
+    setDirectorAadharFiles([]);
+    setDirectorPanFiles([]);
+    setSupportingDocs([]);
     setErrors({});
   }, [selected, open]);
 
@@ -74,6 +103,16 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
         : "border-zinc-200 focus:border-zinc-500 focus:ring-zinc-200"
     }`;
 
+  const clearError = (key: string) => {
+    if (errors[key]) {
+      setErrors((e) => {
+        const next = { ...e };
+        delete next[key];
+        return next;
+      });
+    }
+  };
+
   const fetchGSTDetails = async (gst: string) => {
     if (gst.length !== 15) return;
     setLoadingGST(true);
@@ -82,10 +121,7 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
     try {
       const exists = await checkDuplicateGstin(gst);
       if (exists && selected?.gstin !== gst) {
-        setErrors((e) => ({
-          ...e,
-          gstin: "KYC already completed for this GSTIN.",
-        }));
+        setErrors((e) => ({ ...e, gstin: "KYC already completed for this GSTIN." }));
         setGstin("");
         return;
       }
@@ -98,8 +134,13 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
 
       const data = response.data;
       setCompanyName(data.tradeNam || data.lgnm);
-      setBillingAddress(data.pradr.adr);
-      setDeliveryAddress(data.pradr.adr);
+      setBillingAddress(data.pradr?.adr ?? "");
+
+      const branches = Array.isArray(data.adadr)
+        ? data.adadr.map((item: { adr?: string }) => item.adr ?? "").filter(Boolean)
+        : [];
+      setBranchAddresses(branches.length ? branches : [""]);
+
       setPan(gst.substring(2, 12));
     } catch {
       setErrors((e) => ({
@@ -117,12 +158,20 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
     if (!gstin.trim()) next.gstin = "GSTIN is required.";
     else if (gstin.length !== 15) next.gstin = "GSTIN must be 15 characters.";
 
+    if (!existingGstinDoc && !gstinFile) next.gstinDocument = "GSTIN document is required.";
     if (!companyName.trim()) next.companyName = "Company name is required.";
     if (!billingAddress.trim()) next.billingAddress = "Billing address is required.";
-    if (!deliveryAddress.trim()) next.deliveryAddress = "Delivery address is required.";
+
+    const validBranches = branchAddresses.map((b) => b.trim()).filter(Boolean);
+    if (!validBranches.length) next.branchAddresses = "At least one branch address is required.";
+
     if (!pan.trim()) next.pan = "PAN is required.";
+    if (!existingPanDoc && !panFile) next.panDocument = "PAN document is required.";
     if (!iec.trim()) next.iec = "IEC is required.";
+    if (!existingIecDoc && !iecFile) next.iecDocument = "IEC document is required.";
     if (!adCode.trim()) next.adCode = "AD Code is required.";
+    if (!existingAdCodeDoc && !adCodeFile) next.adCodeDocument = "AD Code document is required.";
+    if (!existingLoiDoc && !loiFile) next.loiDocument = "LOI document is required.";
 
     if (!email.trim()) next.email = "Email is required.";
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
@@ -130,14 +179,18 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
 
     if (!phone.trim()) next.phone = "Phone is required.";
 
-    if (!selected?.directorAadhar && !directorAadhar)
-      next.directorAadhar = "Director Aadhaar is required.";
-    if (!selected?.directorPan && !directorPan)
-      next.directorPan = "Director PAN is required.";
-    if (!selected?.loi && !loi) next.loi = "LOI is required.";
+    if (!existingAadharDocs.length && !directorAadharFiles.length)
+      next.directorAadhar = "At least one Director Aadhaar document is required.";
+    if (!existingPanDocs.length && !directorPanFiles.length)
+      next.directorPan = "At least one Director PAN document is required.";
 
     setErrors(next);
     return Object.keys(next).length === 0;
+  };
+
+  const uploadIfNeeded = async (file: File | null, folder: string) => {
+    if (!file) return undefined;
+    return uploadDocument(file, folder);
   };
 
   const handleSave = async () => {
@@ -147,42 +200,50 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
     try {
       setLoading(true);
 
-      let directorAadharData = selected?.directorAadhar;
-      let directorPanData = selected?.directorPan;
-      let loiData = selected?.loi;
-      let supportingDocsData = selected?.supportingDocuments ?? [];
+      const gstinDocument =
+        (await uploadIfNeeded(gstinFile, "kyc/gstin")) ?? existingGstinDoc;
+      const panDocument =
+        (await uploadIfNeeded(panFile, "kyc/pan")) ?? existingPanDoc;
+      const iecDocument =
+        (await uploadIfNeeded(iecFile, "kyc/iec")) ?? existingIecDoc;
+      const adCodeDocument =
+        (await uploadIfNeeded(adCodeFile, "kyc/ad-code")) ?? existingAdCodeDoc;
+      const loiDocument =
+        (await uploadIfNeeded(loiFile, "kyc/loi")) ?? existingLoiDoc;
 
-      if (directorAadhar) {
-        directorAadharData = await uploadDocument(directorAadhar, "kyc/director-aadhar");
-      }
-      if (directorPan) {
-        directorPanData = await uploadDocument(directorPan, "kyc/director-pan");
-      }
-      if (loi) {
-        loiData = await uploadDocument(loi, "kyc/loi");
-      }
-      if (supportingDocs.length > 0) {
-        supportingDocsData = [];
-        for (const file of supportingDocs) {
-          const uploaded = await uploadDocument(file, "kyc/supporting-documents");
-          supportingDocsData.push(uploaded);
-        }
-      }
+      const newAadhar = await Promise.all(
+        directorAadharFiles.map((f) => uploadDocument(f, "kyc/director-aadhar"))
+      );
+      const newPan = await Promise.all(
+        directorPanFiles.map((f) => uploadDocument(f, "kyc/director-pan"))
+      );
+      const newSupporting = await Promise.all(
+        supportingDocs.map((f) => uploadDocument(f, "kyc/supporting-documents"))
+      );
+
+      const fileNo = selected?.fileNo ?? (await generateFileNo());
 
       const payload = {
+        fileNo,
         gstin,
+        gstinDocument,
         companyName,
         billingAddress,
-        deliveryAddress,
+        branchAddresses: branchAddresses.map((b) => b.trim()).filter(Boolean),
         pan,
+        panDocument,
         iec,
+        iecDocument,
         adCode,
+        adCodeDocument,
+        loiNo,
+        loiDate,
+        loiDocument,
         email,
         phone,
-        directorAadhar: directorAadharData,
-        directorPan: directorPanData,
-        loi: loiData,
-        supportingDocuments: supportingDocsData,
+        directorAadhar: [...existingAadharDocs, ...newAadhar],
+        directorPan: [...existingPanDocs, ...newPan],
+        supportingDocuments: [...existingSupportingDocs, ...newSupporting],
       };
 
       if (selected?.id) {
@@ -195,10 +256,7 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
       onSaved();
       onClose();
     } catch {
-      setErrors((e) => ({
-        ...e,
-        form: "Unable to save KYC. Please try again.",
-      }));
+      setErrors((e) => ({ ...e, form: "Unable to save KYC. Please try again." }));
     } finally {
       setLoading(false);
     }
@@ -208,16 +266,30 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
     setGstin("");
     setCompanyName("");
     setBillingAddress("");
-    setDeliveryAddress("");
+    setBranchAddresses([""]);
     setPan("");
     setIec("");
     setAdCode("");
+    setLoiNo("");
+    setLoiDate("");
     setEmail("");
     setPhone("");
-    setDirectorAadhar(null);
-    setDirectorPan(null);
-    setLoi(null);
+    setGstinFile(null);
+    setPanFile(null);
+    setIecFile(null);
+    setAdCodeFile(null);
+    setLoiFile(null);
+    setDirectorAadharFiles([]);
+    setDirectorPanFiles([]);
     setSupportingDocs([]);
+    setExistingGstinDoc(undefined);
+    setExistingPanDoc(undefined);
+    setExistingIecDoc(undefined);
+    setExistingAdCodeDoc(undefined);
+    setExistingLoiDoc(undefined);
+    setExistingAadharDocs([]);
+    setExistingPanDocs([]);
+    setExistingSupportingDocs([]);
     setErrors({});
   };
 
@@ -247,33 +319,34 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
             </div>
           )}
 
-          <Field label="GSTIN" required error={errors.gstin}>
-            <div className="relative">
-              <input
-                value={gstin}
-                maxLength={15}
-                onChange={(e) => {
-                  const value = e.target.value.toUpperCase();
-                  setGstin(value);
-                  if (errors.gstin) setErrors({ ...errors, gstin: undefined });
-                  if (value.length === 15) fetchGSTDetails(value);
-                }}
-                className={fieldClass(!!errors.gstin)}
-              />
-              {loadingGST && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900" />
-                </div>
-              )}
-            </div>
-          </Field>
+          <FieldWithFile
+            label="GSTIN"
+            required
+            value={gstin}
+            onChange={(v) => {
+              setGstin(v.toUpperCase());
+              clearError("gstin");
+              if (v.length === 15) fetchGSTDetails(v.toUpperCase());
+            }}
+            maxLength={15}
+            loading={loadingGST}
+            file={gstinFile}
+            existingFile={existingGstinDoc}
+            onFileChange={(f) => {
+              setGstinFile(f);
+              if (f) setExistingGstinDoc(undefined);
+              clearError("gstinDocument");
+            }}
+            onRemoveExisting={() => setExistingGstinDoc(undefined)}
+            error={errors.gstin || errors.gstinDocument}
+          />
 
           <Field label="Company Name" required error={errors.companyName}>
             <input
               value={companyName}
               onChange={(e) => {
                 setCompanyName(e.target.value);
-                if (errors.companyName) setErrors({ ...errors, companyName: undefined });
+                clearError("companyName");
               }}
               className={fieldClass(!!errors.companyName)}
             />
@@ -285,57 +358,148 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
               value={billingAddress}
               onChange={(e) => {
                 setBillingAddress(e.target.value);
-                if (errors.billingAddress) setErrors({ ...errors, billingAddress: undefined });
+                clearError("billingAddress");
               }}
               className={fieldClass(!!errors.billingAddress)}
             />
           </Field>
 
-          <Field label="Delivery Address" required error={errors.deliveryAddress}>
-            <textarea
-              rows={3}
-              value={deliveryAddress}
-              onChange={(e) => {
-                setDeliveryAddress(e.target.value);
-                if (errors.deliveryAddress) setErrors({ ...errors, deliveryAddress: undefined });
-              }}
-              className={fieldClass(!!errors.deliveryAddress)}
-            />
+          <Field label="Branch Address" required error={errors.branchAddresses}>
+            <div className="space-y-2">
+              {branchAddresses.map((addr, index) => (
+                <div key={index} className="flex gap-2">
+                  <textarea
+                    rows={2}
+                    value={addr}
+                    onChange={(e) => {
+                      const next = [...branchAddresses];
+                      next[index] = e.target.value;
+                      setBranchAddresses(next);
+                      clearError("branchAddresses");
+                    }}
+                    placeholder={`Branch address ${index + 1}`}
+                    className={fieldClass(!!errors.branchAddresses)}
+                  />
+                  {branchAddresses.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setBranchAddresses(branchAddresses.filter((_, i) => i !== index))
+                      }
+                      className="shrink-0 rounded-lg border border-zinc-200 px-2 text-zinc-500 hover:bg-zinc-100"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => setBranchAddresses([...branchAddresses, ""])}
+                className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-50"
+              >
+                <Plus size={14} />
+                Add Branch
+              </button>
+            </div>
           </Field>
 
           <div className="grid grid-cols-2 gap-4">
-            <Field label="PAN" required error={errors.pan}>
+            <FieldWithFile
+              label="PAN"
+              required
+              value={pan}
+              onChange={(v) => {
+                setPan(v.toUpperCase());
+                clearError("pan");
+              }}
+              file={panFile}
+              existingFile={existingPanDoc}
+              onFileChange={(f) => {
+                setPanFile(f);
+                if (f) setExistingPanDoc(undefined);
+                clearError("panDocument");
+              }}
+              onRemoveExisting={() => setExistingPanDoc(undefined)}
+              error={errors.pan || errors.panDocument}
+            />
+
+            <FieldWithFile
+              label="IEC"
+              required
+              value={iec}
+              onChange={(v) => {
+                setIec(v);
+                clearError("iec");
+              }}
+              file={iecFile}
+              existingFile={existingIecDoc}
+              onFileChange={(f) => {
+                setIecFile(f);
+                if (f) setExistingIecDoc(undefined);
+                clearError("iecDocument");
+              }}
+              onRemoveExisting={() => setExistingIecDoc(undefined)}
+              error={errors.iec || errors.iecDocument}
+            />
+          </div>
+
+          <FieldWithFile
+            label="AD Code"
+            required
+            value={adCode}
+            onChange={(v) => {
+              setAdCode(v);
+              clearError("adCode");
+            }}
+            file={adCodeFile}
+            existingFile={existingAdCodeDoc}
+            onFileChange={(f) => {
+              setAdCodeFile(f);
+              if (f) setExistingAdCodeDoc(undefined);
+              clearError("adCodeDocument");
+            }}
+            onRemoveExisting={() => setExistingAdCodeDoc(undefined)}
+            error={errors.adCode || errors.adCodeDocument}
+          />
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="LOI No" error={errors.loiNo}>
               <input
-                value={pan}
+                value={loiNo}
                 onChange={(e) => {
-                  setPan(e.target.value);
-                  if (errors.pan) setErrors({ ...errors, pan: undefined });
+                  setLoiNo(e.target.value);
+                  clearError("loiNo");
                 }}
-                className={fieldClass(!!errors.pan)}
+                className={fieldClass(!!errors.loiNo)}
               />
             </Field>
-            <Field label="IEC" required error={errors.iec}>
+            <Field label="LOI Date" error={errors.loiDate}>
               <input
-                value={iec}
+                type="date"
+                value={loiDate}
                 onChange={(e) => {
-                  setIec(e.target.value);
-                  if (errors.iec) setErrors({ ...errors, iec: undefined });
+                  setLoiDate(e.target.value);
+                  clearError("loiDate");
                 }}
-                className={fieldClass(!!errors.iec)}
+                className={fieldClass(!!errors.loiDate)}
               />
             </Field>
           </div>
 
-          <Field label="AD Code" required error={errors.adCode}>
-            <input
-              value={adCode}
-              onChange={(e) => {
-                setAdCode(e.target.value);
-                if (errors.adCode) setErrors({ ...errors, adCode: undefined });
-              }}
-              className={fieldClass(!!errors.adCode)}
-            />
-          </Field>
+          <SingleFileField
+            label="LOI Document"
+            required
+            file={loiFile}
+            existingFile={existingLoiDoc}
+            onFileChange={(f) => {
+              setLoiFile(f);
+              if (f) setExistingLoiDoc(undefined);
+              clearError("loiDocument");
+            }}
+            onRemoveExisting={() => setExistingLoiDoc(undefined)}
+            error={errors.loiDocument}
+          />
 
           <div className="grid grid-cols-2 gap-4">
             <Field label="Email" required error={errors.email}>
@@ -344,7 +508,7 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value);
-                  if (errors.email) setErrors({ ...errors, email: undefined });
+                  clearError("email");
                 }}
                 className={fieldClass(!!errors.email)}
               />
@@ -354,47 +518,61 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
                 value={phone}
                 onChange={(e) => {
                   setPhone(e.target.value);
-                  if (errors.phone) setErrors({ ...errors, phone: undefined });
+                  clearError("phone");
                 }}
                 className={fieldClass(!!errors.phone)}
               />
             </Field>
           </div>
 
-          <UploadField
-            title="Director Aadhaar"
+          <MultiFileField
+            label="Director Aadhaar"
             required
-            file={directorAadhar}
+            files={directorAadharFiles}
+            existingFiles={existingAadharDocs}
+            onFilesAdd={(added) => {
+              setDirectorAadharFiles((prev) => [...prev, ...added]);
+              clearError("directorAadhar");
+            }}
+            onFileRemove={(index) =>
+              setDirectorAadharFiles((prev) => prev.filter((_, i) => i !== index))
+            }
+            onExistingRemove={(index) =>
+              setExistingAadharDocs((prev) => prev.filter((_, i) => i !== index))
+            }
             error={errors.directorAadhar}
-            setFile={(file) => {
-              setDirectorAadhar(file);
-              if (errors.directorAadhar) setErrors({ ...errors, directorAadhar: undefined });
-            }}
           />
 
-          <UploadField
-            title="Director PAN"
+          <MultiFileField
+            label="Director PAN"
             required
-            file={directorPan}
+            files={directorPanFiles}
+            existingFiles={existingPanDocs}
+            onFilesAdd={(added) => {
+              setDirectorPanFiles((prev) => [...prev, ...added]);
+              clearError("directorPan");
+            }}
+            onFileRemove={(index) =>
+              setDirectorPanFiles((prev) => prev.filter((_, i) => i !== index))
+            }
+            onExistingRemove={(index) =>
+              setExistingPanDocs((prev) => prev.filter((_, i) => i !== index))
+            }
             error={errors.directorPan}
-            setFile={(file) => {
-              setDirectorPan(file);
-              if (errors.directorPan) setErrors({ ...errors, directorPan: undefined });
-            }}
           />
 
-          <UploadField
-            title="LOI"
-            required
-            file={loi}
-            error={errors.loi}
-            setFile={(file) => {
-              setLoi(file);
-              if (errors.loi) setErrors({ ...errors, loi: undefined });
-            }}
+          <MultiFileField
+            label="Other Supporting Documents"
+            files={supportingDocs}
+            existingFiles={existingSupportingDocs}
+            onFilesAdd={(added) => setSupportingDocs((prev) => [...prev, ...added])}
+            onFileRemove={(index) =>
+              setSupportingDocs((prev) => prev.filter((_, i) => i !== index))
+            }
+            onExistingRemove={(index) =>
+              setExistingSupportingDocs((prev) => prev.filter((_, i) => i !== index))
+            }
           />
-
-          <MultiUploadField files={supportingDocs} setFiles={setSupportingDocs} />
 
           <div className="flex justify-end gap-3 pt-4">
             <button
@@ -439,78 +617,217 @@ function Field({
   );
 }
 
-function UploadField({
-  title,
-  required,
-  file,
-  error,
-  setFile,
+function FileChip({
+  name,
+  onRemove,
+  onDownload,
 }: {
-  title: string;
-  required?: boolean;
-  file: File | null;
-  error?: string;
-  setFile: (file: File | null) => void;
+  name: string;
+  onRemove?: () => void;
+  onDownload?: () => void;
 }) {
   return (
-    <div>
-      <label className="mb-2 block text-xs font-medium text-zinc-700">
-        {title} {required && <span className="text-red-500">*</span>}
-      </label>
-      <label
-        className={`flex cursor-pointer items-center gap-3 rounded-xl border border-dashed p-4 transition hover:border-zinc-400 ${
+    <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[11px] text-zinc-700">
+      <span className="truncate">{name}</span>
+      {onDownload && (
+        <button type="button" onClick={onDownload} className="shrink-0 text-zinc-500 hover:text-zinc-900">
+          <Download size={12} />
+        </button>
+      )}
+      {onRemove && (
+        <button type="button" onClick={onRemove} className="shrink-0 text-zinc-400 hover:text-red-500">
+          <X size={12} />
+        </button>
+      )}
+    </span>
+  );
+}
+
+function FieldWithFile({
+  label,
+  required,
+  value,
+  onChange,
+  maxLength,
+  loading,
+  file,
+  existingFile,
+  onFileChange,
+  onRemoveExisting,
+  error,
+}: {
+  label: string;
+  required?: boolean;
+  value: string;
+  onChange: (v: string) => void;
+  maxLength?: number;
+  loading?: boolean;
+  file: File | null;
+  existingFile?: KycDocument;
+  onFileChange: (file: File | null) => void;
+  onRemoveExisting?: () => void;
+  error?: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const hasError = !!error;
+
+  return (
+    <Field label={label} required={required} error={error}>
+      <div className="relative flex gap-2">
+        <input
+          value={value}
+          maxLength={maxLength}
+          onChange={(e) => onChange(e.target.value)}
+          className={`flex-1 rounded-xl border px-3 py-2 text-xs outline-none transition focus:ring-2 ${
+            hasError
+              ? "border-red-400 focus:ring-red-100"
+              : "border-zinc-200 focus:border-zinc-500 focus:ring-zinc-200"
+          }`}
+        />
+        {loading && (
+          <div className="absolute right-12 top-1/2 -translate-y-1/2">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900" />
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className="shrink-0 rounded-xl border border-zinc-200 px-2.5 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"
+        >
+          <Paperclip size={16} />
+        </button>
+        <input
+          ref={inputRef}
+          hidden
+          type="file"
+          onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
+        />
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {file && (
+          <FileChip name={file.name} onRemove={() => onFileChange(null)} />
+        )}
+        {existingFile && !file && (
+          <FileChip
+            name={existingFile.name}
+            onDownload={() => window.open(existingFile.url, "_blank")}
+            onRemove={onRemoveExisting}
+          />
+        )}
+      </div>
+    </Field>
+  );
+}
+
+function SingleFileField({
+  label,
+  required,
+  file,
+  existingFile,
+  onFileChange,
+  onRemoveExisting,
+  error,
+}: {
+  label: string;
+  required?: boolean;
+  file: File | null;
+  existingFile?: KycDocument;
+  onFileChange: (file: File | null) => void;
+  onRemoveExisting?: () => void;
+  error?: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <Field label={label} required={required} error={error}>
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        className={`flex w-full cursor-pointer items-center gap-3 rounded-xl border border-dashed p-4 transition hover:border-zinc-400 ${
+          error ? "border-red-400 bg-red-50/50" : "border-zinc-300"
+        }`}
+      >
+        <Paperclip size={18} className={error ? "text-red-400" : "text-zinc-500"} />
+        <span className="text-xs text-zinc-600">
+          {file?.name || existingFile?.name || "Choose file"}
+        </span>
+      </button>
+      <input
+        ref={inputRef}
+        hidden
+        type="file"
+        onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
+      />
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {file && <FileChip name={file.name} onRemove={() => onFileChange(null)} />}
+        {existingFile && !file && (
+          <FileChip
+            name={existingFile.name}
+            onDownload={() => window.open(existingFile.url, "_blank")}
+            onRemove={onRemoveExisting}
+          />
+        )}
+      </div>
+    </Field>
+  );
+}
+
+function MultiFileField({
+  label,
+  required,
+  files,
+  existingFiles,
+  onFilesAdd,
+  onFileRemove,
+  onExistingRemove,
+  error,
+}: {
+  label: string;
+  required?: boolean;
+  files: File[];
+  existingFiles: KycDocument[];
+  onFilesAdd: (files: File[]) => void;
+  onFileRemove: (index: number) => void;
+  onExistingRemove: (index: number) => void;
+  error?: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <Field label={label} required={required} error={error}>
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        className={`flex w-full cursor-pointer items-center gap-3 rounded-xl border border-dashed p-4 transition hover:border-zinc-400 ${
           error ? "border-red-400 bg-red-50/50" : "border-zinc-300"
         }`}
       >
         <UploadCloud size={18} className={error ? "text-red-400" : "text-zinc-500"} />
-        <span className="text-xs text-zinc-600">{file ? file.name : "Choose File"}</span>
-        <input
-          hidden
-          type="file"
-          onChange={(e) => {
-            if (e.target.files) setFile(e.target.files[0]);
-          }}
-        />
-      </label>
-      {error && <p className="mt-1 text-[11px] text-red-500">{error}</p>}
-    </div>
-  );
-}
-
-function MultiUploadField({
-  files,
-  setFiles,
-}: {
-  files: File[];
-  setFiles: (files: File[]) => void;
-}) {
-  return (
-    <div>
-      <label className="mb-2 block text-xs font-medium text-zinc-700">
-        Other Supporting Documents
-      </label>
-      <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-zinc-300 p-4 hover:border-zinc-400">
-        <UploadCloud size={18} />
-        <span className="text-xs text-zinc-600">Select Files</span>
-        <input
-          hidden
-          multiple
-          type="file"
-          onChange={(e) => {
-            if (!e.target.files) return;
-            setFiles(Array.from(e.target.files));
-          }}
-        />
-      </label>
-      {files.length > 0 && (
-        <div className="mt-2 space-y-1">
-          {files.map((file) => (
-            <p key={file.name} className="text-[11px] text-zinc-500">
-              {file.name}
-            </p>
-          ))}
-        </div>
-      )}
-    </div>
+        <span className="text-xs text-zinc-600">Choose files</span>
+      </button>
+      <input
+        ref={inputRef}
+        hidden
+        multiple
+        type="file"
+        onChange={(e) => {
+          if (e.target.files?.length) onFilesAdd(Array.from(e.target.files));
+          e.target.value = "";
+        }}
+      />
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {existingFiles.map((doc, i) => (
+          <FileChip
+            key={`existing-${doc.url}-${i}`}
+            name={doc.name}
+            onDownload={() => window.open(doc.url, "_blank")}
+            onRemove={() => onExistingRemove(i)}
+          />
+        ))}
+        {files.map((file, i) => (
+          <FileChip key={`new-${file.name}-${i}`} name={file.name} onRemove={() => onFileRemove(i)} />
+        ))}
+      </div>
+    </Field>
   );
 }

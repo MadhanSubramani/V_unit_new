@@ -5,25 +5,35 @@ export interface KycDocument {
 
 export interface Kyc {
   id?: string;
+  fileNo?: string;
 
   gstin: string;
+  gstinDocument?: KycDocument;
   companyName: string;
 
   billingAddress: string;
-  deliveryAddress: string;
+  branchAddresses: string[];
 
   pan: string;
+  panDocument?: KycDocument;
   iec: string;
+  iecDocument?: KycDocument;
   adCode: string;
+  adCodeDocument?: KycDocument;
+
+  loiNo: string;
+  loiDate: string;
+  loiDocument?: KycDocument;
 
   email: string;
   phone: string;
 
-  directorAadhar?: KycDocument;
-  directorPan?: KycDocument;
-  loi?: KycDocument;
-
+  directorAadhar?: KycDocument[];
+  directorPan?: KycDocument[];
   supportingDocuments?: KycDocument[];
 
-  createdAt?: any;
+  /** @deprecated use branchAddresses */
+  deliveryAddress?: string;
+
+  createdAt?: unknown;
 }

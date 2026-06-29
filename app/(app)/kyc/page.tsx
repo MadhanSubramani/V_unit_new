@@ -7,6 +7,7 @@ import {
   Eye,
   Pencil,
   Trash2,
+  FileSpreadsheet,
 } from "lucide-react";
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
@@ -24,6 +25,7 @@ import { getKyc } from "@/lib/kyc/getKyc";
 import { searchKyc } from "@/lib/kyc/searchKyc";
 import { deleteKyc } from "@/lib/kyc/deleteKyc";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
+import { exportKycToExcel } from "@/lib/kyc/exportKycExcel";
 
 const PAGE_SIZE = 10;
 
@@ -97,6 +99,12 @@ export default function KycPage() {
     setViewOpen(true);
   };
 
+  const handleGenerateFile = async () => {
+    const data = await getKyc();
+    if (!data.length) return;
+    exportKycToExcel(data);
+  };
+
   return (<>
   <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
     <ModuleHeader
@@ -113,13 +121,23 @@ export default function KycPage() {
         }}
       />
 
-      <button
-        onClick={openAddDrawer}
-        className="inline-flex items-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-xs font-medium text-white transition hover:bg-zinc-800"
-      >
-        <Plus size={16} />
-        Add KYC
-      </button>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <button
+          onClick={handleGenerateFile}
+          disabled={!kycList.length}
+          className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 px-4 py-2 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-40"
+        >
+          <FileSpreadsheet size={16} />
+          Generate File
+        </button>
+        <button
+          onClick={openAddDrawer}
+          className="inline-flex items-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-xs font-medium text-white transition hover:bg-zinc-800"
+        >
+          <Plus size={16} />
+          Add KYC
+        </button>
+      </div>
     </div>
 
     <div className="mt-6 overflow-hidden rounded-2xl border border-zinc-200">
@@ -128,25 +146,23 @@ export default function KycPage() {
           <thead>
             <tr className="border-b border-zinc-200 bg-zinc-50">
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                File No
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
                 Company Name
               </th>
-
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
                 GSTIN
               </th>
-
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                Billing Address
+                LOI No
               </th>
-
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
                 Email
               </th>
-
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
                 Phone
               </th>
-
               <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-zinc-500">
                 Actions
               </th>
@@ -157,7 +173,7 @@ export default function KycPage() {
             {loading ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="py-10 text-center text-zinc-500"
                 >
                   Loading...
@@ -166,7 +182,7 @@ export default function KycPage() {
             ) : currentData.length === 0 ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="py-10 text-center text-zinc-400"
                 >
                   No KYC records found.
@@ -179,6 +195,10 @@ export default function KycPage() {
                   className="border-b border-zinc-100 hover:bg-zinc-50"
                 >
                   <td className="px-4 py-3 font-medium text-zinc-800">
+                    {item.fileNo || "-"}
+                  </td>
+
+                  <td className="px-4 py-3 font-medium text-zinc-800">
                     {item.companyName}
                   </td>
 
@@ -186,13 +206,8 @@ export default function KycPage() {
                     {item.gstin}
                   </td>
 
-                  <td className="px-4 py-3">
-                    <div
-                      title={item.billingAddress}
-                      className="max-w-[260px] truncate text-zinc-600"
-                    >
-                      {item.billingAddress}
-                    </div>
+                  <td className="px-4 py-3 text-zinc-600">
+                    {item.loiNo || "-"}
                   </td>
 
                   <td className="px-4 py-3 text-zinc-600">

@@ -530,7 +530,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
   const summaryCards = [
     { key: "inProcess" as CardFilter, label: "In Process", count: cardCounts.inProcess, color: "bg-blue-50 border-blue-200 text-blue-700" },
     { key: "next7Days" as CardFilter, label: "Next 7 Days", count: cardCounts.next7Days, color: "bg-amber-50 border-amber-200 text-amber-700" },
-    { key: "momentum" as CardFilter, label: "Momentum", count: cardCounts.momentum, color: "bg-purple-50 border-purple-200 text-purple-700" },
+    { key: "momentum" as CardFilter, label: "Movement", count: cardCounts.momentum, color: "bg-purple-50 border-purple-200 text-purple-700" },
     { key: "split_manifest" as CardFilter, label: "Split Manifest", count: cardCounts.split_manifest, color: "bg-orange-50 border-orange-200 text-orange-700" },
     { key: "completed" as CardFilter, label: "Completed", count: cardCounts.completed, color: "bg-green-50 border-green-200 text-green-700" },
   ];
@@ -910,11 +910,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
       {selected && (
         <div className="mt-6 space-y-6">
 
-        <WorkflowTimeline
-            selected={selected}
-            currentUserRole={userRole}
-            onComplete={handleStatusUpdate}
-        />
+       
 
           {/* Shipment */}
           <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
@@ -1072,6 +1068,11 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
           </section>
         </div>
       )}
+       <WorkflowTimeline
+            selected={selected}
+            currentUserRole={userRole}
+            onComplete={handleStatusUpdate}
+        />
 
       {/* Footer */}
       <div className="mt-8 flex gap-3 border-t border-zinc-200 pt-5">
@@ -1239,21 +1240,24 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
         </div>
 
         <div className="mt-3 flex items-center justify-between">
-          <div className="flex gap-2">
-            {STATUS_CHIPS.map((chip) => (
-              <button
-                key={chip.value}
-                onClick={() => loadStatusRecords(chip.value)}
-                className={`rounded-full px-4 py-2 text-xs font-medium transition
-          ${activeStatus === chip.value
-                    ? "bg-black text-white"
-                    : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
-                  }`}
-              >
-                {chip.label}
-              </button>
-            ))}
-          </div>
+         <div className="mt-3 flex items-center justify-between">
+  <div className="flex gap-1.5">
+    {STATUS_CHIPS.map((chip) => (
+      <button
+        key={chip.value}
+        onClick={() => loadStatusRecords(chip.value)}
+        className={`rounded-full px-3 py-1.5 text-[11px] font-medium transition
+          ${
+            activeStatus === chip.value
+              ? "bg-black text-white"
+              : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+          }`}
+      >
+        {chip.label}
+      </button>
+    ))}
+  </div>
+</div>
 
           {(activeStatus || activeCard) && (
             <div className="mt-3 flex items-center gap-2">
