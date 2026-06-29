@@ -5,6 +5,7 @@ import {
   formatExpenseItems,
   getRecordProfitLoss,
   getRecordTotalExpenses,
+  parseAmount,
 } from "./amounts";
 
 function docUrl(doc?: { url?: string }) {
@@ -16,7 +17,7 @@ export function exportFreightForwardToExcel(
   etaFrom: string,
   etaTo: string
 ) {
-  const rows = records.map((item) => {
+  const rows: Record<string, string>[] = records.map((item) => {
     const totalExpenses = getRecordTotalExpenses(item);
     const profitLoss = getRecordProfitLoss(item);
 
@@ -56,6 +57,46 @@ export function exportFreightForwardToExcel(
       "Updated By": item.updatedBy ?? "",
     };
   });
+
+  const totalBilledAmount = records.reduce(
+    (sum, item) => sum + (parseAmount(item.billedAmount ?? item.buildAmount) ?? 0),
+    0
+  );
+  const totalCreditNote = records.reduce(
+    (sum, item) => sum + (parseAmount(item.creditNote) ?? 0),
+    0
+  );
+  const totalExpenses = records.reduce(
+    (sum, item) => sum + getRecordTotalExpenses(item),
+    0
+  );
+  const totalProfitLoss = totalBilledAmount + totalCreditNote - totalExpenses;
+  const profitLossLabel = totalProfitLoss > 0 ? "Profit" : "Loss";
+
+  const emptyRow = Object.fromEntries(
+    Object.keys(rows[0] ?? { Summary: "" }).map((key) => [key, ""])
+  );
+
+  if (rows.length > 0) {
+    rows.push(
+      emptyRow,
+      {
+        ...emptyRow,
+        "Job Number": "SUMMARY",
+        "Consignment Name":
+          "Billed Amount + Credit Note - Total Expenses = Profit / Loss",
+        "Total Expenses": formatDollar(totalExpenses),
+        "Billed Amount": formatDollar(totalBilledAmount),
+        "Credit Note": formatDollar(totalCreditNote),
+        "Profit / Loss Amount": formatDollar(Math.abs(totalProfitLoss)),
+        "Profit / Loss": profitLossLabel,
+      },
+      {
+        ...emptyRow,
+        "Consignment Name": `${formatDollar(totalBilledAmount)} + ${formatDollar(totalCreditNote)} - ${formatDollar(totalExpenses)} = ${formatDollar(Math.abs(totalProfitLoss))} (${profitLossLabel})`,
+      }
+    );
+  }
 
   const worksheet = XLSX.utils.json_to_sheet(rows);
   const workbook = XLSX.utils.book_new();
