@@ -58,7 +58,16 @@ import { Sez } from "@/types/sez";
 import WorkflowTimeline from "@/components/WorkflowTimeline";
 
 type FormErrors = Partial<Record<string, string>>;
-type CardFilter = "inProcess" | "next7Days" | "momentum" | "split_manifest" | "completed" | null;
+type CardFilter =
+  | "inProcess"
+  | "next7Days"
+  | "momentum"
+  | "split_manifest"
+  | "billing"
+  | "receivable"
+  | "payable"
+  | "completed"
+  | null;
 type DrawerMode = "add" | "edit" | "view" | null;
 
 const SEARCH_FIELDS = [
@@ -224,6 +233,9 @@ export default function FreightForwardPage() {
     next7Days: 0,
     momentum: 0,
     split_manifest: 0,
+    billing: 0,
+    receivable: 0,
+    payable: 0,
     completed: 0,
   });
 
@@ -273,12 +285,13 @@ export default function FreightForwardPage() {
   type UserRole = "admin" | "user" | "accountant";
   const userRole: UserRole = (user?.role as UserRole) ?? "admin";
   const allowedStatuses: Record<UserRole, FreightForwardStatus[]> = {
-    admin: [FreightForwardStatusObject.IN_PROCESS, FreightForwardStatusObject.MOMENTUM, FreightForwardStatusObject.SPLIT_MANIFEST],
-    user: [FreightForwardStatusObject.IN_PROCESS, FreightForwardStatusObject.MOMENTUM, FreightForwardStatusObject.SPLIT_MANIFEST],
-    accountant: [
+    admin: FREIGHT_FORWARD_STATUSES.map((s) => s.value),
+    user: [
       FreightForwardStatusObject.IN_PROCESS,
       FreightForwardStatusObject.MOMENTUM,
       FreightForwardStatusObject.SPLIT_MANIFEST,
+    ],
+    accountant: [
       FreightForwardStatusObject.BILLING,
       FreightForwardStatusObject.RECEIVABLE,
       FreightForwardStatusObject.PAYABLE,
@@ -311,13 +324,19 @@ export default function FreightForwardPage() {
 
   const selectedLocation = selectedCfs ?? selectedSez;
 
+  const handleCardClick = (card: CardFilter) => {
+    setActiveStatus(null);
+    setActiveCard((prev) => (prev === card ? null : card));
+  };
+
   const STATUS_CHIPS = [
-    { label: "BILLING", value: "billing" },
-    { label: "RECEIVABLE", value: "receivable" },
-    { label: "PAYABLE", value: "payable" },
+    { label: "BILLING", value: "billing", count: cardCounts.billing },
+    { label: "RECEIVABLE", value: "receivable", count: cardCounts.receivable },
+    { label: "PAYABLE", value: "payable", count: cardCounts.payable },
   ];
 
   const [activeStatus, setActiveStatus] = useState<string | null>(null);
+
   const loadStatusRecords = async (status: string) => {
     setActiveCard(null);
     setActiveStatus(status);
@@ -333,10 +352,19 @@ export default function FreightForwardPage() {
 
   const clearStatusFilter = () => {
     setActiveStatus(null);
+    setCursors([null]);
+    setPage(0);
     loadPage(0, null);
   };
 
-  // ── Derived ───────────────────────────────────────────────────────────────
+  const summaryCards = [
+    { key: "inProcess" as CardFilter, label: "In Process", count: cardCounts.inProcess },
+    { key: "next7Days" as CardFilter, label: "Next 7 Days", count: cardCounts.next7Days },
+    { key: "momentum" as CardFilter, label: "Movement", count: cardCounts.momentum },
+    { key: "split_manifest" as CardFilter, label: "Split Manifest", count: cardCounts.split_manifest },
+    { key: "completed" as CardFilter, label: "Completed", count: cardCounts.completed },
+  ];
+
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   // ── Load card counts via getCountFromServer ────────────────────────────────
@@ -660,20 +688,6 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
 
   const currencyInputClass = (key: string, extra = "") =>
     `pl-7 ${extra} ${fieldClass(key)}`;
-
-  const handleCardClick = (card: CardFilter) => {
-    setActiveStatus(null);
-    setActiveCard((prev) => (prev === card ? null : card));
-  };
-
-  // ── Summary cards ─────────────────────────────────────────────────────────
-  const summaryCards = [
-    { key: "inProcess" as CardFilter, label: "In Process", count: cardCounts.inProcess, color: "bg-blue-50 border-blue-200 text-blue-700" },
-    { key: "next7Days" as CardFilter, label: "Next 7 Days", count: cardCounts.next7Days, color: "bg-amber-50 border-amber-200 text-amber-700" },
-    { key: "momentum" as CardFilter, label: "Movement", count: cardCounts.momentum, color: "bg-purple-50 border-purple-200 text-purple-700" },
-    { key: "split_manifest" as CardFilter, label: "Split Manifest", count: cardCounts.split_manifest, color: "bg-orange-50 border-orange-200 text-orange-700" },
-    { key: "completed" as CardFilter, label: "Completed", count: cardCounts.completed, color: "bg-green-50 border-green-200 text-green-700" },
-  ];
 
   const listColumns = ["EZ Ref Number", "ETA", "Consignment Name", "MBL", "HBL", "Container Number", "Vessel Name", "Actions"];
 
@@ -1422,16 +1436,6 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
                 label="Updated By"
                 value={selected.updatedBy}
               />
-
-              <div>
-                <div className="text-[11px] uppercase tracking-wider text-zinc-500">
-                  Status
-                </div>
-
-                <span className="mt-2 inline-flex rounded-full bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white">
-                  {statusLabel(selected.status)}
-                </span>
-              </div>
             </div>
           </section>
         </div>
@@ -1619,37 +1623,34 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
           </div>
         </div>
 
-        <div className="mt-3 flex items-center justify-between">
-         <div className="mt-3 flex items-center justify-between">
-  <div className="flex gap-1.5">
-    {STATUS_CHIPS.map((chip) => (
-      <button
-        key={chip.value}
-        onClick={() => loadStatusRecords(chip.value)}
-        className={`rounded-full px-3 py-1.5 text-[11px] font-medium transition
-          ${
-            activeStatus === chip.value
-              ? "bg-black text-white"
-              : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
-          }`}
-      >
-        {chip.label}
-      </button>
-    ))}
-  </div>
-</div>
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap gap-1.5">
+            {STATUS_CHIPS.map((chip) => (
+              <button
+                key={chip.value}
+                onClick={() => loadStatusRecords(chip.value)}
+                className={`rounded-full px-3 py-1.5 text-[11px] font-medium transition ${
+                  activeStatus === chip.value
+                    ? "bg-black text-white"
+                    : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                }`}
+              >
+                {chip.label} ({chip.count})
+              </button>
+            ))}
+          </div>
 
           {(activeStatus || activeCard) && (
-            <div className="mt-3 flex items-center gap-2">
+            <div className="flex items-center gap-2">
               <span className="text-xs text-zinc-500">
                 Showing:
                 <span className="ml-1 font-medium text-zinc-800">
                   {activeStatus
-                    ? activeStatus.charAt(0).toUpperCase() + activeStatus.slice(1)
+                    ? STATUS_CHIPS.find((c) => c.value === activeStatus)?.label ??
+                      activeStatus.charAt(0).toUpperCase() + activeStatus.slice(1)
                     : summaryCards.find((c) => c.key === activeCard)?.label}
                 </span>
               </span>
-
               <button
                 onClick={() => {
                   if (activeStatus) {

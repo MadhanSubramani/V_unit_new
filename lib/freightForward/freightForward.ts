@@ -32,6 +32,7 @@ function stripUndefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
 
 // ── Card counts ────────────────────────────────────────────────────────────
 // Uses getCountFromServer so no documents are transferred — just integer counts.
+// Operational cards use pipeline balance (jobs not yet past that stage).
 export async function getFreightForwardCardCounts() {
   const ref = REF();
   const today = new Date();
@@ -39,13 +40,28 @@ export async function getFreightForwardCardCounts() {
   const next7 = new Date(today);
   next7.setDate(today.getDate() + 7);
 
-  const [inProcess, momentum, splitManifest, completed, next7Days] = await Promise.all([
-    // inProcess = everything that is NOT completed
+  const [
+    inProcess,
+    momentum,
+    split_manifest,
+    billing,
+    receivable,
+    payable,
+    completed,
+    next7Days,
+  ] = await Promise.all([
     getCountFromServer(query(ref, where("status", "==", "in_process"))),
     getCountFromServer(query(ref, where("status", "==", "momentum"))),
-    getCountFromServer(query(ref, where("status", "==", "split_manifest"))),
+    getCountFromServer(
+      query(
+        ref,
+        where("status", "in", ["in_process", "momentum", "split_manifest"])
+      )
+    ),
+    getCountFromServer(query(ref, where("status", "==", "billing"))),
+    getCountFromServer(query(ref, where("status", "==", "receivable"))),
+    getCountFromServer(query(ref, where("status", "==", "payable"))),
     getCountFromServer(query(ref, where("status", "==", "completed"))),
-    // next7Days = not completed AND eta within today..today+7
     getCountFromServer(
       query(
         ref,
@@ -61,7 +77,10 @@ export async function getFreightForwardCardCounts() {
   return {
     inProcess: inProcess.data().count,
     momentum: momentum.data().count,
-    split_manifest: splitManifest.data().count,
+    split_manifest: split_manifest.data().count,
+    billing: billing.data().count,
+    receivable: receivable.data().count,
+    payable: payable.data().count,
     completed: completed.data().count,
     next7Days: next7Days.data().count,
   };
@@ -69,8 +88,17 @@ export async function getFreightForwardCardCounts() {
 
 // ── Server-side filtered + paginated list ──────────────────────────────────
 export interface FreightForwardQueryOptions {
-  /** Card filter — maps to a status constraint (or next7Days date range) */
-  activeCard?: "inProcess" | "next7Days" | "momentum" | "split_manifest" | "completed" | null;
+  /** Card filter — maps to a status constraint (or pipeline balance) */
+  activeCard?:
+    | "inProcess"
+    | "next7Days"
+    | "momentum"
+    | "split_manifest"
+    | "billing"
+    | "receivable"
+    | "payable"
+    | "completed"
+    | null;
   /** ETA date range from the date filter */
   etaFrom?: string;
   etaTo?: string;
@@ -106,7 +134,15 @@ export async function getFreightForwardPage({
   } else if (activeCard === "momentum") {
     constraints.push(where("status", "==", "momentum"));
   } else if (activeCard === "split_manifest") {
-    constraints.push(where("status", "==", "split_manifest"));
+    constraints.push(
+      where("status", "in", ["in_process", "momentum", "split_manifest"])
+    );
+  } else if (activeCard === "billing") {
+    constraints.push(where("status", "==", "billing"));
+  } else if (activeCard === "receivable") {
+    constraints.push(where("status", "==", "receivable"));
+  } else if (activeCard === "payable") {
+    constraints.push(where("status", "==", "payable"));
   } else if (activeCard === "next7Days") {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -177,7 +213,13 @@ export async function getFreightForwardSearch({
   if (activeCard === "inProcess") constraints.push(where("status", "==", "in_process"));
   else if (activeCard === "completed") constraints.push(where("status", "==", "completed"));
   else if (activeCard === "momentum") constraints.push(where("status", "==", "momentum"));
-  else if (activeCard === "split_manifest") constraints.push(where("status", "==", "split_manifest"));
+  else if (activeCard === "split_manifest") {
+    constraints.push(
+      where("status", "in", ["in_process", "momentum", "split_manifest"])
+    );
+  } else if (activeCard === "billing") constraints.push(where("status", "==", "billing"));
+  else if (activeCard === "receivable") constraints.push(where("status", "==", "receivable"));
+  else if (activeCard === "payable") constraints.push(where("status", "==", "payable"));
   else if (activeCard === "next7Days") {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
