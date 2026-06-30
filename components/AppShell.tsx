@@ -100,7 +100,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const sidebar = (
     <div className="flex h-full flex-col">
-      <div className="border-b border-zinc-200/80 p-4">
+      <div className="shrink-0 border-b border-zinc-200/80 p-4">
         <div className="flex items-center justify-between">
           {!collapsed && (
             <div>
@@ -141,7 +141,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
 
-      <nav className="flex-1 space-y-0.5 overflow-y-auto p-3">
+      <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-3">
         <div>
           <button
             onClick={() => {
@@ -203,7 +203,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         )}
       </nav>
 
-      <div className="border-t border-zinc-200/80 p-3">
+      <div className="shrink-0 border-t border-zinc-200/80 p-3">
         <button
           onClick={handleLogout}
           className={`flex w-full items-center text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 ${
@@ -218,9 +218,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="flex min-h-screen bg-zinc-50">
+    <div className="flex h-screen overflow-hidden bg-zinc-50">
       <aside
-        className={`hidden shrink-0 border-r border-zinc-200/80 bg-white transition-all duration-300 md:block ${
+        className={`hidden h-screen shrink-0 flex-col overflow-hidden border-r border-zinc-200/80 bg-white transition-all duration-300 md:flex ${
           collapsed ? "w-[72px]" : "w-[240px]"
         }`}
       >
@@ -235,15 +235,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-[260px] border-r border-zinc-200/80 bg-white shadow-2xl transition-transform duration-300 md:hidden ${
+        className={`fixed inset-y-0 left-0 z-50 flex h-screen w-[260px] flex-col overflow-hidden border-r border-zinc-200/80 bg-white shadow-2xl transition-transform duration-300 md:hidden ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         {sidebar}
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 border-b border-zinc-200/80 bg-white px-4 py-3 md:hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="flex shrink-0 items-center gap-3 border-b border-zinc-200/80 bg-white px-4 py-3 md:hidden">
           <button
             onClick={() => setMobileOpen((v) => !v)}
             className="rounded-lg border border-zinc-200 p-1.5 text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
@@ -254,7 +254,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <span className="text-xs font-semibold text-zinc-900">V-Unit Operations</span>
         </header>
 
-        <main className="flex-1 p-4 md:p-6">{children}</main>
+        <main className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
       </div>
     </div>
   );

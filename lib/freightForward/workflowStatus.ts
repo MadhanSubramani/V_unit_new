@@ -52,24 +52,50 @@ export function canUpdateToStatus(
   return getMissingPrerequisites(target, timeline).length === 0;
 }
 
+function getRoleCandidates(role: string): FreightForwardStatus[] {
+  if (role === "admin") {
+    return WORKFLOW_STEPS.map((step) => step.key).filter(
+      (status) => status !== "in_process"
+    );
+  }
+  if (role === "user") {
+    return ["momentum", "split_manifest", "completed"];
+  }
+  if (role === "accountant") {
+    return ["billing", "receivable", "payable", "completed"];
+  }
+  return [];
+}
+
+export type StatusDropdownOption = {
+  value: FreightForwardStatus;
+  label: string;
+  disabled: boolean;
+};
+
+export function getStatusDropdownOptions(
+  role: string,
+  timeline?: StatusTimeline[]
+): StatusDropdownOption[] {
+  const visited = getVisitedStatuses(timeline);
+
+  return getRoleCandidates(role).map((status) => ({
+    value: status,
+    label: statusLabel(status),
+    disabled:
+      visited.has(status) ||
+      !canUpdateToStatus(status, timeline),
+  }));
+}
+
+/** @deprecated use getStatusDropdownOptions */
 export function getJumpOptions(
   role: string,
   timeline?: StatusTimeline[]
 ): FreightForwardStatus[] {
-  const visited = getVisitedStatuses(timeline);
-  const baseOptions =
-    role === "admin"
-      ? WORKFLOW_STEPS.map((step) => step.key)
-      : role === "accountant"
-        ? (["billing", "receivable", "payable", "completed"] as FreightForwardStatus[])
-        : [];
-
-  return baseOptions.filter(
-    (status) =>
-      status !== "in_process" &&
-      !visited.has(status) &&
-      canUpdateToStatus(status, timeline)
-  );
+  return getStatusDropdownOptions(role, timeline)
+    .filter((option) => !option.disabled)
+    .map((option) => option.value);
 }
 
 export function getNextAllowedStatus(

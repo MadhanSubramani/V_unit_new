@@ -149,13 +149,13 @@ export default function KycPage() {
                 File No
               </th>
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                LOI No
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
                 Company Name
               </th>
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
                 GSTIN
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                LOI No
               </th>
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
                 Email
@@ -198,16 +198,16 @@ export default function KycPage() {
                     {item.fileNo || "-"}
                   </td>
 
+                  <td className="px-4 py-3 text-zinc-600">
+                    {item.loiNo || "-"}
+                  </td>
+
                   <td className="px-4 py-3 font-medium text-zinc-800">
                     {item.companyName}
                   </td>
 
                   <td className="px-4 py-3 text-zinc-600">
                     {item.gstin}
-                  </td>
-
-                  <td className="px-4 py-3 text-zinc-600">
-                    {item.loiNo || "-"}
                   </td>
 
                   <td className="px-4 py-3 text-zinc-600">

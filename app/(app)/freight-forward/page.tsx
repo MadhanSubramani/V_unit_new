@@ -20,17 +20,19 @@ import { getConfigByCategory } from "@/lib/configurations/configurations";
 import {
   createFreightForward,
   deleteFreightForward,
-  getFreightForwardByStatus,
   getFreightForwardCardCounts,
-  getFreightForwardPage,
-  getFreightForwardSearch,
+  getFreightForwardPaginated,
   updateFreightForward,
   updateWorkflowStatus,
   getFreightForwardById,
   getFreightForwardForExport,
-  getFreightForwardFilteredList,
-  usesBalanceCardFilter,
 } from "@/lib/freightForward/freightForward";
+import {
+  FREIGHT_SORT_DROPDOWN_OPTIONS,
+  FreightSortDir,
+  FreightSortKey,
+  parseFreightSortValue,
+} from "@/lib/freightForward/sortRecords";
 import { generateJobNumber } from "@/lib/freightForward/generateJobNumber";
 import {
   computeTotalExpenses,
@@ -75,7 +77,7 @@ type DrawerMode = "add" | "edit" | "view" | null;
 
 const SEARCH_FIELDS = [
   { label: "EZ Ref Number", value: "ezRefNumber" },
-  { label: "Consignment Name", value: "consignmentName" },
+  { label: "Consignee Name", value: "consignmentName" },
   { label: "MBL", value: "mbl" },
   { label: "HBL", value: "hbl" },
   { label: "Container Number", value: "containerNumber" },
@@ -225,10 +227,8 @@ export default function FreightForwardPage() {
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
 
-  // Keyset pagination: cursors[i] is the startAfter cursor to fetch page i.
-  // cursors[0] = null means fetch from the beginning.
-  const [cursors, setCursors] = useState<(DocumentSnapshot | null)[]>([null]);
   const [page, setPage] = useState(0); // 0-indexed
+  const [cursors, setCursors] = useState<(DocumentSnapshot | null)[]>([null]);
 
   // ── Card counts (getCountFromServer — zero document reads) ─────────────────
   const [cardCounts, setCardCounts] = useState({
@@ -249,6 +249,8 @@ export default function FreightForwardPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [sortKey, setSortKey] = useState<FreightSortKey>("eta");
+  const [sortDir, setSortDir] = useState<FreightSortDir>("asc");
 
   const isSearching = searchValue.trim().length > 0;
 
@@ -274,11 +276,13 @@ export default function FreightForwardPage() {
   const [billedAmountFile, setBilledAmountFile] = useState<File | null>(null);
   const [creditNoteFile, setCreditNoteFile] = useState<File | null>(null);
   const [paymentDateFile, setPaymentDateFile] = useState<File | null>(null);
+  const [debitFiles, setDebitFiles] = useState<File[]>([]);
   const [existingMblDoc, setExistingMblDoc] = useState<FreightForwardDocument | undefined>();
   const [existingHblDoc, setExistingHblDoc] = useState<FreightForwardDocument | undefined>();
   const [existingBilledAmountDoc, setExistingBilledAmountDoc] = useState<FreightForwardDocument | undefined>();
   const [existingCreditNoteDoc, setExistingCreditNoteDoc] = useState<FreightForwardDocument | undefined>();
   const [existingPaymentDateDoc, setExistingPaymentDateDoc] = useState<FreightForwardDocument | undefined>();
+  const [existingDebitDocs, setExistingDebitDocs] = useState<FreightForwardDocument[]>([]);
 
   // ── Delete ────────────────────────────────────────────────────────────────
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -331,6 +335,7 @@ export default function FreightForwardPage() {
 
   const handleCardClick = (card: CardFilter) => {
     setActiveStatus(null);
+    setCursors([null]);
     setActiveCard((prev) => (prev === card ? null : card));
   };
 
@@ -342,24 +347,17 @@ export default function FreightForwardPage() {
 
   const [activeStatus, setActiveStatus] = useState<string | null>(null);
 
-  const loadStatusRecords = async (status: string) => {
+  const loadStatusRecords = (status: string) => {
     setActiveCard(null);
     setActiveStatus(status);
-    setLoading(true);
-    try {
-      const data = await getFreightForwardByStatus(status);
-      setRows(data);
-      setTotal(data.length);
-    } finally {
-      setLoading(false);
-    }
+    setCursors([null]);
+    setPage(0);
   };
 
   const clearStatusFilter = () => {
     setActiveStatus(null);
     setCursors([null]);
     setPage(0);
-    loadPage(0, null);
   };
 
   const summaryCards = [
@@ -374,54 +372,64 @@ export default function FreightForwardPage() {
 
   // ── Load card counts via getCountFromServer ────────────────────────────────
   const loadCounts = useCallback(async () => {
-    const counts = await getFreightForwardCardCounts();
-    setCardCounts(counts);
+    try {
+      const counts = await getFreightForwardCardCounts();
+      setCardCounts(counts);
+    } catch (error) {
+      console.error("Failed to load freight forward counts:", error);
+    }
   }, []);
 
-  // ── Load one page of rows ─────────────────────────────────────────────────
   const loadPage = useCallback(
-    async (pageIndex: number, cursorDoc: DocumentSnapshot | null) => {
+    async (pageIndex: number, cursorList?: (DocumentSnapshot | null)[]) => {
       setLoading(true);
       try {
-        if (isSearching || usesBalanceCardFilter(activeCard)) {
-          const all = isSearching
-            ? await getFreightForwardSearch({
-                activeCard,
-                etaFrom: dateFrom || undefined,
-                etaTo: dateTo || undefined,
-                searchField,
-                searchValue,
-              })
-            : await getFreightForwardFilteredList({
-                activeCard,
-                etaFrom: dateFrom || undefined,
-                etaTo: dateTo || undefined,
-              });
-          setRows(all.slice(pageIndex * PAGE_SIZE, (pageIndex + 1) * PAGE_SIZE));
-          setTotal(all.length);
-        } else {
-          const result = await getFreightForwardPage({
-            activeCard,
-            etaFrom: dateFrom || undefined,
-            etaTo: dateTo || undefined,
-            pageSize: PAGE_SIZE,
-            cursor: cursorDoc,
-          });
-          setRows(result.items);
-          setTotal(result.total);
+        const pageCursors = cursorList ?? cursors;
+        const result = await getFreightForwardPaginated({
+          activeCard,
+          activeStatus,
+          etaFrom: dateFrom || undefined,
+          etaTo: dateTo || undefined,
+          searchField,
+          searchValue,
+          sortKey,
+          sortDir,
+          pageSize: PAGE_SIZE,
+          pageIndex,
+          cursor: pageCursors[pageIndex] ?? null,
+        });
 
-          // Store the cursor for the NEXT page
+        setRows(result.items);
+        setTotal(result.total);
+
+        if (result.mode === "server" && result.lastDoc) {
           setCursors((prev) => {
-            const next = [...prev];
+            const next = cursorList ? [...cursorList] : [...prev];
             next[pageIndex + 1] = result.lastDoc;
             return next;
           });
+        } else if (result.mode === "client") {
+          setCursors([null]);
         }
+      } catch (error) {
+        console.error("Failed to load freight forward list:", error);
+        setRows([]);
+        setTotal(0);
       } finally {
         setLoading(false);
       }
     },
-    [activeCard, dateFrom, dateTo, isSearching, searchField, searchValue]
+    [
+      activeCard,
+      activeStatus,
+      cursors,
+      dateFrom,
+      dateTo,
+      searchField,
+      searchValue,
+      sortKey,
+      sortDir,
+    ]
   );
 
   const WORKFLOW = [
@@ -462,17 +470,15 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
 
   // Re-fetch from scratch whenever filters change
   useEffect(() => {
-    if (activeStatus) return;
     setCursors([null]);
     setPage(0);
     loadCounts();
-    loadPage(0, null);
+    loadPage(0, [null]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCard, dateFrom, dateTo, searchValue, searchField]);
+  }, [activeCard, activeStatus, dateFrom, dateTo, searchValue, searchField, sortKey, sortDir]);
 
-  // Reload counts + current page after a mutation
   const reload = async () => {
-    await Promise.all([loadCounts(), loadPage(page, cursors[page] ?? null)]);
+    await Promise.all([loadCounts(), loadPage(page)]);
   };
 
   useEffect(() => {
@@ -500,13 +506,13 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
   const goNext = () => {
     const nextPage = page + 1;
     setPage(nextPage);
-    loadPage(nextPage, cursors[nextPage] ?? null);
+    loadPage(nextPage);
   };
 
   const goPrev = () => {
     const prevPage = page - 1;
     setPage(prevPage);
-    loadPage(prevPage, cursors[prevPage] ?? null);
+    loadPage(prevPage);
   };
 
   // ── Drawer helpers ────────────────────────────────────────────────────────
@@ -525,11 +531,13 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
     setBilledAmountFile(null);
     setCreditNoteFile(null);
     setPaymentDateFile(null);
+    setDebitFiles([]);
     setExistingMblDoc(undefined);
     setExistingHblDoc(undefined);
     setExistingBilledAmountDoc(undefined);
     setExistingCreditNoteDoc(undefined);
     setExistingPaymentDateDoc(undefined);
+    setExistingDebitDocs([]);
   };
 
   const loadDocumentFiles = (item: FreightForward) => {
@@ -538,11 +546,13 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
     setBilledAmountFile(null);
     setCreditNoteFile(null);
     setPaymentDateFile(null);
+    setDebitFiles([]);
     setExistingMblDoc(item.mblUrl);
     setExistingHblDoc(item.hblUrl);
     setExistingBilledAmountDoc(item.billedAmountUrl);
     setExistingCreditNoteDoc(item.creditNoteUrl);
     setExistingPaymentDateDoc(item.paymentDateUrl);
+    setExistingDebitDocs(item.debitDocuments ?? []);
   };
 
   const openAdd = async () => {
@@ -590,7 +600,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
 
   const validate = (): boolean => {
     const next: FormErrors = {};
-    if (!form.consignmentName.trim()) next.consignmentName = "Consignment Name is required.";
+    if (!form.consignmentName.trim()) next.consignmentName = "Consignee Name is required.";
     if (!form.mbl.trim()) next.mbl = "MBL is required.";
     if (!form.hbl.trim()) next.hbl = "HBL is required.";
     if (!form.containerNumber.trim()) {
@@ -625,6 +635,10 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
         uploadIfNeeded(paymentDateFile, "freight-forward/payment-date", existingPaymentDateDoc),
       ]);
 
+      const newDebitDocs = await Promise.all(
+        debitFiles.map((file) => uploadDocument(file, "freight-forward/debit-note"))
+      );
+
       const payload = removeUndefined({
         ...buildPayload(form),
         mblUrl,
@@ -632,6 +646,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
         billedAmountUrl,
         creditNoteUrl,
         paymentDateUrl,
+        debitDocuments: [...existingDebitDocs, ...newDebitDocs],
       });
 
       if (selected?.id) {
@@ -704,7 +719,15 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
   const currencyInputClass = (key: string, extra = "") =>
     `pl-7 ${extra} ${fieldClass(key)}`;
 
-  const listColumns = ["EZ Ref Number", "ETA", "Consignment Name", "MBL", "HBL", "Container Number", "Vessel Name", "Actions"];
+  const handleSortChange = (value: string) => {
+    const { sortKey: nextKey, sortDir: nextDir } = parseFreightSortValue(value);
+    setSortKey(nextKey);
+    setSortDir(nextDir);
+    setPage(0);
+    // useEffect on sortKey/sortDir reloads page 0 for both list modes
+  };
+
+  const listColumns = ["EZ Ref Number", "ETA", "Consignee Name", "MBL", "HBL", "Container Number", "Vessel Name", "Actions"];
 
   // ── Render: form ──────────────────────────────────────────────────────────
   const renderForm = () => (
@@ -746,7 +769,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
         </div>
 
         <div>
-          <label className="mb-1 block text-[11px] font-medium text-zinc-600">Consignment Name <span className="text-red-500">*</span></label>
+          <label className="mb-1 block text-[11px] font-medium text-zinc-600">Consignee Name <span className="text-red-500">*</span></label>
           <input value={form.consignmentName} onChange={(e) => { setForm({ ...form, consignmentName: e.target.value }); clearError("consignmentName"); }} className={fieldClass("consignmentName")} />
           {errors.consignmentName && <p className="mt-1 text-[11px] text-red-500">{errors.consignmentName}</p>}
         </div>
@@ -1088,80 +1111,100 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-zinc-600">Total Expenses</label>
-            <div className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
-              <input
-                type="number"
-                value={totalExpensesAmount}
-                readOnly
-                className={`${currencyInputClass("totalExpenses")} bg-zinc-100 cursor-not-allowed`}
+        <div className="mt-4">
+          <label className="mb-1 block text-[11px] font-medium text-zinc-600">
+            Debit Note
+          </label>
+          <MultiDocumentFileUpload
+            files={debitFiles}
+            existingFiles={existingDebitDocs}
+            onFilesAdd={(added) => setDebitFiles((prev) => [...prev, ...added])}
+            onFileRemove={(index) =>
+              setDebitFiles((prev) => prev.filter((_, i) => i !== index))
+            }
+            onExistingRemove={(index) =>
+              setExistingDebitDocs((prev) => prev.filter((_, i) => i !== index))
+            }
+          />
+        </div>
+
+        <div className="mt-2 rounded-xl border border-zinc-200 bg-zinc-50/60 p-4">
+          <p className="mb-3 text-xs font-semibold text-zinc-800">Financial Summary</p>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-zinc-600">Total Expenses</label>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
+                <input
+                  type="number"
+                  value={totalExpensesAmount}
+                  readOnly
+                  className={`${currencyInputClass("totalExpenses")} h-9 w-full bg-zinc-100 cursor-not-allowed`}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-zinc-600">Billed Amount</label>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
+                <input
+                  type="number"
+                  value={form.billedAmount ?? ""}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      billedAmount: e.target.value === "" ? undefined : Number(e.target.value),
+                    })
+                  }
+                  className={`${currencyInputClass("billedAmount")} h-9 w-full`}
+                />
+              </div>
+              <DocumentFileUpload
+                file={billedAmountFile}
+                existingFile={existingBilledAmountDoc}
+                onFileChange={(f) => {
+                  setBilledAmountFile(f);
+                  if (f) setExistingBilledAmountDoc(undefined);
+                }}
+                onRemoveExisting={() => setExistingBilledAmountDoc(undefined)}
               />
             </div>
-          </div>
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-zinc-600">Billed Amount</label>
-            <div className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
-              <input
-                type="number"
-                value={form.billedAmount ?? ""}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    billedAmount: e.target.value === "" ? undefined : Number(e.target.value),
-                  })
-                }
-                className={currencyInputClass("billedAmount")}
-              />
+
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-zinc-600">Profit / Loss</label>
+              <div className="flex h-9 items-center">
+                <ProfitLossChip amount={profitLossAmount} />
+              </div>
             </div>
-            <DocumentFileUpload
-              file={billedAmountFile}
-              existingFile={existingBilledAmountDoc}
-              onFileChange={(f) => {
-                setBilledAmountFile(f);
-                if (f) setExistingBilledAmountDoc(undefined);
-              }}
-              onRemoveExisting={() => setExistingBilledAmountDoc(undefined)}
-            />
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-zinc-600">Credit Note</label>
-            <div className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
-              <input
-                type="number"
-                value={form.creditNote ?? ""}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    creditNote: e.target.value === "" ? undefined : Number(e.target.value),
-                  })
-                }
-                className={currencyInputClass("creditNote")}
-              />
-            </div>
-            <DocumentFileUpload
-              file={creditNoteFile}
-              existingFile={existingCreditNoteDoc}
-              onFileChange={(f) => {
-                setCreditNoteFile(f);
-                if (f) setExistingCreditNoteDoc(undefined);
-              }}
-              onRemoveExisting={() => setExistingCreditNoteDoc(undefined)}
+        <div>
+          <label className="mb-1 block text-[11px] font-medium text-zinc-600">Credit Note</label>
+          <div className="relative max-w-sm">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
+            <input
+              type="number"
+              value={form.creditNote ?? ""}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  creditNote: e.target.value === "" ? undefined : Number(e.target.value),
+                })
+              }
+              className={`${currencyInputClass("creditNote")} h-9 w-full`}
             />
           </div>
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-zinc-600">Profit / Loss</label>
-            <div className="mt-1">
-              <ProfitLossChip amount={profitLossAmount} />
-            </div>
-          </div>
+          <DocumentFileUpload
+            file={creditNoteFile}
+            existingFile={existingCreditNoteDoc}
+            onFileChange={(f) => {
+              setCreditNoteFile(f);
+              if (f) setExistingCreditNoteDoc(undefined);
+            }}
+            onRemoveExisting={() => setExistingCreditNoteDoc(undefined)}
+          />
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
@@ -1441,6 +1484,25 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
                   )}
                 </div>
               </div>
+
+              <div className="col-span-2">
+                <div className="text-[11px] uppercase tracking-wider text-zinc-500">
+                  Debit Note
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(selected.debitDocuments ?? []).length === 0 ? (
+                    <span className="text-sm text-zinc-500">—</span>
+                  ) : (
+                    selected.debitDocuments?.map((doc, index) => (
+                      <DocumentFileChip
+                        key={`${doc.url}-${index}`}
+                        name={doc.name}
+                        onDownload={() => window.open(doc.url, "_blank")}
+                      />
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
           </section>
 
@@ -1465,6 +1527,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
           </section>
         </div>
       )}
+      <div className="h-5" />
       {selected && (
         <WorkflowTimeline
           selected={selected}
@@ -1665,31 +1728,45 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
             ))}
           </div>
 
-          {(activeStatus || activeCard) && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-zinc-500">
-                Showing:
-                <span className="ml-1 font-medium text-zinc-800">
-                  {activeStatus
-                    ? STATUS_CHIPS.find((c) => c.value === activeStatus)?.label ??
-                      activeStatus.charAt(0).toUpperCase() + activeStatus.slice(1)
-                    : summaryCards.find((c) => c.key === activeCard)?.label}
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={`${sortKey}:${sortDir}`}
+              onChange={(e) => handleSortChange(e.target.value)}
+              className="rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-[11px] outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+            >
+              {FREIGHT_SORT_DROPDOWN_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  Sort: {option.label}
+                </option>
+              ))}
+            </select>
+
+            {(activeStatus || activeCard) && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-500">
+                  Showing:
+                  <span className="ml-1 font-medium text-zinc-800">
+                    {activeStatus
+                      ? STATUS_CHIPS.find((c) => c.value === activeStatus)?.label ??
+                        activeStatus.charAt(0).toUpperCase() + activeStatus.slice(1)
+                      : summaryCards.find((c) => c.key === activeCard)?.label}
+                  </span>
                 </span>
-              </span>
-              <button
-                onClick={() => {
-                  if (activeStatus) {
-                    clearStatusFilter();
-                  } else {
-                    setActiveCard(null);
-                  }
-                }}
-                className="text-[11px] text-zinc-400 underline hover:text-zinc-700"
-              >
-                Clear
-              </button>
-            </div>
-          )}
+                <button
+                  onClick={() => {
+                    if (activeStatus) {
+                      clearStatusFilter();
+                    } else {
+                      setActiveCard(null);
+                    }
+                  }}
+                  className="text-[11px] text-zinc-400 underline hover:text-zinc-700"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         {/* Table */}
         <div className="mt-6 overflow-hidden rounded-2xl border border-zinc-200">
@@ -1869,6 +1946,62 @@ function FieldWithUpload({
         )}
       </div>
       {error && <p className="mt-1 text-[11px] text-red-500">{error}</p>}
+    </div>
+  );
+}
+
+function MultiDocumentFileUpload({
+  files,
+  existingFiles,
+  onFilesAdd,
+  onFileRemove,
+  onExistingRemove,
+}: {
+  files: File[];
+  existingFiles: FreightForwardDocument[];
+  onFilesAdd: (files: File[]) => void;
+  onFileRemove: (index: number) => void;
+  onExistingRemove: (index: number) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] text-zinc-600 hover:bg-zinc-50"
+      >
+        <Paperclip size={14} />
+        Upload files
+      </button>
+      <input
+        ref={inputRef}
+        hidden
+        multiple
+        type="file"
+        onChange={(e) => {
+          if (e.target.files?.length) onFilesAdd(Array.from(e.target.files));
+          e.target.value = "";
+        }}
+      />
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {existingFiles.map((doc, index) => (
+          <DocumentFileChip
+            key={`existing-${doc.url}-${index}`}
+            name={doc.name}
+            onDownload={() => window.open(doc.url, "_blank")}
+            onRemove={() => onExistingRemove(index)}
+          />
+        ))}
+        {files.map((file, index) => (
+          <DocumentFileChip
+            key={`new-${file.name}-${index}`}
+            name={file.name}
+            onRemove={() => onFileRemove(index)}
+          />
+        ))}
+      </div>
     </div>
   );
 }

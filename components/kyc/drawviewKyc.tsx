@@ -3,6 +3,7 @@
 import { X, Download } from "lucide-react";
 import { Kyc, KycDocument } from "@/types/kyc";
 import { normalizeDocArray } from "@/lib/kyc/normalizeKyc";
+import { isGstActive } from "@/lib/gst/parseGstStatus";
 
 interface Props {
   open: boolean;
@@ -39,7 +40,14 @@ export default function KycViewDrawer({ open, onClose, kyc }: Props) {
           </div>
 
           <div className="mt-5 space-y-5">
-            <FieldWithDoc label="GSTIN" value={kyc.gstin} doc={kyc.gstinDocument} />
+            <div>
+              <FieldWithDoc label="GSTIN" value={kyc.gstin} doc={kyc.gstinDocument} />
+              {kyc.gstStatus && (
+                <div className="mt-2 flex items-center gap-2">
+                  <GstStatusChip status={kyc.gstStatus} />
+                </div>
+              )}
+            </div>
             <InfoBlock title="Billing Address" value={kyc.billingAddress} full />
 
             <div>
@@ -165,6 +173,26 @@ function FieldWithDoc({
         </p>
       )}
     </div>
+  );
+}
+
+function GstStatusChip({ status }: { status: string }) {
+  const active = isGstActive(status);
+  const isActive = active === true;
+  const isInactive = active === false;
+
+  return (
+    <span
+      className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
+        isActive
+          ? "bg-emerald-100 text-emerald-800"
+          : isInactive
+            ? "bg-red-100 text-red-700"
+            : "bg-zinc-100 text-zinc-700"
+      }`}
+    >
+      {isActive ? "GST Active" : isInactive ? "GST Inactive" : status}
+    </span>
   );
 }
 

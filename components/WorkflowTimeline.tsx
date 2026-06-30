@@ -1,9 +1,11 @@
+"use client";
+
 import { useEffect, useMemo, useState } from "react";
 import {
   canUpdateToStatus,
-  getJumpOptions,
   getMissingPrerequisites,
   getNextAllowedStatus,
+  getStatusDropdownOptions,
   getVisitedStatuses,
   statusLabel,
   WORKFLOW_STEPS,
@@ -65,14 +67,16 @@ export default function WorkflowTimeline({
   currentUserRole,
   onComplete,
 }: Props) {
-  const [jumpStatus, setJumpStatus] = useState<FreightForwardStatus>(selected.status);
-  const [updating, setUpdating] = useState(false);
-  const [jumpError, setJumpError] = useState("");
-
-  const jumpOptions = useMemo(
-    () => getJumpOptions(currentUserRole, selected.statusTimeline),
+  const dropdownOptions = useMemo(
+    () => getStatusDropdownOptions(currentUserRole, selected.statusTimeline),
     [currentUserRole, selected.statusTimeline]
   );
+
+  const [jumpStatus, setJumpStatus] = useState<FreightForwardStatus>(
+    dropdownOptions.find((option) => !option.disabled)?.value ?? selected.status
+  );
+  const [updating, setUpdating] = useState(false);
+  const [jumpError, setJumpError] = useState("");
 
   const missingForJump = useMemo(
     () => getMissingPrerequisites(jumpStatus, selected.statusTimeline),
@@ -80,15 +84,27 @@ export default function WorkflowTimeline({
   );
 
   useEffect(() => {
-    if (jumpOptions.length === 0) return;
-    if (!jumpOptions.includes(jumpStatus)) {
-      setJumpStatus(jumpOptions[0]);
+    const firstEnabled = dropdownOptions.find((option) => !option.disabled);
+    if (firstEnabled) {
+      setJumpStatus(firstEnabled.value);
+      return;
     }
-  }, [jumpOptions, jumpStatus]);
+    if (dropdownOptions.length > 0) {
+      setJumpStatus(dropdownOptions[0].value);
+    }
+  }, [dropdownOptions]);
 
   const canJumpStatus =
-    (currentUserRole === "admin" || currentUserRole === "accountant") &&
-    jumpOptions.length > 0;
+    currentUserRole === "admin" ||
+    currentUserRole === "accountant" ||
+    currentUserRole === "user";
+
+  const selectedOption = dropdownOptions.find((option) => option.value === jumpStatus);
+  const canSubmitJump =
+    !!selectedOption &&
+    !selectedOption.disabled &&
+    jumpStatus !== selected.status &&
+    canUpdateToStatus(jumpStatus, selected.statusTimeline);
 
   const handleJump = async () => {
     setJumpError("");
@@ -123,7 +139,7 @@ export default function WorkflowTimeline({
     <div className="mb-6 rounded-xl border bg-white p-5">
       <h3 className="mb-5 text-base font-semibold">Workflow Timeline</h3>
 
-      {canJumpStatus && (
+      {canJumpStatus && dropdownOptions.length > 0 && (
         <div className="mb-5 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
           <p className="mb-2 text-xs font-medium text-zinc-600">Update status</p>
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -135,36 +151,33 @@ export default function WorkflowTimeline({
               }}
               className="flex-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
             >
-              {jumpOptions.map((status) => (
-                <option key={status} value={status}>
-                  {statusLabel(status)}
+              {dropdownOptions.map((option) => (
+                <option key={option.value} value={option.value} disabled={option.disabled}>
+                  {option.label}
+                  {option.disabled ? " (unavailable)" : ""}
                 </option>
               ))}
             </select>
             <button
               type="button"
               onClick={handleJump}
-              disabled={
-                updating ||
-                !jumpStatus ||
-                !canUpdateToStatus(jumpStatus, selected.statusTimeline)
-              }
+              disabled={updating || !canSubmitJump}
               className="rounded-xl bg-black px-4 py-2 text-xs font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40"
             >
-              {updating ? "Updating..." : "Apply Status"}
+              {updating ? "Updating..." : "Complete Status"}
             </button>
           </div>
           {jumpError && (
             <p className="mt-2 text-[11px] text-red-500">{jumpError}</p>
           )}
-          {missingForJump.length > 0 && jumpStatus === "completed" && !jumpError && (
-            <p className="mt-2 text-[11px] text-amber-600">
-              Complete first: {missingForJump.map(statusLabel).join(", ")}
-            </p>
-          )}
-          <p className="mt-2 text-[11px] text-zinc-500">
-            Any status can be updated freely. Completed requires all previous statuses first.
-          </p>
+          {selectedOption?.disabled &&
+            jumpStatus === "completed" &&
+            missingForJump.length > 0 &&
+            !jumpError && (
+              <p className="mt-2 text-[11px] text-amber-600">
+                Complete all stages first: {missingForJump.map(statusLabel).join(", ")}
+              </p>
+            )}
         </div>
       )}
 

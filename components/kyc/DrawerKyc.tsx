@@ -8,8 +8,10 @@ import { updateKyc } from "@/lib/kyc/updateKyc";
 import { uploadDocument } from "@/lib/kyc/uploadDocument";
 import { checkDuplicateGstin } from "@/lib/gst/checkDuplicateGstin";
 import { getGstinDetails } from "@/lib/gst/getGstinDetails";
+import { parseGstActiveStatus, isGstActive } from "@/lib/gst/parseGstStatus";
 import { generateFileNo } from "@/lib/kyc/generateFileNo";
 import { normalizeDocArray } from "@/lib/kyc/normalizeKyc";
+import { buildKycFirestoreData } from "@/lib/kyc/buildKycPayload";
 
 interface Props {
   open: boolean;
@@ -26,6 +28,7 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
   const [errors, setErrors] = useState<FormErrors>({});
 
   const [gstin, setGstin] = useState("");
+  const [gstStatus, setGstStatus] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState("");
   const [billingAddress, setBillingAddress] = useState("");
   const [branchAddresses, setBranchAddresses] = useState<string[]>([""]);
@@ -63,6 +66,7 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
     }
 
     setGstin(selected.gstin);
+    setGstStatus(selected.gstStatus ?? null);
     setCompanyName(selected.companyName);
     setBillingAddress(selected.billingAddress);
     setBranchAddresses(
@@ -135,6 +139,7 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
       const data = response.data;
       setCompanyName(data.tradeNam || data.lgnm);
       setBillingAddress(data.pradr?.adr ?? "");
+      setGstStatus(parseGstActiveStatus(data as Record<string, unknown>));
 
       const branches = Array.isArray(data.adadr)
         ? data.adadr.map((item: { adr?: string }) => item.adr ?? "").filter(Boolean)
@@ -158,31 +163,14 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
     if (!gstin.trim()) next.gstin = "GSTIN is required.";
     else if (gstin.length !== 15) next.gstin = "GSTIN must be 15 characters.";
 
-    if (!existingGstinDoc && !gstinFile) next.gstinDocument = "GSTIN document is required.";
     if (!companyName.trim()) next.companyName = "Company name is required.";
     if (!billingAddress.trim()) next.billingAddress = "Billing address is required.";
-
-    const validBranches = branchAddresses.map((b) => b.trim()).filter(Boolean);
-    if (!validBranches.length) next.branchAddresses = "At least one branch address is required.";
-
-    if (!pan.trim()) next.pan = "PAN is required.";
-    if (!existingPanDoc && !panFile) next.panDocument = "PAN document is required.";
-    if (!iec.trim()) next.iec = "IEC is required.";
-    if (!existingIecDoc && !iecFile) next.iecDocument = "IEC document is required.";
-    if (!adCode.trim()) next.adCode = "AD Code is required.";
-    if (!existingAdCodeDoc && !adCodeFile) next.adCodeDocument = "AD Code document is required.";
-    if (!existingLoiDoc && !loiFile) next.loiDocument = "LOI document is required.";
 
     if (!email.trim()) next.email = "Email is required.";
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       next.email = "Enter a valid email address.";
 
     if (!phone.trim()) next.phone = "Phone is required.";
-
-    if (!existingAadharDocs.length && !directorAadharFiles.length)
-      next.directorAadhar = "At least one Director Aadhaar document is required.";
-    if (!existingPanDocs.length && !directorPanFiles.length)
-      next.directorPan = "At least one Director PAN document is required.";
 
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -223,9 +211,10 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
 
       const fileNo = selected?.fileNo ?? (await generateFileNo());
 
-      const payload = {
+      const payload = buildKycFirestoreData({
         fileNo,
         gstin,
+        gstStatus,
         gstinDocument,
         companyName,
         billingAddress,
@@ -244,7 +233,7 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
         directorAadhar: [...existingAadharDocs, ...newAadhar],
         directorPan: [...existingPanDocs, ...newPan],
         supportingDocuments: [...existingSupportingDocs, ...newSupporting],
-      };
+      });
 
       if (selected?.id) {
         await updateKyc(selected.id, payload);
@@ -255,7 +244,8 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
       resetForm();
       onSaved();
       onClose();
-    } catch {
+    } catch (error) {
+      console.error("Save KYC error:", error);
       setErrors((e) => ({ ...e, form: "Unable to save KYC. Please try again." }));
     } finally {
       setLoading(false);
@@ -264,6 +254,7 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
 
   const resetForm = () => {
     setGstin("");
+    setGstStatus(null);
     setCompanyName("");
     setBillingAddress("");
     setBranchAddresses([""]);
@@ -321,7 +312,7 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
 
           <FieldWithFile
             label="GSTIN"
-            required
+            valueRequired
             value={gstin}
             onChange={(v) => {
               setGstin(v.toUpperCase());
@@ -335,11 +326,17 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
             onFileChange={(f) => {
               setGstinFile(f);
               if (f) setExistingGstinDoc(undefined);
-              clearError("gstinDocument");
             }}
             onRemoveExisting={() => setExistingGstinDoc(undefined)}
-            error={errors.gstin || errors.gstinDocument}
+            error={errors.gstin}
           />
+
+          {gstStatus && (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-zinc-500">GST Status</span>
+              <GstStatusChip status={gstStatus} />
+            </div>
+          )}
 
           <Field label="Company Name" required error={errors.companyName}>
             <input
@@ -364,7 +361,8 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
             />
           </Field>
 
-          <Field label="Branch Address" required error={errors.branchAddresses}>
+          <Field label="Branch Address" error={errors.branchAddresses}>
+            <p className="mb-2 text-[10px] text-zinc-400">Optional</p>
             <div className="space-y-2">
               {branchAddresses.map((addr, index) => (
                 <div key={index} className="flex gap-2">
@@ -407,7 +405,6 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
           <div className="grid grid-cols-2 gap-4">
             <FieldWithFile
               label="PAN"
-              required
               value={pan}
               onChange={(v) => {
                 setPan(v.toUpperCase());
@@ -418,15 +415,13 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
               onFileChange={(f) => {
                 setPanFile(f);
                 if (f) setExistingPanDoc(undefined);
-                clearError("panDocument");
               }}
               onRemoveExisting={() => setExistingPanDoc(undefined)}
-              error={errors.pan || errors.panDocument}
+              error={errors.pan}
             />
 
             <FieldWithFile
               label="IEC"
-              required
               value={iec}
               onChange={(v) => {
                 setIec(v);
@@ -437,16 +432,14 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
               onFileChange={(f) => {
                 setIecFile(f);
                 if (f) setExistingIecDoc(undefined);
-                clearError("iecDocument");
               }}
               onRemoveExisting={() => setExistingIecDoc(undefined)}
-              error={errors.iec || errors.iecDocument}
+              error={errors.iec}
             />
           </div>
 
           <FieldWithFile
             label="AD Code"
-            required
             value={adCode}
             onChange={(v) => {
               setAdCode(v);
@@ -457,10 +450,9 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
             onFileChange={(f) => {
               setAdCodeFile(f);
               if (f) setExistingAdCodeDoc(undefined);
-              clearError("adCodeDocument");
             }}
             onRemoveExisting={() => setExistingAdCodeDoc(undefined)}
-            error={errors.adCode || errors.adCodeDocument}
+            error={errors.adCode}
           />
 
           <div className="grid grid-cols-2 gap-4">
@@ -489,7 +481,6 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
 
           <SingleFileField
             label="LOI Document"
-            required
             file={loiFile}
             existingFile={existingLoiDoc}
             onFileChange={(f) => {
@@ -527,7 +518,6 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
 
           <MultiFileField
             label="Director Aadhaar"
-            required
             files={directorAadharFiles}
             existingFiles={existingAadharDocs}
             onFilesAdd={(added) => {
@@ -545,7 +535,6 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
 
           <MultiFileField
             label="Director PAN"
-            required
             files={directorPanFiles}
             existingFiles={existingPanDocs}
             onFilesAdd={(added) => {
@@ -645,7 +634,7 @@ function FileChip({
 
 function FieldWithFile({
   label,
-  required,
+  valueRequired,
   value,
   onChange,
   maxLength,
@@ -657,7 +646,7 @@ function FieldWithFile({
   error,
 }: {
   label: string;
-  required?: boolean;
+  valueRequired?: boolean;
   value: string;
   onChange: (v: string) => void;
   maxLength?: number;
@@ -672,37 +661,41 @@ function FieldWithFile({
   const hasError = !!error;
 
   return (
-    <Field label={label} required={required} error={error}>
-      <div className="relative flex gap-2">
-        <input
-          value={value}
-          maxLength={maxLength}
-          onChange={(e) => onChange(e.target.value)}
-          className={`flex-1 rounded-xl border px-3 py-2 text-xs outline-none transition focus:ring-2 ${
-            hasError
-              ? "border-red-400 focus:ring-red-100"
-              : "border-zinc-200 focus:border-zinc-500 focus:ring-zinc-200"
-          }`}
-        />
-        {loading && (
-          <div className="absolute right-12 top-1/2 -translate-y-1/2">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900" />
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          className="shrink-0 rounded-xl border border-zinc-200 px-2.5 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"
-        >
-          <Paperclip size={16} />
-        </button>
-        <input
-          ref={inputRef}
-          hidden
-          type="file"
-          onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
-        />
-      </div>
+    <div>
+      <Field label={label} required={valueRequired} error={error}>
+        <div className="relative flex gap-2">
+          <input
+            value={value}
+            maxLength={maxLength}
+            onChange={(e) => onChange(e.target.value)}
+            className={`flex-1 rounded-xl border px-3 py-2 text-xs outline-none transition focus:ring-2 ${
+              hasError
+                ? "border-red-400 focus:ring-red-100"
+                : "border-zinc-200 focus:border-zinc-500 focus:ring-zinc-200"
+            }`}
+          />
+          {loading && (
+            <div className="absolute right-12 top-1/2 -translate-y-1/2">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900" />
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className="shrink-0 rounded-xl border border-zinc-200 px-2.5 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"
+            title="Upload document (optional)"
+          >
+            <Paperclip size={16} />
+          </button>
+          <input
+            ref={inputRef}
+            hidden
+            type="file"
+            onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
+          />
+        </div>
+      </Field>
+      <p className="mt-1 text-[10px] text-zinc-400">Document upload is optional</p>
       <div className="mt-2 flex flex-wrap gap-1.5">
         {file && (
           <FileChip name={file.name} onRemove={() => onFileChange(null)} />
@@ -715,7 +708,7 @@ function FieldWithFile({
           />
         )}
       </div>
-    </Field>
+    </div>
   );
 }
 
@@ -769,6 +762,26 @@ function SingleFileField({
         )}
       </div>
     </Field>
+  );
+}
+
+function GstStatusChip({ status }: { status: string }) {
+  const active = isGstActive(status);
+  const isActive = active === true;
+  const isInactive = active === false;
+
+  return (
+    <span
+      className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
+        isActive
+          ? "bg-emerald-100 text-emerald-800"
+          : isInactive
+            ? "bg-red-100 text-red-700"
+            : "bg-zinc-100 text-zinc-700"
+      }`}
+    >
+      {isActive ? "GST Active" : isInactive ? "GST Inactive" : status}
+    </span>
   );
 }
 

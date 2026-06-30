@@ -60,6 +60,8 @@ export interface FreightForward {
   oceanFreight?: number;
   exWorks?: ExWorksItem[];
   otherExpenses?: ExpenseItem[];
+  debit?: number;
+  debitDocuments?: FreightForwardDocument[];
   totalExpenses?: number;
   billedAmount?: number;
   billedAmountUrl?: FreightForwardDocument;
@@ -71,6 +73,14 @@ export interface FreightForward {
   paymentDate?: string;
   paymentDateUrl?: FreightForwardDocument;
   status: FreightForwardStatus;
+  /** Normalized ETA (YYYY-MM-DD) for server-side sorting */
+  etaSort?: string;
+  pendingMomentum?: boolean;
+  pendingSplitManifest?: boolean;
+  pendingBilling?: boolean;
+  pendingReceivable?: boolean;
+  pendingPayable?: boolean;
+  workflowCompleted?: boolean;
   createdBy?: string;
   updatedBy?: string;
   createdAt?: Date;

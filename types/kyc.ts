@@ -8,6 +8,7 @@ export interface Kyc {
   fileNo?: string;
 
   gstin: string;
+  gstStatus?: string;
   gstinDocument?: KycDocument;
   companyName: string;
 

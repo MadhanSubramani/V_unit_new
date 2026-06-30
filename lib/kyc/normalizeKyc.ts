@@ -17,6 +17,7 @@ export function normalizeKyc(raw: Record<string, unknown> & { id?: string }): Ky
     id: raw.id,
     fileNo: (raw.fileNo as string) ?? "",
     gstin: (raw.gstin as string) ?? "",
+    gstStatus: (raw.gstStatus as string) ?? undefined,
     gstinDocument: raw.gstinDocument as KycDocument | undefined,
     companyName: (raw.companyName as string) ?? "",
     billingAddress: (raw.billingAddress as string) ?? "",

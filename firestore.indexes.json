@@ -1,0 +1,132 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "etaSort", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "etaSort", "order": "DESCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "pendingBilling", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "pendingBilling", "order": "ASCENDING" },
+        { "fieldPath": "etaSort", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "pendingMomentum", "order": "ASCENDING" },
+        { "fieldPath": "etaSort", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "pendingPayable", "order": "ASCENDING" },
+        { "fieldPath": "etaSort", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "pendingReceivable", "order": "ASCENDING" },
+        { "fieldPath": "etaSort", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "pendingSplitManifest", "order": "ASCENDING" },
+        { "fieldPath": "etaSort", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "etaSort", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "workflowCompleted", "order": "ASCENDING" },
+        { "fieldPath": "etaSort", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "workflowCompleted", "order": "ASCENDING" },
+        { "fieldPath": "etaSort", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "eta", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "eta", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "createdAt", "order": "DESCENDING" },
+        { "fieldPath": "status", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
