@@ -52,6 +52,7 @@ export function exportFreightForwardToExcel(
       "Profit / Loss": profitLoss > 0 ? "Profit" : "Loss",
       "Payment Type": item.paymentType ?? "",
       "Payment Date": item.paymentDate ?? "",
+      "Payment Date URL": docUrl(item.paymentDateUrl),
       Status: item.status ?? "",
       "Created By": item.createdBy ?? "",
       "Updated By": item.updatedBy ?? "",

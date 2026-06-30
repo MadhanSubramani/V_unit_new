@@ -117,14 +117,6 @@ export async function getFreightForwardPage({
     constraints.push(where("status", "==", "in_process"));
   } else if (activeCard === "completed") {
     constraints.push(where("status", "==", "completed"));
-  } else if (activeCard === "next7Days") {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const next7 = new Date(today);
-    next7.setDate(today.getDate() + 7);
-    constraints.push(where("status", "!=", "completed"));
-    constraints.push(where("eta", ">=", today.toISOString().slice(0, 10)));
-    constraints.push(where("eta", "<=", next7.toISOString().slice(0, 10)));
   }
 
   // ── ETA date range (from the date picker) ────────────────────────────
@@ -185,15 +177,6 @@ export async function getFreightForwardSearch({
   const constraints: QueryConstraint[] = [];
 
   if (activeCard === "inProcess") constraints.push(where("status", "==", "in_process"));
-  else if (activeCard === "next7Days") {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const next7 = new Date(today);
-    next7.setDate(today.getDate() + 7);
-    constraints.push(where("status", "!=", "completed"));
-    constraints.push(where("eta", ">=", today.toISOString().slice(0, 10)));
-    constraints.push(where("eta", "<=", next7.toISOString().slice(0, 10)));
-  }
 
   if (etaFrom) constraints.push(where("eta", ">=", etaFrom));
   if (etaTo) constraints.push(where("eta", "<=", etaTo));

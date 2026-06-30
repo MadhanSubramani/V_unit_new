@@ -48,6 +48,7 @@ export function canUpdateToStatus(
   target: FreightForwardStatus,
   timeline?: StatusTimeline[]
 ) {
+  if (target !== "completed") return true;
   return getMissingPrerequisites(target, timeline).length === 0;
 }
 

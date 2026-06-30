@@ -69,6 +69,7 @@ export interface FreightForward {
   buildAmount?: number;
   paymentType?: string;
   paymentDate?: string;
+  paymentDateUrl?: FreightForwardDocument;
   status: FreightForwardStatus;
   createdBy?: string;
   updatedBy?: string;

@@ -10,6 +10,32 @@ export type BalanceCardFilter =
   | "payable"
   | "completed";
 
+function formatLocalDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function getNext7DayEtaRange() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const end = new Date(today);
+  end.setDate(end.getDate() + 7);
+  return {
+    from: formatLocalDate(today),
+    to: formatLocalDate(end),
+  };
+}
+
+/** True when ETA (YYYY-MM-DD) falls from today through the next 7 days (local time). */
+export function isEtaInNext7Days(eta?: string | null) {
+  if (!eta?.trim()) return false;
+  const etaDate = eta.trim().slice(0, 10);
+  const { from, to } = getNext7DayEtaRange();
+  return etaDate >= from && etaDate <= to;
+}
+
 export function hasStatusInTimeline(
   item: FreightForward,
   status: FreightForwardStatus
@@ -44,19 +70,10 @@ export function matchesBalanceCard(
       return isStatusPending(item, "payable");
     case "completed":
       return hasStatusInTimeline(item, "completed");
-    case "next7Days": {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const next7 = new Date(today);
-      next7.setDate(today.getDate() + 7);
-      const eta = item.eta;
-      if (!eta) return false;
+    case "next7Days":
       return (
-        isStatusPending(item, "completed") &&
-        eta >= today.toISOString().slice(0, 10) &&
-        eta <= next7.toISOString().slice(0, 10)
+        isEtaInNext7Days(item.eta) && !hasStatusInTimeline(item, "completed")
       );
-    }
     default:
       return true;
   }
@@ -84,5 +101,5 @@ export function usesBalanceCardFilter(
   activeCard?: BalanceCardFilter | null
 ): activeCard is BalanceCardFilter {
   if (!activeCard) return false;
-  return activeCard !== "inProcess" && activeCard !== "next7Days";
+  return activeCard !== "inProcess";
 }

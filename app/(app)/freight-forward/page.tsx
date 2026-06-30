@@ -273,10 +273,12 @@ export default function FreightForwardPage() {
   const [hblFile, setHblFile] = useState<File | null>(null);
   const [billedAmountFile, setBilledAmountFile] = useState<File | null>(null);
   const [creditNoteFile, setCreditNoteFile] = useState<File | null>(null);
+  const [paymentDateFile, setPaymentDateFile] = useState<File | null>(null);
   const [existingMblDoc, setExistingMblDoc] = useState<FreightForwardDocument | undefined>();
   const [existingHblDoc, setExistingHblDoc] = useState<FreightForwardDocument | undefined>();
   const [existingBilledAmountDoc, setExistingBilledAmountDoc] = useState<FreightForwardDocument | undefined>();
   const [existingCreditNoteDoc, setExistingCreditNoteDoc] = useState<FreightForwardDocument | undefined>();
+  const [existingPaymentDateDoc, setExistingPaymentDateDoc] = useState<FreightForwardDocument | undefined>();
 
   // ── Delete ────────────────────────────────────────────────────────────────
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -522,10 +524,12 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
     setHblFile(null);
     setBilledAmountFile(null);
     setCreditNoteFile(null);
+    setPaymentDateFile(null);
     setExistingMblDoc(undefined);
     setExistingHblDoc(undefined);
     setExistingBilledAmountDoc(undefined);
     setExistingCreditNoteDoc(undefined);
+    setExistingPaymentDateDoc(undefined);
   };
 
   const loadDocumentFiles = (item: FreightForward) => {
@@ -533,10 +537,12 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
     setHblFile(null);
     setBilledAmountFile(null);
     setCreditNoteFile(null);
+    setPaymentDateFile(null);
     setExistingMblDoc(item.mblUrl);
     setExistingHblDoc(item.hblUrl);
     setExistingBilledAmountDoc(item.billedAmountUrl);
     setExistingCreditNoteDoc(item.creditNoteUrl);
+    setExistingPaymentDateDoc(item.paymentDateUrl);
   };
 
   const openAdd = async () => {
@@ -611,11 +617,12 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
         return uploadDocument(file, folder);
       };
 
-      const [mblUrl, hblUrl, billedAmountUrl, creditNoteUrl] = await Promise.all([
+      const [mblUrl, hblUrl, billedAmountUrl, creditNoteUrl, paymentDateUrl] = await Promise.all([
         uploadIfNeeded(mblFile, "freight-forward/mbl", existingMblDoc),
         uploadIfNeeded(hblFile, "freight-forward/hbl", existingHblDoc),
         uploadIfNeeded(billedAmountFile, "freight-forward/billed-amount", existingBilledAmountDoc),
         uploadIfNeeded(creditNoteFile, "freight-forward/credit-note", existingCreditNoteDoc),
+        uploadIfNeeded(paymentDateFile, "freight-forward/payment-date", existingPaymentDateDoc),
       ]);
 
       const payload = removeUndefined({
@@ -624,6 +631,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
         hblUrl,
         billedAmountUrl,
         creditNoteUrl,
+        paymentDateUrl,
       });
 
       if (selected?.id) {
@@ -1169,6 +1177,15 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
         <div>
           <label className="mb-1 block text-[11px] font-medium text-zinc-600">Payment Date</label>
           <input type="date" value={form.paymentDate ?? ""} onChange={(e) => setForm({ ...form, paymentDate: e.target.value })} className={fieldClass("paymentDate")} />
+          <DocumentFileUpload
+            file={paymentDateFile}
+            existingFile={existingPaymentDateDoc}
+            onFileChange={(f) => {
+              setPaymentDateFile(f);
+              if (f) setExistingPaymentDateDoc(undefined);
+            }}
+            onRemoveExisting={() => setExistingPaymentDateDoc(undefined)}
+          />
         </div>
 
       </div>
@@ -1381,6 +1398,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
                 label="Payment Date"
                 value={formatDate(selected.paymentDate)}
               />
+              <DocInfo label="Payment Date Document" doc={selected.paymentDateUrl} />
 
               <div className="col-span-2">
                 <div className="text-[11px] uppercase tracking-wider text-zinc-500">

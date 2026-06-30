@@ -157,13 +157,13 @@ export default function WorkflowTimeline({
           {jumpError && (
             <p className="mt-2 text-[11px] text-red-500">{jumpError}</p>
           )}
-          {missingForJump.length > 0 && !jumpError && (
+          {missingForJump.length > 0 && jumpStatus === "completed" && !jumpError && (
             <p className="mt-2 text-[11px] text-amber-600">
               Complete first: {missingForJump.map(statusLabel).join(", ")}
             </p>
           )}
           <p className="mt-2 text-[11px] text-zinc-500">
-            Each status can be updated only after all previous statuses are completed.
+            Any status can be updated freely. Completed requires all previous statuses first.
           </p>
         </div>
       )}
