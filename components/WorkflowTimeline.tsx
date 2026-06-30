@@ -69,7 +69,23 @@ function getJumpOptions(
         ? ACCOUNTANT_STATUSES
         : [];
 
-  return baseOptions.filter((status) => !visited.has(status));
+  return baseOptions.filter(
+    (status) => status !== "in_process" && !visited.has(status)
+  );
+}
+
+function formatTimelineDate(value: unknown) {
+  if (!value) return "";
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "toDate" in value &&
+    typeof (value as { toDate: () => Date }).toDate === "function"
+  ) {
+    return (value as { toDate: () => Date }).toDate().toLocaleString();
+  }
+  if (value instanceof Date) return value.toLocaleString();
+  return String(value);
 }
 
 function getNextStatus(current: FreightForwardStatus): FreightForwardStatus | null {
@@ -236,14 +252,28 @@ export default function WorkflowTimeline({
                 )}
               </div>
 
-              {history && (
+              {step.key === "in_process" && (completed || current) && (
+                <>
+                  <p className="mt-2 text-xs text-zinc-500">
+                    Created by{" "}
+                    <span className="font-medium">
+                      {history?.updatedBy ?? selected.createdBy ?? "—"}
+                    </span>
+                  </p>
+                  <p className="text-xs text-zinc-400">
+                    {formatTimelineDate(history?.updatedAt ?? selected.createdAt)}
+                  </p>
+                </>
+              )}
+
+              {step.key !== "in_process" && history && (
                 <>
                   <p className="mt-2 text-xs text-zinc-500">
                     Updated by{" "}
                     <span className="font-medium">{history.updatedBy}</span>
                   </p>
                   <p className="text-xs text-zinc-400">
-                    {history.updatedAt?.toDate().toLocaleString()}
+                    {formatTimelineDate(history.updatedAt)}
                   </p>
                 </>
               )}

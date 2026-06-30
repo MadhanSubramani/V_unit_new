@@ -21,6 +21,13 @@ import {
 } from "firebase/firestore";
 import { FreightForward, FreightForwardFormData, FreightForwardStatus } from "@/types/freightForward";
 import { generateJobNumber } from "./generateJobNumber";
+import {
+  BalanceCardFilter,
+  computeBalanceCounts,
+  isStatusPending,
+  matchesBalanceCard,
+  usesBalanceCardFilter,
+} from "./statusBalance";
 
 const REF = () => collection(db, "freightForward");
 
@@ -30,61 +37,40 @@ function stripUndefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
   ) as Partial<T>;
 }
 
-// ── Card counts ────────────────────────────────────────────────────────────
-// Uses getCountFromServer so no documents are transferred — just integer counts.
-// Operational cards use pipeline balance (jobs not yet past that stage).
-export async function getFreightForwardCardCounts() {
+async function fetchAllFreightForward(etaFrom?: string, etaTo?: string) {
   const ref = REF();
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const next7 = new Date(today);
-  next7.setDate(today.getDate() + 7);
-
-  const [
-    inProcess,
-    momentum,
-    split_manifest,
-    billing,
-    receivable,
-    payable,
-    completed,
-    next7Days,
-  ] = await Promise.all([
-    getCountFromServer(query(ref, where("status", "==", "in_process"))),
-    getCountFromServer(query(ref, where("status", "==", "momentum"))),
-    getCountFromServer(
-      query(
-        ref,
-        where("status", "in", ["in_process", "momentum", "split_manifest"])
-      )
-    ),
-    getCountFromServer(query(ref, where("status", "==", "billing"))),
-    getCountFromServer(query(ref, where("status", "==", "receivable"))),
-    getCountFromServer(query(ref, where("status", "==", "payable"))),
-    getCountFromServer(query(ref, where("status", "==", "completed"))),
-    getCountFromServer(
-      query(
-        ref,
-        where("status", "!=", "completed"),
-        where("eta", ">=", today.toISOString().slice(0, 10)),
-        where("eta", "<=", next7.toISOString().slice(0, 10)),
-        orderBy("status"),
-        orderBy("eta")
-      )
-    ),
-  ]);
-
-  return {
-    inProcess: inProcess.data().count,
-    momentum: momentum.data().count,
-    split_manifest: split_manifest.data().count,
-    billing: billing.data().count,
-    receivable: receivable.data().count,
-    payable: payable.data().count,
-    completed: completed.data().count,
-    next7Days: next7Days.data().count,
-  };
+  const constraints: QueryConstraint[] = [];
+  if (etaFrom) constraints.push(where("eta", ">=", etaFrom));
+  if (etaTo) constraints.push(where("eta", "<=", etaTo));
+  const snap = await getDocs(query(ref, ...constraints, orderBy("createdAt", "desc")));
+  return snap.docs.map((d) => ({
+    id: d.id,
+    ...(d.data() as Omit<FreightForward, "id">),
+  }));
 }
+
+// ── Card counts ────────────────────────────────────────────────────────────
+// Counts reflect records that have not yet been updated to each workflow status.
+export async function getFreightForwardCardCounts() {
+  const records = await fetchAllFreightForward();
+  return computeBalanceCounts(records);
+}
+
+export async function getFreightForwardFilteredList({
+  activeCard,
+  etaFrom,
+  etaTo,
+}: {
+  activeCard?: BalanceCardFilter | null;
+  etaFrom?: string;
+  etaTo?: string;
+}) {
+  const records = await fetchAllFreightForward(etaFrom, etaTo);
+  if (!activeCard) return records;
+  return records.filter((item) => matchesBalanceCard(item, activeCard));
+}
+
+export { usesBalanceCardFilter };
 
 // ── Server-side filtered + paginated list ──────────────────────────────────
 export interface FreightForwardQueryOptions {
@@ -131,18 +117,6 @@ export async function getFreightForwardPage({
     constraints.push(where("status", "==", "in_process"));
   } else if (activeCard === "completed") {
     constraints.push(where("status", "==", "completed"));
-  } else if (activeCard === "momentum") {
-    constraints.push(where("status", "==", "momentum"));
-  } else if (activeCard === "split_manifest") {
-    constraints.push(
-      where("status", "in", ["in_process", "momentum", "split_manifest"])
-    );
-  } else if (activeCard === "billing") {
-    constraints.push(where("status", "==", "billing"));
-  } else if (activeCard === "receivable") {
-    constraints.push(where("status", "==", "receivable"));
-  } else if (activeCard === "payable") {
-    constraints.push(where("status", "==", "payable"));
   } else if (activeCard === "next7Days") {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -211,15 +185,6 @@ export async function getFreightForwardSearch({
   const constraints: QueryConstraint[] = [];
 
   if (activeCard === "inProcess") constraints.push(where("status", "==", "in_process"));
-  else if (activeCard === "completed") constraints.push(where("status", "==", "completed"));
-  else if (activeCard === "momentum") constraints.push(where("status", "==", "momentum"));
-  else if (activeCard === "split_manifest") {
-    constraints.push(
-      where("status", "in", ["in_process", "momentum", "split_manifest"])
-    );
-  } else if (activeCard === "billing") constraints.push(where("status", "==", "billing"));
-  else if (activeCard === "receivable") constraints.push(where("status", "==", "receivable"));
-  else if (activeCard === "payable") constraints.push(where("status", "==", "payable"));
   else if (activeCard === "next7Days") {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -240,24 +205,25 @@ export async function getFreightForwardSearch({
   }));
 
   const q = searchValue.trim().toLowerCase();
-  return all.filter((item) => {
+  const cardFiltered =
+    activeCard && usesBalanceCardFilter(activeCard)
+      ? all.filter((item) => matchesBalanceCard(item, activeCard))
+      : all;
+
+  return cardFiltered.filter((item) => {
+    if (!q) return true;
     const val = (item as unknown as Record<string, unknown>)[searchField];
     return typeof val === "string" && val.toLowerCase().includes(q);
   });
 }
 
+export async function getFreightForwardPendingStatus(status: FreightForwardStatus) {
+  const records = await fetchAllFreightForward();
+  return records.filter((item) => isStatusPending(item, status));
+}
+
 export async function getFreightForwardByStatus(status: string) {
-  const q = query(
-    collection(db, "freightForward"),
-    where("status", "==", status)
-  );
-
-  const snap = await getDocs(q);
-
-  return snap.docs.map(d => ({
-    id: d.id,
-    ...(d.data() as Omit<FreightForward, "id">),
-  }));
+  return getFreightForwardPendingStatus(status as FreightForwardStatus);
 }
 
 // ── CRUD ───────────────────────────────────────────────────────────────────

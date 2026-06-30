@@ -28,6 +28,8 @@ import {
   updateWorkflowStatus,
   getFreightForwardById,
   getFreightForwardForExport,
+  getFreightForwardFilteredList,
+  usesBalanceCardFilter,
 } from "@/lib/freightForward/freightForward";
 import { generateJobNumber } from "@/lib/freightForward/generateJobNumber";
 import {
@@ -378,20 +380,23 @@ export default function FreightForwardPage() {
     async (pageIndex: number, cursorDoc: DocumentSnapshot | null) => {
       setLoading(true);
       try {
-        if (isSearching) {
-          // Text search: Firestore has no native full-text search.
-          // Fetch the filtered subset and slice client-side.
-          const all = await getFreightForwardSearch({
-            activeCard,
-            etaFrom: dateFrom || undefined,
-            etaTo: dateTo || undefined,
-            searchField,
-            searchValue,
-          });
+        if (isSearching || usesBalanceCardFilter(activeCard)) {
+          const all = isSearching
+            ? await getFreightForwardSearch({
+                activeCard,
+                etaFrom: dateFrom || undefined,
+                etaTo: dateTo || undefined,
+                searchField,
+                searchValue,
+              })
+            : await getFreightForwardFilteredList({
+                activeCard,
+                etaFrom: dateFrom || undefined,
+                etaTo: dateTo || undefined,
+              });
           setRows(all.slice(pageIndex * PAGE_SIZE, (pageIndex + 1) * PAGE_SIZE));
           setTotal(all.length);
         } else {
-          // Normal path: server-side query + getCountFromServer for total
           const result = await getFreightForwardPage({
             activeCard,
             etaFrom: dateFrom || undefined,
