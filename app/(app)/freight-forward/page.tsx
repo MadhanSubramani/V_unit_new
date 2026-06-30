@@ -41,6 +41,7 @@ import {
   sumExpenseItems,
 } from "@/lib/freightForward/amounts";
 import { exportFreightForwardToExcel } from "@/lib/freightForward/exportFreightForwardExcel";
+import { canUpdateToStatus } from "@/lib/freightForward/workflowStatus";
 import { uploadDocument } from "@/lib/kyc/uploadDocument";
 import { getSezList } from "@/lib/sez/sez";
 import { Cfs } from "@/types/cfs";
@@ -433,6 +434,7 @@ export default function FreightForwardPage() {
 
 const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
     if (!selected || !user) return;
+    if (!canUpdateToStatus(nextStatus, selected.statusTimeline)) return;
 
     await updateWorkflowStatus(
         selected?.id!,

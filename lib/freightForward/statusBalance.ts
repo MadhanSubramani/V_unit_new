@@ -43,7 +43,7 @@ export function matchesBalanceCard(
     case "payable":
       return isStatusPending(item, "payable");
     case "completed":
-      return isStatusPending(item, "completed");
+      return hasStatusInTimeline(item, "completed");
     case "next7Days": {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -62,6 +62,7 @@ export function matchesBalanceCard(
   }
 }
 
+/** Card counts: workflow steps count pending records; Completed counts updated records. */
 export function computeBalanceCounts(records: FreightForward[]) {
   return {
     inProcess: records.filter((item) => matchesBalanceCard(item, "inProcess")).length,
@@ -74,7 +75,7 @@ export function computeBalanceCounts(records: FreightForward[]) {
     receivable: records.filter((item) => matchesBalanceCard(item, "receivable"))
       .length,
     payable: records.filter((item) => matchesBalanceCard(item, "payable")).length,
-    completed: records.filter((item) => matchesBalanceCard(item, "completed"))
+    completed: records.filter((item) => hasStatusInTimeline(item, "completed"))
       .length,
   };
 }

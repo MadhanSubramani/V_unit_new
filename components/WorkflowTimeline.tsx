@@ -1,34 +1,31 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  canUpdateToStatus,
+  getJumpOptions,
+  getMissingPrerequisites,
+  getNextAllowedStatus,
+  getVisitedStatuses,
+  statusLabel,
+  WORKFLOW_STEPS,
+} from "@/lib/freightForward/workflowStatus";
+
+import {
   FreightForward,
   FreightForwardStatus,
-  FREIGHT_FORWARD_STATUSES,
   StatusTimeline,
 } from "@/types/freightForward";
 import { Check, Clock3 } from "lucide-react";
 
-const WORKFLOW: {
-  key: FreightForwardStatus;
-  label: string;
-  role: "operations" | "accountant";
-}[] = [
-  { key: "in_process", label: "In Process", role: "operations" },
-  { key: "momentum", label: "Movement", role: "operations" },
-  { key: "split_manifest", label: "Split Manifest", role: "operations" },
-  { key: "billing", label: "Billing", role: "accountant" },
-  { key: "receivable", label: "Receivable", role: "accountant" },
-  { key: "payable", label: "Payable", role: "accountant" },
-  { key: "completed", label: "Completed", role: "accountant" },
-];
-
-const ALL_STATUSES = FREIGHT_FORWARD_STATUSES.map((s) => s.value);
-const ACCOUNTANT_STATUSES: FreightForwardStatus[] = [
-  "billing",
-  "receivable",
-  "payable",
-  "completed",
-];
-
+const WORKFLOW = WORKFLOW_STEPS.map((step) => ({
+  ...step,
+  role:
+    step.key === "billing" ||
+    step.key === "receivable" ||
+    step.key === "payable" ||
+    step.key === "completed"
+      ? ("accountant" as const)
+      : ("operations" as const),
+}));
 
 type Props = {
   selected: FreightForward;
@@ -41,37 +38,12 @@ function getStepState(
   currentStatus: FreightForwardStatus,
   timeline?: StatusTimeline[]
 ) {
-  const visited = new Set(
-    (timeline ?? []).map((entry) => entry.status as FreightForwardStatus)
-  );
+  const visited = getVisitedStatuses(timeline);
 
   const current = currentStatus === stepKey;
   const completed = visited.has(stepKey) && !current;
 
   return { current, completed, history: timeline?.find((x) => x.status === stepKey) };
-}
-
-function getVisitedStatuses(timeline?: StatusTimeline[]) {
-  return new Set(
-    (timeline ?? []).map((entry) => entry.status as FreightForwardStatus)
-  );
-}
-
-function getJumpOptions(
-  role: string,
-  timeline?: StatusTimeline[]
-): FreightForwardStatus[] {
-  const visited = getVisitedStatuses(timeline);
-  const baseOptions =
-    role === "admin"
-      ? ALL_STATUSES
-      : role === "accountant"
-        ? ACCOUNTANT_STATUSES
-        : [];
-
-  return baseOptions.filter(
-    (status) => status !== "in_process" && !visited.has(status)
-  );
 }
 
 function formatTimelineDate(value: unknown) {
@@ -88,12 +60,6 @@ function formatTimelineDate(value: unknown) {
   return String(value);
 }
 
-function getNextStatus(current: FreightForwardStatus): FreightForwardStatus | null {
-  const index = WORKFLOW.findIndex((step) => step.key === current);
-  if (index < 0 || index >= WORKFLOW.length - 1) return null;
-  return WORKFLOW[index + 1].key;
-}
-
 export default function WorkflowTimeline({
   selected,
   currentUserRole,
@@ -101,10 +67,16 @@ export default function WorkflowTimeline({
 }: Props) {
   const [jumpStatus, setJumpStatus] = useState<FreightForwardStatus>(selected.status);
   const [updating, setUpdating] = useState(false);
+  const [jumpError, setJumpError] = useState("");
 
   const jumpOptions = useMemo(
     () => getJumpOptions(currentUserRole, selected.statusTimeline),
     [currentUserRole, selected.statusTimeline]
+  );
+
+  const missingForJump = useMemo(
+    () => getMissingPrerequisites(jumpStatus, selected.statusTimeline),
+    [jumpStatus, selected.statusTimeline]
   );
 
   useEffect(() => {
@@ -119,7 +91,14 @@ export default function WorkflowTimeline({
     jumpOptions.length > 0;
 
   const handleJump = async () => {
+    setJumpError("");
     if (jumpStatus === selected.status) return;
+    if (!canUpdateToStatus(jumpStatus, selected.statusTimeline)) {
+      setJumpError(
+        `Update these statuses first: ${missingForJump.map(statusLabel).join(", ")}`
+      );
+      return;
+    }
     setUpdating(true);
     try {
       await onComplete(jumpStatus);
@@ -128,7 +107,7 @@ export default function WorkflowTimeline({
     }
   };
 
-  const nextStatus = getNextStatus(selected.status);
+  const nextStatus = getNextAllowedStatus(selected.status, selected.statusTimeline);
   const nextStep = nextStatus
     ? WORKFLOW.find((step) => step.key === nextStatus)
     : undefined;
@@ -137,7 +116,8 @@ export default function WorkflowTimeline({
     currentUserRole === "user" &&
     nextStep &&
     nextStep.role === "operations" &&
-    nextStatus !== null;
+    nextStatus !== null &&
+    canUpdateToStatus(nextStatus, selected.statusTimeline);
 
   return (
     <div className="mb-6 rounded-xl border bg-white p-5">
@@ -149,39 +129,42 @@ export default function WorkflowTimeline({
           <div className="flex flex-col gap-2 sm:flex-row">
             <select
               value={jumpStatus}
-              onChange={(e) => setJumpStatus(e.target.value as FreightForwardStatus)}
+              onChange={(e) => {
+                setJumpError("");
+                setJumpStatus(e.target.value as FreightForwardStatus);
+              }}
               className="flex-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
             >
-              {jumpOptions.map((status) => {
-                const label =
-                  FREIGHT_FORWARD_STATUSES.find((s) => s.value === status)?.label ??
-                  status;
-                return (
-                  <option key={status} value={status}>
-                    {label}
-                  </option>
-                );
-              })}
+              {jumpOptions.map((status) => (
+                <option key={status} value={status}>
+                  {statusLabel(status)}
+                </option>
+              ))}
             </select>
             <button
               type="button"
               onClick={handleJump}
-              disabled={updating || !jumpStatus}
+              disabled={
+                updating ||
+                !jumpStatus ||
+                !canUpdateToStatus(jumpStatus, selected.statusTimeline)
+              }
               className="rounded-xl bg-black px-4 py-2 text-xs font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40"
             >
               {updating ? "Updating..." : "Apply Status"}
             </button>
           </div>
-          {currentUserRole === "admin" && (
-            <p className="mt-2 text-[11px] text-zinc-500">
-              Only statuses not yet updated are shown.
+          {jumpError && (
+            <p className="mt-2 text-[11px] text-red-500">{jumpError}</p>
+          )}
+          {missingForJump.length > 0 && !jumpError && (
+            <p className="mt-2 text-[11px] text-amber-600">
+              Complete first: {missingForJump.map(statusLabel).join(", ")}
             </p>
           )}
-          {currentUserRole === "accountant" && (
-            <p className="mt-2 text-[11px] text-zinc-500">
-              Only billing stages not yet updated are shown.
-            </p>
-          )}
+          <p className="mt-2 text-[11px] text-zinc-500">
+            Each status can be updated only after all previous statuses are completed.
+          </p>
         </div>
       )}
 

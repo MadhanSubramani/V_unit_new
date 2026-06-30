@@ -50,7 +50,7 @@ async function fetchAllFreightForward(etaFrom?: string, etaTo?: string) {
 }
 
 // ── Card counts ────────────────────────────────────────────────────────────
-// Counts reflect records that have not yet been updated to each workflow status.
+// Workflow cards count pending records; Completed counts records with completed in timeline.
 export async function getFreightForwardCardCounts() {
   const records = await fetchAllFreightForward();
   return computeBalanceCounts(records);
