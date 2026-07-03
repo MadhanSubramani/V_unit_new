@@ -13,6 +13,7 @@ import {
   Settings,
   ShieldCheck,
   Ship,
+  StickyNote,
   Users,
   User,
   Warehouse,
@@ -201,6 +202,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             {!collapsed && <span className="text-xs font-medium">Users</span>}
           </Link>
         )}
+
+        <Link
+          href="/notepad"
+          className={flatNavClass(pathname === "/notepad" || pathname.startsWith("/notepad/"))}
+        >
+          <StickyNote size={collapsed ? 16 : 15} />
+          {!collapsed && <span className="text-xs font-medium">Notepad</span>}
+        </Link>
       </nav>
 
       <div className="shrink-0 border-t border-zinc-200/80 p-3">
