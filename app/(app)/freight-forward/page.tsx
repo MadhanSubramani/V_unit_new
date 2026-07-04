@@ -61,6 +61,9 @@ import {
 } from "@/types/freightForward";
 import { Sez } from "@/types/sez";
 import WorkflowTimeline from "@/components/WorkflowTimeline";
+import ProformaDialog from "@/components/freightForward/ProformaDialog";
+import { getKyc } from "@/lib/kyc/getKyc";
+import { Kyc } from "@/types/kyc";
 
 type FormErrors = Partial<Record<string, string>>;
 type CardFilter =
@@ -260,6 +263,8 @@ export default function FreightForwardPage() {
   const [containerSizes, setContainerSizes] = useState<ConfigItem[]>([]);
   const [containerTypes, setContainerTypes] = useState<ConfigItem[]>([]);
   const [paymentTypes, setPaymentTypes] = useState<ConfigItem[]>([]);
+  const [kycList, setKycList] = useState<Kyc[]>([]);
+  const [proformaOpen, setProformaOpen] = useState(false);
 
   // ── Drawer ────────────────────────────────────────────────────────────────
   const [drawerMode, setDrawerMode] = useState<DrawerMode>(null);
@@ -488,18 +493,20 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
   }, []);
 
   const loadLookups = async () => {
-    const [cfs, sez, sizes, types, payments] = await Promise.all([
+    const [cfs, sez, sizes, types, payments, kyc] = await Promise.all([
       getCfsList(),
       getSezList(),
       getConfigByCategory("container_size"),
       getConfigByCategory("container_type"),
       getConfigByCategory("payment_type"),
+      getKyc(),
     ]);
     setCfsList(cfs);
     setSezList(sez);
     setContainerSizes(sizes);
     setContainerTypes(types);
     setPaymentTypes(payments);
+    setKycList(kyc);
   };
 
   // ── Pagination ────────────────────────────────────────────────────────────
@@ -519,6 +526,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
   const closeDrawer = () => {
     setDrawerMode(null);
     setSelected(null);
+    setProformaOpen(false);
     setForm(emptyForm());
     setErrors({});
     setSubmitError("");
@@ -770,7 +778,25 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
 
         <div>
           <label className="mb-1 block text-[11px] font-medium text-zinc-600">Consignee Name <span className="text-red-500">*</span></label>
-          <input value={form.consignmentName} onChange={(e) => { setForm({ ...form, consignmentName: e.target.value }); clearError("consignmentName"); }} className={fieldClass("consignmentName")} />
+          <select
+            value={form.consignmentName}
+            onChange={(e) => {
+              setForm({ ...form, consignmentName: e.target.value });
+              clearError("consignmentName");
+            }}
+            className={fieldClass("consignmentName")}
+          >
+            <option value="">Select consignee from KYC</option>
+            {form.consignmentName &&
+              !kycList.some((k) => k.companyName === form.consignmentName) && (
+                <option value={form.consignmentName}>{form.consignmentName}</option>
+              )}
+            {kycList.map((kyc) => (
+              <option key={kyc.id ?? kyc.companyName} value={kyc.companyName}>
+                {kyc.companyName}
+              </option>
+            ))}
+          </select>
           {errors.consignmentName && <p className="mt-1 text-[11px] text-red-500">{errors.consignmentName}</p>}
         </div>
 
@@ -1503,6 +1529,17 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
                   )}
                 </div>
               </div>
+
+              <div className="col-span-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setProformaOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-xs font-medium text-white transition hover:bg-zinc-800"
+                >
+                  <FileSpreadsheet size={14} />
+                  Proforma Generation
+                </button>
+              </div>
             </div>
           </section>
 
@@ -1844,6 +1881,15 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
         onCancel={() => setDeleteId(null)}
         onConfirm={handleDelete}
       />
+
+      {selected && (
+        <ProformaDialog
+          open={proformaOpen}
+          record={selected}
+          kycList={kycList}
+          onClose={() => setProformaOpen(false)}
+        />
+      )}
     </>
   );
 }

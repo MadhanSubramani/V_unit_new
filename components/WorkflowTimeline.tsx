@@ -16,7 +16,7 @@ import {
   FreightForwardStatus,
   StatusTimeline,
 } from "@/types/freightForward";
-import { Check, Clock3 } from "lucide-react";
+import { Check } from "lucide-react";
 
 const WORKFLOW = WORKFLOW_STEPS.map((step) => ({
   ...step,
@@ -217,7 +217,7 @@ export default function WorkflowTimeline({
                 }`}
               >
                 {completed && <Check size={15} strokeWidth={3} />}
-                {current && <Clock3 size={14} strokeWidth={2.5} />}
+                {current && <Check size={15} strokeWidth={3} />}
                 {!completed && !current && (
                   <div className="h-2.5 w-2.5 rounded-full bg-zinc-300" />
                 )}
@@ -243,7 +243,7 @@ export default function WorkflowTimeline({
 
                 {current && (
                   <span className="rounded-full bg-black px-2 py-0.5 text-[10px] font-medium text-white">
-                    Current
+                    Last updated
                   </span>
                 )}
               </div>
