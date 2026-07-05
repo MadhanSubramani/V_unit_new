@@ -6,11 +6,14 @@ import {
 
 import { db } from "@/lib/firebase";
 import { stripUndefined } from "@/lib/kyc/stripUndefined";
+import { invalidateKycCache } from "@/lib/kyc/getKyc";
 
 export async function addKyc(data: Record<string, unknown>) {
   const cleaned = stripUndefined(data);
-  return addDoc(collection(db, "kyc"), {
+  const result = await addDoc(collection(db, "kyc"), {
     ...cleaned,
     createdAt: serverTimestamp(),
   });
+  invalidateKycCache();
+  return result;
 }

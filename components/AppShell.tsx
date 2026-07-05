@@ -102,17 +102,25 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const sidebar = (
     <div className="flex h-full flex-col">
       <div className="shrink-0 border-b border-zinc-200/80 p-4">
-        <div className="flex items-center justify-between">
-          {!collapsed && (
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
-                V-Unit
-              </p>
-              <h1 className="mt-0.5 text-sm font-semibold tracking-tight text-zinc-900">
-                Operations
-              </h1>
-            </div>
-          )}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2.5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/v-unit-logo.svg"
+              alt="V Unit Logistics"
+              className={`shrink-0 ${collapsed ? "h-8 w-8" : "h-9 w-9"}`}
+            />
+            {!collapsed && (
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
+                  V-Unit
+                </p>
+                <h1 className="mt-0.5 truncate text-sm font-semibold tracking-tight text-zinc-900">
+                  Operations
+                </h1>
+              </div>
+            )}
+          </div>
           <button
             onClick={() => setCollapsed(!collapsed)}
             className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-900"

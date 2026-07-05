@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-label="V Unit Logistics">
+  <rect width="180" height="180" rx="40" fill="#18181B"/>
+  <circle
+    cx="90"
+    cy="90"
+    r="58"
+    fill="none"
+    stroke="#FFFFFF"
+    stroke-width="14"
+  />
+  <path
+    d="M48 54 L90 138 L132 54"
+    fill="none"
+    stroke="#FFFFFF"
+    stroke-width="14.5"
+    stroke-linecap="butt"
+    stroke-linejoin="miter"
+    stroke-miterlimit="4"
+  />
+</svg>

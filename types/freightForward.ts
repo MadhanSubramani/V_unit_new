@@ -42,6 +42,7 @@ export interface FreightForward {
   consignmentName: string;
   mbl: string;
   hbl: string;
+  blType?: string;
   mblUrl?: FreightForwardDocument;
   hblUrl?: FreightForwardDocument;
   containerNumber: string;

@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import { FreightForward } from "@/types/freightForward";
 import { Kyc } from "@/types/kyc";
-import { sumExpenseItems } from "@/lib/freightForward/amounts";
+import { parseAmount, sumExpenseItems } from "@/lib/freightForward/amounts";
 
 const COMPANY = {
   name: "V UNIT LOGISTICS INDIA PRIVATE LIMITED",
@@ -15,6 +15,7 @@ const COMPANY = {
 
 export interface ProformaInput {
   exWorksGstPercent: number;
+  oceanFreightGstPercent: number;
   blFeeGstPercent: number;
   blFee: number;
   rupeePerDollar: number;
@@ -53,12 +54,54 @@ function splitGst(gstPercent: number) {
   return { cgstRate: half, sgstRate: half };
 }
 
+async function loadRasterImageDataUrl(
+  path: string,
+  size = 128
+): Promise<string> {
+  const res = await fetch(path);
+  const contentType = res.headers.get("content-type") ?? "";
+
+  if (path.endsWith(".svg") || contentType.includes("svg")) {
+    const svgText = await res.text();
+    const svgBlob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(svgBlob);
+
+    try {
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = reject;
+        img.src = url;
+      });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas unavailable");
+      ctx.drawImage(img, 0, 0, size, size);
+      return canvas.toDataURL("image/png");
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  const blob = await res.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
 function buildChargeRows(
   record: FreightForward,
   input: ProformaInput
 ): ChargeRow[] {
   const rows: ChargeRow[] = [];
   const totalExWorksUsd = sumExpenseItems(record.exWorks);
+  const oceanFreightUsd = parseAmount(record.oceanFreight) ?? 0;
 
   if (totalExWorksUsd > 0) {
     const { cgstRate, sgstRate } = splitGst(input.exWorksGstPercent);
@@ -67,10 +110,31 @@ function buildChargeRows(
     const sgstAmount = (taxableInr * sgstRate) / 100;
 
     rows.push({
-      sno: 1,
+      sno: rows.length + 1,
       description: "TOTAL EX WORKS",
       currency: "USD",
       unitAmount: totalExWorksUsd,
+      roe: input.rupeePerDollar,
+      taxableInr,
+      cgstRate,
+      sgstRate,
+      cgstAmount,
+      sgstAmount,
+      totalInr: taxableInr + cgstAmount + sgstAmount,
+    });
+  }
+
+  if (oceanFreightUsd > 0) {
+    const { cgstRate, sgstRate } = splitGst(input.oceanFreightGstPercent);
+    const taxableInr = oceanFreightUsd * input.rupeePerDollar;
+    const cgstAmount = (taxableInr * cgstRate) / 100;
+    const sgstAmount = (taxableInr * sgstRate) / 100;
+
+    rows.push({
+      sno: rows.length + 1,
+      description: "OCEAN FREIGHT",
+      currency: "USD",
+      unitAmount: oceanFreightUsd,
       roe: input.rupeePerDollar,
       taxableInr,
       cgstRate,
@@ -112,40 +176,44 @@ function findKycForConsignee(kycList: Kyc[], consignmentName: string): Kyc | und
   );
 }
 
-export function generateProformaPdf(
+export async function generateProformaPdf(
   record: FreightForward,
   kycList: Kyc[],
   input: ProformaInput
 ) {
   const kyc = findKycForConsignee(kycList, record.consignmentName);
   const rows = buildChargeRows(record, input);
+  const [logoData, stampData] = await Promise.all([
+    loadRasterImageDataUrl("/v-unit-logo.svg", 128),
+    loadRasterImageDataUrl("/v-unit-stamp.png", 256),
+  ]);
+
   const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 40;
-  let y = 40;
+  let y = 36;
 
+  doc.addImage(logoData, "PNG", margin, y, 48, 48);
+
+  const headerX = margin + 58;
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
-  doc.text(COMPANY.name, margin, y);
-  y += 14;
+  doc.text(COMPANY.name, headerX, y + 10);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
-  doc.text(COMPANY.address, margin, y);
-  y += 10;
-  doc.text(COMPANY.city, margin, y);
-  y += 10;
-  doc.text(`${COMPANY.phone}  ${COMPANY.email}`, margin, y);
-  y += 10;
-  doc.text(`GSTIN : ${COMPANY.gstin}`, margin, y);
-  y += 10;
-  doc.text(`PAN : ${COMPANY.pan}`, margin, y);
-  y += 18;
+  doc.text(COMPANY.address, headerX, y + 22);
+  doc.text(COMPANY.city, headerX, y + 32);
+  doc.text(`${COMPANY.phone}  ${COMPANY.email}`, headerX, y + 42);
+  doc.text(`GSTIN : ${COMPANY.gstin}`, headerX, y + 52);
+  doc.text(`PAN : ${COMPANY.pan}`, headerX, y + 62);
+
+  y += 78;
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(14);
-  doc.text("PROFORMA", pageWidth / 2, y, { align: "center" });
+  doc.text("FREIGHT CERTIFICATE", pageWidth / 2, y, { align: "center" });
   y += 16;
 
   if (record.jobNumber) {
@@ -192,6 +260,10 @@ export function generateProformaPdf(
   doc.text(`Container Type : ${record.containerType || "—"}`, leftX, y);
   doc.text(`Vessel Name : ${record.vesselName || "—"}`, rightX, y);
   y += 12;
+  if (record.blType) {
+    doc.text(`BL Type : ${record.blType}`, leftX, y);
+    y += 12;
+  }
   doc.text(`Port of Origin : ${record.pol || "—"}`, leftX, y);
   doc.text(`Final Destination : ${record.pod || "—"}`, rightX, y);
   y += 18;
@@ -260,21 +332,26 @@ export function generateProformaPdf(
   doc.text(formatInr(totalCgst), colX.cgstA, y);
   doc.text(formatInr(totalSgst), colX.sgstA, y);
   doc.text(formatInr(grandTotal), colX.total, y);
-  y += 40;
+  y += 36;
 
-  const sigX = pageWidth - margin - 180;
+  const sigX = pageWidth - margin - 200;
+
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.text("FOR V UNIT LOGISTICS INDIA PRIVATE LIMITED", sigX, y, {
     align: "left",
   });
-  y += 50;
+  y += 16;
+
+  doc.addImage(stampData, "PNG", sigX + 24, y, 72, 72);
+  y += 80;
+
   doc.text("AUTHORISED SIGNATURE", sigX + 20, y);
 
-  const jobPart = record.jobNumber?.replace(/\s/g, "_") ?? "proforma";
+  const jobPart = record.jobNumber?.replace(/\s/g, "_") ?? "certificate";
   const consigneePart = record.consignmentName
     .replace(/[^\w]+/g, "_")
     .slice(0, 24);
-  const filename = `PROFORMA_${consigneePart}_${jobPart}_${Date.now()}.pdf`;
+  const filename = `FREIGHT_CERTIFICATE_${consigneePart}_${jobPart}_${Date.now()}.pdf`;
   doc.save(filename);
 }

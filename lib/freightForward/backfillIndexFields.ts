@@ -9,6 +9,7 @@ import { db } from "@/lib/firebase";
 import { FreightForward } from "@/types/freightForward";
 import { normalizeEtaSort } from "@/lib/freightForward/etaSort";
 import { computePipelineFlags } from "@/lib/freightForward/pipelineFlags";
+import { invalidateFreightForwardListCache } from "@/lib/freightForward/paginatedList";
 
 /** One-time helper: set etaSort + pipeline flags on existing freightForward docs. */
 export async function backfillFreightForwardIndexFields() {
@@ -48,5 +49,6 @@ export async function backfillFreightForwardIndexFields() {
   }
 
   if (ops > 0) await batch.commit();
+  invalidateFreightForwardListCache();
   return updated;
 }

@@ -79,7 +79,7 @@ type CardFilter =
 type DrawerMode = "add" | "edit" | "view" | null;
 
 const SEARCH_FIELDS = [
-  { label: "EZ Ref Number", value: "ezRefNumber" },
+  { label: "EZ No", value: "ezRefNumber" },
   { label: "Consignee Name", value: "consignmentName" },
   { label: "MBL", value: "mbl" },
   { label: "HBL", value: "hbl" },
@@ -112,6 +112,7 @@ const emptyForm = (): FreightForwardFormData => ({
   consignmentName: "",
   mbl: "",
   hbl: "",
+  blType: "",
   containerNumber: "",
   containerSize: "",
   containerType: "",
@@ -152,6 +153,7 @@ function toFormData(item: FreightForward): FreightForwardFormData {
     consignmentName: item.consignmentName,
     mbl: item.mbl,
     hbl: item.hbl,
+    blType: item.blType ?? "",
     containerNumber: item.containerNumber,
     containerSize: item.containerSize ?? "",
     containerType: item.containerType ?? "",
@@ -195,6 +197,7 @@ function buildPayload(form: FreightForwardFormData): Record<string, unknown> {
     consignmentName: form.consignmentName.trim(),
     mbl: form.mbl.trim(),
     hbl: form.hbl.trim(),
+    blType: form.blType || undefined,
     containerNumber: form.containerNumber.trim().toUpperCase(),
     containerSize: form.containerSize || undefined,
     containerType: form.containerType || undefined,
@@ -249,13 +252,21 @@ export default function FreightForwardPage() {
   const [activeCard, setActiveCard] = useState<CardFilter>(null);
   const [searchField, setSearchField] = useState("consignmentName");
   const [searchValue, setSearchValue] = useState("");
+  const [debouncedSearchValue, setDebouncedSearchValue] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [exporting, setExporting] = useState(false);
   const [sortKey, setSortKey] = useState<FreightSortKey>("eta");
   const [sortDir, setSortDir] = useState<FreightSortDir>("asc");
 
-  const isSearching = searchValue.trim().length > 0;
+  const isSearching = debouncedSearchValue.trim().length > 0;
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchValue(searchValue);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchValue]);
 
   // ── Lookups ───────────────────────────────────────────────────────────────
   const [cfsList, setCfsList] = useState<Cfs[]>([]);
@@ -263,6 +274,7 @@ export default function FreightForwardPage() {
   const [containerSizes, setContainerSizes] = useState<ConfigItem[]>([]);
   const [containerTypes, setContainerTypes] = useState<ConfigItem[]>([]);
   const [paymentTypes, setPaymentTypes] = useState<ConfigItem[]>([]);
+  const [blTypes, setBlTypes] = useState<ConfigItem[]>([]);
   const [kycList, setKycList] = useState<Kyc[]>([]);
   const [proformaOpen, setProformaOpen] = useState(false);
 
@@ -396,7 +408,7 @@ export default function FreightForwardPage() {
           etaFrom: dateFrom || undefined,
           etaTo: dateTo || undefined,
           searchField,
-          searchValue,
+          searchValue: debouncedSearchValue,
           sortKey,
           sortDir,
           pageSize: PAGE_SIZE,
@@ -431,7 +443,7 @@ export default function FreightForwardPage() {
       dateFrom,
       dateTo,
       searchField,
-      searchValue,
+      debouncedSearchValue,
       sortKey,
       sortDir,
     ]
@@ -480,7 +492,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
     loadCounts();
     loadPage(0, [null]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCard, activeStatus, dateFrom, dateTo, searchValue, searchField, sortKey, sortDir]);
+  }, [activeCard, activeStatus, dateFrom, dateTo, debouncedSearchValue, searchField, sortKey, sortDir]);
 
   const reload = async () => {
     await Promise.all([loadCounts(), loadPage(page)]);
@@ -493,12 +505,13 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
   }, []);
 
   const loadLookups = async () => {
-    const [cfs, sez, sizes, types, payments, kyc] = await Promise.all([
+    const [cfs, sez, sizes, types, payments, blTypeItems, kyc] = await Promise.all([
       getCfsList(),
       getSezList(),
       getConfigByCategory("container_size"),
       getConfigByCategory("container_type"),
       getConfigByCategory("payment_type"),
+      getConfigByCategory("bl_type"),
       getKyc(),
     ]);
     setCfsList(cfs);
@@ -506,6 +519,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
     setContainerSizes(sizes);
     setContainerTypes(types);
     setPaymentTypes(payments);
+    setBlTypes(blTypeItems);
     setKycList(kyc);
   };
 
@@ -735,7 +749,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
     // useEffect on sortKey/sortDir reloads page 0 for both list modes
   };
 
-  const listColumns = ["EZ Ref Number", "ETA", "Consignee Name", "MBL", "HBL", "Container Number", "Vessel Name", "Actions"];
+  const listColumns = ["FF No", "EZ No", "HBL", "BL Type", "ETA", "Consignee", "MBL", "Con No", "Vessel Name", "Actions"];
 
   // ── Render: form ──────────────────────────────────────────────────────────
   const renderForm = () => (
@@ -837,6 +851,22 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
             error={errors.hbl}
             fieldClass={fieldClass("hbl")}
           />
+        </div>
+
+        <div>
+          <label className="mb-1 block text-[11px] font-medium text-zinc-600">BL Type</label>
+          <select
+            value={form.blType ?? ""}
+            onChange={(e) => setForm({ ...form, blType: e.target.value })}
+            className={fieldClass("blType")}
+          >
+            <option value="">Select BL type</option>
+            {blTypes.map((item) => (
+              <option key={item.id} value={item.value}>
+                {item.value}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div>
@@ -1364,6 +1394,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
               />
               <Info label="MBL" value={selected.mbl} />
               <Info label="HBL" value={selected.hbl} />
+              <Info label="BL Type" value={selected.blType} />
               <DocInfo label="MBL Document" doc={selected.mblUrl} />
               <DocInfo label="HBL Document" doc={selected.hblUrl} />
             </div>
@@ -1537,7 +1568,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
                   className="inline-flex items-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-xs font-medium text-white transition hover:bg-zinc-800"
                 >
                   <FileSpreadsheet size={14} />
-                  Proforma Generation
+                  Freight Certificate
                 </button>
               </div>
             </div>
@@ -1820,17 +1851,19 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={8} className="py-10 text-center text-zinc-500">Loading...</td></tr>
+                  <tr><td colSpan={10} className="py-10 text-center text-zinc-500">Loading...</td></tr>
                 ) : rows.length === 0 ? (
-                  <tr><td colSpan={8} className="py-10 text-center text-zinc-400">No freight forward records found.</td></tr>
+                  <tr><td colSpan={10} className="py-10 text-center text-zinc-400">No freight forward records found.</td></tr>
                 ) : (
                   rows.map((item) => (
                     <tr key={item.id} onClick={() => openView(item)} className="cursor-pointer border-b border-zinc-100 hover:bg-zinc-50 transition-colors">
+                      <td className="px-4 py-3 font-medium text-zinc-800">{item.jobNumber || "—"}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.ezRefNumber || "—"}</td>
+                      <td className="px-4 py-3 text-zinc-600">{item.hbl}</td>
+                      <td className="px-4 py-3 text-zinc-600">{item.blType || "—"}</td>
                       <td className="px-4 py-3 text-zinc-600">{formatDate(item.eta)}</td>
                       <td className="px-4 py-3 font-medium text-zinc-800">{item.consignmentName}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.mbl}</td>
-                      <td className="px-4 py-3 text-zinc-600">{item.hbl}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.containerNumber}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.vesselName || "—"}</td>
                       <td

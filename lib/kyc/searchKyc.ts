@@ -1,19 +1,18 @@
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Kyc } from "@/types/kyc";
-import { normalizeKyc } from "@/lib/kyc/normalizeKyc";
+import { getKyc } from "@/lib/kyc/getKyc";
 
 export async function searchKyc(searchTerm: string): Promise<Kyc[]> {
-  const snapshot = await getDocs(collection(db, "kyc"));
   const term = searchTerm.trim().toLowerCase();
+  if (!term) return getKyc();
 
-  return snapshot.docs
-    .map((doc) => normalizeKyc({ id: doc.id, ...doc.data() }))
-    .filter(
-      (item) =>
-        item.companyName.toLowerCase().includes(term) ||
-        item.gstin.toLowerCase().includes(term) ||
-        (item.fileNo ?? "").toLowerCase().includes(term) ||
-        (item.loiNo ?? "").toLowerCase().includes(term)
-    );
+  const all = await getKyc();
+  return all.filter(
+    (item) =>
+      item.companyName.toLowerCase().includes(term) ||
+      item.gstin.toLowerCase().includes(term) ||
+      (item.fileNo ?? "").toLowerCase().includes(term) ||
+      (item.loiNo ?? "").toLowerCase().includes(term)
+  );
 }

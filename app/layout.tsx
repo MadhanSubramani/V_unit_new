@@ -7,6 +7,10 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "V-Unit Operations",
   description: "Freight forward, import, export, and KYC management",
+  icons: {
+    icon: [{ url: "/v-unit-logo.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/v-unit-logo.svg", type: "image/svg+xml" }],
+  },
 };
 
 export default function RootLayout({

@@ -22,6 +22,7 @@ import { normalizeEtaSort } from "./etaSort";
 import {
   getFreightForwardCardCountsFromServer,
   getFreightForwardPaginated,
+  invalidateFreightForwardListCache,
 } from "./paginatedList";
 import { usesBalanceCardFilter } from "./statusBalance";
 import { sortFreightRecords } from "./sortRecords";
@@ -37,6 +38,7 @@ function stripUndefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
 export { usesBalanceCardFilter };
 export {
   getFreightForwardPaginated,
+  invalidateFreightForwardListCache,
   type FreightListPage,
   type FreightListRequest,
 } from "./paginatedList";
@@ -89,7 +91,7 @@ export async function createFreightForward(
   ];
   const flags = computePipelineFlags(timeline);
 
-  return addDoc(REF(), {
+  const result = await addDoc(REF(), {
     ...stripUndefined({
       ...data,
       jobNumber,
@@ -103,6 +105,8 @@ export async function createFreightForward(
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  invalidateFreightForwardListCache();
+  return result;
 }
 
 export async function updateFreightForward(
@@ -121,6 +125,7 @@ export async function updateFreightForward(
   }
 
   await updateDoc(doc(db, "freightForward", id), stripUndefined(patch));
+  invalidateFreightForwardListCache();
 }
 
 export async function updateWorkflowStatus(
@@ -147,6 +152,7 @@ export async function updateWorkflowStatus(
     ...flags,
     statusTimeline: arrayUnion(newEntry),
   });
+  invalidateFreightForwardListCache();
 }
 
 export async function getFreightForwardById(id: string) {
@@ -172,6 +178,7 @@ export async function getFreightForwardForExport(etaFrom: string, etaTo: string)
 
 export async function deleteFreightForward(id: string) {
   await deleteDoc(doc(db, "freightForward", id));
+  invalidateFreightForwardListCache();
 }
 
 // Legacy helpers — prefer getFreightForwardPaginated

@@ -25,6 +25,7 @@ import { FreightSortDir, FreightSortKey, sortFreightRecords } from "@/lib/freigh
 const REF = () => collection(db, "freightForward");
 
 const CLIENT_FETCH_MAX = 5000;
+const CLIENT_CACHE_TTL_MS = 30_000;
 
 export interface FreightListRequest {
   activeCard?: BalanceCardFilter | null;
@@ -45,6 +46,17 @@ export interface FreightListPage {
   lastDoc: DocumentSnapshot | null;
   total: number;
   mode: "server" | "client";
+}
+
+let clientRecordsCache: {
+  records: FreightForward[];
+  expires: number;
+} | null = null;
+let clientFetchPromise: Promise<FreightForward[]> | null = null;
+
+export function invalidateFreightForwardListCache() {
+  clientRecordsCache = null;
+  clientFetchPromise = null;
 }
 
 function docToRecord(docSnap: DocumentSnapshot): FreightForward {
@@ -183,16 +195,44 @@ function filterRecordsForRequest(
 }
 
 async function fetchAllRecordsForClient(): Promise<FreightForward[]> {
-  const ref = REF();
-  try {
-    const snap = await getDocs(query(ref, limit(CLIENT_FETCH_MAX)));
-    const records = snap.docs.map(docToRecord);
-    return sortFreightRecords(records, "createdAt", "desc");
-  } catch (error) {
-    if (!isFirestoreIndexError(error)) throw error;
-    const snap = await getDocs(query(ref, limit(CLIENT_FETCH_MAX)));
-    return snap.docs.map(docToRecord);
+  const now = Date.now();
+  if (clientRecordsCache && clientRecordsCache.expires > now) {
+    return clientRecordsCache.records;
   }
+
+  if (clientFetchPromise) {
+    return clientFetchPromise;
+  }
+
+  clientFetchPromise = (async () => {
+    const ref = REF();
+    try {
+      const snap = await getDocs(query(ref, limit(CLIENT_FETCH_MAX)));
+      const records = sortFreightRecords(
+        snap.docs.map(docToRecord),
+        "createdAt",
+        "desc"
+      );
+      clientRecordsCache = {
+        records,
+        expires: Date.now() + CLIENT_CACHE_TTL_MS,
+      };
+      return records;
+    } catch (error) {
+      if (!isFirestoreIndexError(error)) throw error;
+      const snap = await getDocs(query(ref, limit(CLIENT_FETCH_MAX)));
+      const records = snap.docs.map(docToRecord);
+      clientRecordsCache = {
+        records,
+        expires: Date.now() + CLIENT_CACHE_TTL_MS,
+      };
+      return records;
+    } finally {
+      clientFetchPromise = null;
+    }
+  })();
+
+  return clientFetchPromise;
 }
 
 async function fetchClientListPage(
@@ -249,13 +289,16 @@ async function fetchServerListPage(
   };
 }
 
-/** Server queries skip docs missing etaSort / pipeline flags; client uses timeline + eta. */
 async function resolveListPage(
   request: FreightListRequest
 ): Promise<FreightListPage> {
   const serverResult = await fetchServerListPage(request);
 
   if (serverResult.items.length > 0) {
+    return serverResult;
+  }
+
+  if (serverResult.total === 0) {
     return serverResult;
   }
 
@@ -289,16 +332,84 @@ export async function getFreightForwardPaginated(
   }
 }
 
-export async function getFreightForwardCardCountsFromServer() {
+async function countWithFallback(
+  constraints: QueryConstraint[],
+  fallback: () => Promise<number>
+): Promise<number> {
   try {
-    const records = await fetchAllRecordsForClient();
-    return computeBalanceCounts(records);
+    const snap = await getCountFromServer(query(REF(), ...constraints));
+    return snap.data().count;
   } catch (error) {
     if (!isFirestoreIndexError(error)) throw error;
-    console.warn(
-      "Freight card counts falling back after index error.",
-      error
-    );
+    return fallback();
+  }
+}
+
+export async function getFreightForwardCardCountsFromServer() {
+  const { from, to } = getNext7DayEtaRange();
+
+  let clientRecords: FreightForward[] | null = null;
+  const clientCount = async (pick: (counts: ReturnType<typeof computeBalanceCounts>) => number) => {
+    if (!clientRecords) {
+      clientRecords = await fetchAllRecordsForClient();
+    }
+    return pick(computeBalanceCounts(clientRecords));
+  };
+
+  try {
+    const [
+      inProcess,
+      next7Days,
+      momentum,
+      split_manifest,
+      billing,
+      receivable,
+      payable,
+      completed,
+    ] = await Promise.all([
+      countWithFallback([where("status", "==", "in_process")], () =>
+        clientCount((c) => c.inProcess)
+      ),
+      countWithFallback(
+        [
+          where("workflowCompleted", "==", false),
+          where("etaSort", ">=", from),
+          where("etaSort", "<=", to),
+        ],
+        () => clientCount((c) => c.next7Days)
+      ),
+      countWithFallback([where("pendingMomentum", "==", true)], () =>
+        clientCount((c) => c.momentum)
+      ),
+      countWithFallback([where("pendingSplitManifest", "==", true)], () =>
+        clientCount((c) => c.split_manifest)
+      ),
+      countWithFallback([where("pendingBilling", "==", true)], () =>
+        clientCount((c) => c.billing)
+      ),
+      countWithFallback([where("pendingReceivable", "==", true)], () =>
+        clientCount((c) => c.receivable)
+      ),
+      countWithFallback([where("pendingPayable", "==", true)], () =>
+        clientCount((c) => c.payable)
+      ),
+      countWithFallback([where("workflowCompleted", "==", true)], () =>
+        clientCount((c) => c.completed)
+      ),
+    ]);
+
+    return {
+      inProcess,
+      next7Days,
+      momentum,
+      split_manifest,
+      billing,
+      receivable,
+      payable,
+      completed,
+    };
+  } catch (error) {
+    if (!isFirestoreIndexError(error)) throw error;
     const records = await fetchAllRecordsForClient();
     return computeBalanceCounts(records);
   }

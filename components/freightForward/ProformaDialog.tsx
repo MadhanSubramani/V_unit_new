@@ -3,10 +3,7 @@
 import { useState } from "react";
 import { FreightForward } from "@/types/freightForward";
 import { Kyc } from "@/types/kyc";
-import {
-  generateProformaPdf,
-  ProformaInput,
-} from "@/lib/freightForward/generateProformaPdf";
+import type { ProformaInput } from "@/lib/freightForward/generateProformaPdf";
 
 interface ProformaDialogProps {
   open: boolean;
@@ -22,16 +19,19 @@ export default function ProformaDialog({
   onClose,
 }: ProformaDialogProps) {
   const [exWorksGstPercent, setExWorksGstPercent] = useState("5");
+  const [oceanFreightGstPercent, setOceanFreightGstPercent] = useState("5");
   const [blFeeGstPercent, setBlFeeGstPercent] = useState("18");
   const [blFee, setBlFee] = useState("");
   const [rupeePerDollar, setRupeePerDollar] = useState("");
   const [error, setError] = useState("");
+  const [generating, setGenerating] = useState(false);
 
   if (!open) return null;
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     setError("");
     const exGst = Number(exWorksGstPercent);
+    const oceanGst = Number(oceanFreightGstPercent);
     const blGst = Number(blFeeGstPercent);
     const blFeeNum = Number(blFee);
     const roe = Number(rupeePerDollar);
@@ -39,6 +39,8 @@ export default function ProformaDialog({
     if (
       Number.isNaN(exGst) ||
       exGst < 0 ||
+      Number.isNaN(oceanGst) ||
+      oceanGst < 0 ||
       Number.isNaN(blGst) ||
       blGst < 0 ||
       Number.isNaN(blFeeNum) ||
@@ -52,19 +54,30 @@ export default function ProformaDialog({
 
     const input: ProformaInput = {
       exWorksGstPercent: exGst,
+      oceanFreightGstPercent: oceanGst,
       blFeeGstPercent: blGst,
       blFee: blFeeNum,
       rupeePerDollar: roe,
     };
 
-    generateProformaPdf(record, kycList, input);
-    onClose();
+    setGenerating(true);
+    try {
+      const { generateProformaPdf } = await import(
+        "@/lib/freightForward/generateProformaPdf"
+      );
+      await generateProformaPdf(record, kycList, input);
+      onClose();
+    } catch {
+      setError("Unable to generate freight certificate. Please try again.");
+    } finally {
+      setGenerating(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-5 shadow-xl">
-        <h3 className="text-sm font-semibold text-zinc-900">Proforma Generation</h3>
+        <h3 className="text-sm font-semibold text-zinc-900">Freight Certificate Generation</h3>
         <p className="mt-1 text-xs text-zinc-500">
           Enter GST rates and conversion for {record.consignmentName}
         </p>
@@ -82,8 +95,22 @@ export default function ProformaDialog({
               onChange={(e) => setExWorksGstPercent(e.target.value)}
               className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
             />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-zinc-600">
+              GST % on Ocean Freight
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={oceanFreightGstPercent}
+              onChange={(e) => setOceanFreightGstPercent(e.target.value)}
+              className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+            />
             <p className="mt-1 text-[10px] text-zinc-400">
-              Split equally into CGST and SGST (e.g. 5% → 2.5% + 2.5%)
+              Ocean freight amount is taken from the record (${record.oceanFreight ?? 0})
             </p>
           </div>
 
@@ -147,9 +174,10 @@ export default function ProformaDialog({
           <button
             type="button"
             onClick={handleGenerate}
-            className="rounded-xl bg-zinc-900 px-4 py-1.5 text-xs font-medium text-white hover:bg-zinc-800"
+            disabled={generating}
+            className="rounded-xl bg-zinc-900 px-4 py-1.5 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
           >
-            Generate
+            {generating ? "Generating..." : "Generate"}
           </button>
         </div>
       </div>
