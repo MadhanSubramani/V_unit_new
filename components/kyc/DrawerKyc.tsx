@@ -805,26 +805,74 @@ function MultiFileField({
   error?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const addFiles = (incoming: FileList | File[]) => {
+    const list = Array.from(incoming);
+    if (list.length) onFilesAdd(list);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(false);
+    if (e.dataTransfer.files?.length) addFiles(e.dataTransfer.files);
+  };
 
   return (
     <Field label={label} required={required} error={error}>
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => inputRef.current?.click()}
-        className={`flex w-full cursor-pointer items-center gap-3 rounded-xl border border-dashed p-4 transition hover:border-zinc-400 ${
-          error ? "border-red-400 bg-red-50/50" : "border-zinc-300"
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
+        onDragOver={handleDragOver}
+        onDragEnter={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        className={`flex w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-6 transition ${
+          error
+            ? "border-red-400 bg-red-50/50"
+            : dragging
+              ? "border-zinc-500 bg-zinc-100"
+              : "border-zinc-300 bg-zinc-50/50 hover:border-zinc-400 hover:bg-zinc-50"
         }`}
       >
-        <UploadCloud size={18} className={error ? "text-red-400" : "text-zinc-500"} />
-        <span className="text-xs text-zinc-600">Choose files</span>
-      </button>
+        <UploadCloud
+          size={24}
+          className={error ? "text-red-400" : dragging ? "text-zinc-700" : "text-zinc-400"}
+        />
+        <div className="text-center">
+          <p className="text-xs font-medium text-zinc-700">
+            Drag and drop files here
+          </p>
+          <p className="mt-0.5 text-[11px] text-zinc-500">or click to browse</p>
+        </div>
+      </div>
       <input
         ref={inputRef}
         hidden
         multiple
         type="file"
         onChange={(e) => {
-          if (e.target.files?.length) onFilesAdd(Array.from(e.target.files));
+          if (e.target.files?.length) addFiles(e.target.files);
           e.target.value = "";
         }}
       />
