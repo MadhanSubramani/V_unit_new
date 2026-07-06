@@ -749,7 +749,18 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
     // useEffect on sortKey/sortDir reloads page 0 for both list modes
   };
 
-  const listColumns = ["FF No", "EZ No", "HBL", "BL Type", "ETA", "Consignee", "MBL", "Con No", "Vessel Name", "Actions"];
+  const listColumns = [
+    "FF No",
+    "EZ No",
+    "BL Type",
+    "Vessel Name",
+    "ETA",
+    "Consignee",
+    "MBL",
+    "HBL",
+    "Cont No",
+    "Actions",
+  ];
 
   // ── Render: form ──────────────────────────────────────────────────────────
   const renderForm = () => (
@@ -1859,13 +1870,13 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
                     <tr key={item.id} onClick={() => openView(item)} className="cursor-pointer border-b border-zinc-100 hover:bg-zinc-50 transition-colors">
                       <td className="px-4 py-3 font-medium text-zinc-800">{item.jobNumber || "—"}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.ezRefNumber || "—"}</td>
-                      <td className="px-4 py-3 text-zinc-600">{item.hbl}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.blType || "—"}</td>
+                      <td className="px-4 py-3 text-zinc-600">{item.vesselName || "—"}</td>
                       <td className="px-4 py-3 text-zinc-600">{formatDate(item.eta)}</td>
                       <td className="px-4 py-3 font-medium text-zinc-800">{item.consignmentName}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.mbl}</td>
+                      <td className="px-4 py-3 text-zinc-600">{item.hbl}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.containerNumber}</td>
-                      <td className="px-4 py-3 text-zinc-600">{item.vesselName || "—"}</td>
                       <td
                         className="px-4 py-3 text-center"
                         onClick={(e) => e.stopPropagation()}

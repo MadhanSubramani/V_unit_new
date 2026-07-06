@@ -2,7 +2,7 @@ export async function getGstinDetails(
   gstin: string
 ) {
   const response = await fetch(
-    `http://sheet.gstincheck.co.in/check/067551d7ea5e9c03d00ef3f94e330b74/${gstin}`
+    `https://sheet.gstincheck.co.in/check/8d30fc24dac86f67a929ea4c16e7ad34/${gstin}`
   );
 
   if (!response.ok)
