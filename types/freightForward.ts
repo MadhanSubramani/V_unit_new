@@ -35,11 +35,19 @@ export interface FreightForwardDocument {
   url: string;
 }
 
+export interface FreightContainer {
+  containerNumber: string;
+  containerSize?: string;
+  containerType?: string;
+}
+
 export interface FreightForward {
   id?: string;
   jobNumber?: string;
   ezRefNumber?: string;
   consignmentName: string;
+  clientName?: string;
+  tradeTerms?: string;
   mbl: string;
   hbl: string;
   blType?: string;
@@ -48,6 +56,8 @@ export interface FreightForward {
   containerNumber: string;
   containerSize?: string;
   containerType?: string;
+  /** New multi-container storage; legacy flat fields kept for older records. */
+  containers?: FreightContainer[];
   etd?: string;
   eta?: string;
   vesselName?: string;
@@ -58,6 +68,9 @@ export interface FreightForward {
   sez?: string;
   liner?: string;
   agent?: string;
+  /** Per-container rate entered in the form. */
+  oceanFreightPerContainer?: number;
+  /** Total ocean freight (per-container rate × container count). */
   oceanFreight?: number;
   exWorks?: ExWorksItem[];
   otherExpenses?: ExpenseItem[];

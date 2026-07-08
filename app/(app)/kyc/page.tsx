@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus,
   MoreHorizontal,
@@ -44,6 +44,13 @@ export default function KycPage() {
 
   const [selected, setSelected] = useState<Kyc | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  const handleSearch = useCallback((value: string) => {
+    setSearch((prev) => {
+      if (prev !== value) setPage(1);
+      return value;
+    });
+  }, []);
 
   async function loadData() {
     setLoading(true);
@@ -113,13 +120,7 @@ export default function KycPage() {
     />
 
     <div className="mt-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-      <KycSearch
-        value={search}
-        onSearch={(value) => {
-          setPage(1);
-          setSearch(value);
-        }}
-      />
+      <KycSearch value={search} onSearch={handleSearch} />
 
       <div className="flex flex-col gap-2 sm:flex-row">
         <button

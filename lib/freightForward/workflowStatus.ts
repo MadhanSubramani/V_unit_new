@@ -31,6 +31,13 @@ export function statusLabel(status: FreightForwardStatus) {
   );
 }
 
+/** Timeline-only labels (status values unchanged in Firestore). */
+export function timelineStepLabel(status: FreightForwardStatus) {
+  if (status === "receivable") return "Received";
+  if (status === "payable") return "Paid";
+  return statusLabel(status);
+}
+
 export function getMissingPrerequisites(
   target: FreightForwardStatus,
   timeline?: StatusTimeline[]

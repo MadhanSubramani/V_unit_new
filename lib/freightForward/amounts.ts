@@ -1,4 +1,5 @@
 import { ExpenseItem, FreightForward } from "@/types/freightForward";
+import { getTotalOceanFreight } from "@/lib/freightForward/containers";
 
 export function parseAmount(value: unknown): number | undefined {
   if (value === undefined || value === null || value === "") return undefined;
@@ -24,6 +25,15 @@ export function computeTotalExpenses(
   return fromItems;
 }
 
+export function computeTotalExpensesForRecord(item: FreightForward) {
+  return computeTotalExpenses(
+    item.exWorks,
+    item.otherExpenses,
+    getTotalOceanFreight(item),
+    item.totalExpenses
+  );
+}
+
 export function computeProfitLoss(
   creditNote?: number,
   billedAmount?: number,
@@ -36,12 +46,7 @@ export function computeProfitLoss(
 }
 
 export function getRecordTotalExpenses(item: FreightForward) {
-  return computeTotalExpenses(
-    item.exWorks,
-    item.otherExpenses,
-    parseAmount(item.oceanFreight),
-    item.totalExpenses
-  );
+  return computeTotalExpensesForRecord(item);
 }
 
 export function getRecordProfitLoss(item: FreightForward) {

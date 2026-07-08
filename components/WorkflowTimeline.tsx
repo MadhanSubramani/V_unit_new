@@ -8,6 +8,7 @@ import {
   getStatusDropdownOptions,
   getVisitedStatuses,
   statusLabel,
+  timelineStepLabel,
   WORKFLOW_STEPS,
 } from "@/lib/freightForward/workflowStatus";
 
@@ -233,7 +234,7 @@ export default function WorkflowTimeline({
 
             <div className="flex-1 pb-8">
               <div className="flex items-center justify-between">
-                <h4 className="font-semibold text-zinc-900">{step.label}</h4>
+                <h4 className="font-semibold text-zinc-900">{timelineStepLabel(step.key)}</h4>
 
                 {completed && (
                   <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-700">

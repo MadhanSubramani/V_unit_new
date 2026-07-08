@@ -4,6 +4,7 @@ import { useState } from "react";
 import { FreightForward } from "@/types/freightForward";
 import { Kyc } from "@/types/kyc";
 import type { ProformaInput } from "@/lib/freightForward/generateProformaPdf";
+import { getTotalOceanFreight } from "@/lib/freightForward/containers";
 
 interface ProformaDialogProps {
   open: boolean;
@@ -110,7 +111,7 @@ export default function ProformaDialog({
               className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
             />
             <p className="mt-1 text-[10px] text-zinc-400">
-              Ocean freight amount is taken from the record (${record.oceanFreight ?? 0})
+              Ocean freight total is taken from the record (${getTotalOceanFreight(record)})
             </p>
           </div>
 

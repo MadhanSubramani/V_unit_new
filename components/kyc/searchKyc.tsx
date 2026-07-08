@@ -1,7 +1,7 @@
 "use client";
 
 import { Search, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface Props {
   value: string;
@@ -13,14 +13,19 @@ export default function KycSearch({
   onSearch,
 }: Props) {
   const [search, setSearch] = useState(value);
+  const onSearchRef = useRef(onSearch);
+
+  useEffect(() => {
+    onSearchRef.current = onSearch;
+  }, [onSearch]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      onSearch(search.trim());
+      onSearchRef.current(search.trim());
     }, 400);
 
     return () => clearTimeout(timer);
-  }, [search, onSearch]);
+  }, [search]);
 
   useEffect(() => {
     setSearch(value);

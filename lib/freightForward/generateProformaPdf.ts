@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import { FreightForward } from "@/types/freightForward";
 import { Kyc } from "@/types/kyc";
 import { parseAmount, sumExpenseItems } from "@/lib/freightForward/amounts";
+import { getTotalOceanFreight } from "@/lib/freightForward/containers";
 
 const COMPANY = {
   name: "V UNIT LOGISTICS INDIA PRIVATE LIMITED",
@@ -101,7 +102,7 @@ function buildChargeRows(
 ): ChargeRow[] {
   const rows: ChargeRow[] = [];
   const totalExWorksUsd = sumExpenseItems(record.exWorks);
-  const oceanFreightUsd = parseAmount(record.oceanFreight) ?? 0;
+  const oceanFreightUsd = getTotalOceanFreight(record);
 
   if (totalExWorksUsd > 0) {
     const { cgstRate, sgstRate } = splitGst(input.exWorksGstPercent);

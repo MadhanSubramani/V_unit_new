@@ -7,6 +7,12 @@ import {
   getRecordTotalExpenses,
   parseAmount,
 } from "./amounts";
+import {
+  formatContainersDisplay,
+  getContainersFromRecord,
+  getOceanFreightPerContainer,
+  getTotalOceanFreight,
+} from "./containers";
 
 function docUrl(doc?: { url?: string }) {
   return doc?.url ?? "";
@@ -25,11 +31,18 @@ export function exportFreightForwardToExcel(
       "Job Number": item.jobNumber ?? "",
       "EZ Ref Number": item.ezRefNumber ?? "",
       "Consignment Name": item.consignmentName ?? "",
+      "Client Name": item.clientName ?? "",
+      "Trade Terms": item.tradeTerms ?? "",
       MBL: item.mbl ?? "",
       "MBL URL": docUrl(item.mblUrl),
       HBL: item.hbl ?? "",
       "HBL URL": docUrl(item.hblUrl),
-      "Container Number": item.containerNumber ?? "",
+      "Container Number": formatContainersDisplay(item),
+      "Containers": getContainersFromRecord(item)
+        .map((c) =>
+          [c.containerNumber, c.containerSize, c.containerType].filter(Boolean).join(" / ")
+        )
+        .join("; "),
       "Container Size": item.containerSize ?? "",
       "Container Type": item.containerType ?? "",
       ETD: item.etd ?? "",
@@ -40,7 +53,8 @@ export function exportFreightForwardToExcel(
       Location: item.cfs ?? item.sez ?? "",
       Liner: item.liner ?? "",
       Agent: item.agent ?? "",
-      "Ocean Freight": formatDollar(item.oceanFreight),
+      "Ocean Freight Per Container": formatDollar(getOceanFreightPerContainer(item)),
+      "Ocean Freight Total": formatDollar(getTotalOceanFreight(item)),
       "Ex Works": formatExpenseItems(item.exWorks),
       "Other Expenses": formatExpenseItems(item.otherExpenses),
       "Total Expenses": formatDollar(totalExpenses),
