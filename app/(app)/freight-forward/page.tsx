@@ -115,6 +115,30 @@ function displayDollar(value?: number | string | null) {
   return formatDollar(value) || "—";
 }
 
+function getLocationCode(
+  item: FreightForward,
+  cfsList: Cfs[],
+  sezList: Sez[]
+): string {
+  if (item.sez || item.locationType === "sez") {
+    const stored = item.sez?.trim() ?? "";
+    if (!stored) return "—";
+    const match = sezList.find(
+      (entry) => entry.code === stored || entry.name === stored
+    );
+    if (match) return match.code;
+    return stored.split(/\s*[-–|]\s*/)[0]?.trim() || stored;
+  }
+
+  const stored = item.cfs?.trim() ?? "";
+  if (!stored) return "—";
+  const match = cfsList.find(
+    (entry) => entry.code === stored || entry.name === stored
+  );
+  if (match) return match.code;
+  return stored.split(/\s*[-–|]\s*/)[0]?.trim() || stored;
+}
+
 const emptyForm = (): FreightForwardFormData => ({
   jobNumber: "",
   ezRefNumber: "",
@@ -858,9 +882,11 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
     "FF No",
     "EZ No",
     "BL Type",
+    "Trade Terms",
     "Vessel Name",
     "ETA",
     "Consignee",
+    "Client",
     "MBL",
     "HBL",
     "Cont No",
@@ -1682,13 +1708,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
               <Info label="ETA" value={formatDate(selected.eta)} />
               <Info
                 label="Location"
-                value={
-                  selected.cfs
-                    ? selected.cfs
-                    : selected.sez
-                      ? selected.sez
-                      : "—"
-                }
+                value={getLocationCode(selected, cfsList, sezList)}
                 full
               />
             </div>
@@ -2094,18 +2114,20 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={10} className="py-10 text-center text-zinc-500">Loading...</td></tr>
+                  <tr><td colSpan={12} className="py-10 text-center text-zinc-500">Loading...</td></tr>
                 ) : rows.length === 0 ? (
-                  <tr><td colSpan={10} className="py-10 text-center text-zinc-400">No freight forward records found.</td></tr>
+                  <tr><td colSpan={12} className="py-10 text-center text-zinc-400">No freight forward records found.</td></tr>
                 ) : (
                   rows.map((item) => (
                     <tr key={item.id} onClick={() => openView(item)} className="cursor-pointer border-b border-zinc-100 hover:bg-zinc-50 transition-colors">
                       <td className="px-4 py-3 font-medium text-zinc-800">{item.jobNumber || "—"}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.ezRefNumber || "—"}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.blType || "—"}</td>
+                      <td className="px-4 py-3 text-zinc-600">{item.tradeTerms || "—"}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.vesselName || "—"}</td>
                       <td className="px-4 py-3 text-zinc-600">{formatDate(item.eta)}</td>
                       <td className="px-4 py-3 font-medium text-zinc-800">{item.consignmentName}</td>
+                      <td className="px-4 py-3 text-zinc-600">{item.clientName || "—"}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.mbl}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.hbl}</td>
                       <td className="px-4 py-3 text-zinc-600">{formatContainersDisplay(item)}</td>

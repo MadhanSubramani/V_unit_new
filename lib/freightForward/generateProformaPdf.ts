@@ -2,7 +2,12 @@ import { jsPDF } from "jspdf";
 import { FreightForward } from "@/types/freightForward";
 import { Kyc } from "@/types/kyc";
 import { parseAmount, sumExpenseItems } from "@/lib/freightForward/amounts";
-import { getTotalOceanFreight } from "@/lib/freightForward/containers";
+import {
+  getContainerCount,
+  getContainersFromRecord,
+  getOceanFreightPerContainer,
+  getTotalOceanFreight,
+} from "@/lib/freightForward/containers";
 
 const COMPANY = {
   name: "V UNIT LOGISTICS INDIA PRIVATE LIMITED",
@@ -34,6 +39,13 @@ interface ChargeRow {
   cgstAmount: number;
   sgstAmount: number;
   totalInr: number;
+}
+
+function formatUsd(value: number) {
+  return value.toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
 }
 
 function formatInr(value: number) {
@@ -130,10 +142,13 @@ function buildChargeRows(
     const taxableInr = oceanFreightUsd * input.rupeePerDollar;
     const cgstAmount = (taxableInr * cgstRate) / 100;
     const sgstAmount = (taxableInr * sgstRate) / 100;
+    const containerCount = getContainerCount(record);
+    const perContainer = getOceanFreightPerContainer(record) ?? 0;
+    const oceanDetail = `(${containerCount} container${containerCount === 1 ? "" : "s"} × $${formatUsd(perContainer)})`;
 
     rows.push({
       sno: rows.length + 1,
-      description: "OCEAN FREIGHT",
+      description: `OCEAN FREIGHT\n${oceanDetail}`,
       currency: "USD",
       unitAmount: oceanFreightUsd,
       roe: input.rupeePerDollar,
@@ -250,12 +265,19 @@ export async function generateProformaPdf(
     y += 12;
   }
 
+  const containers = getContainersFromRecord(record);
+  const containerNumbers =
+    containers
+      .map((c) => c.containerNumber)
+      .filter(Boolean)
+      .join(", ") || "—";
+
   doc.text(`Invoice Date : ${today}`, leftX, y);
   doc.text(`Master Number : ${record.mbl || "—"}`, rightX, y);
   y += 12;
   doc.text(`House Number : ${record.hbl || "—"}`, rightX, y);
   y += 12;
-  doc.text(`Container No. : ${record.containerNumber || "—"}`, leftX, y);
+  doc.text(`Container No. : ${containerNumbers}`, leftX, y);
   doc.text(`Container Size : ${record.containerSize || "—"}`, rightX, y);
   y += 12;
   doc.text(`Container Type : ${record.containerType || "—"}`, leftX, y);
@@ -298,7 +320,7 @@ export async function generateProformaPdf(
   doc.text("SGST%", colX.sgstR, y + 11);
   doc.text("SGST", colX.sgstA, y + 11);
   doc.text("Total", colX.total, y + 11);
-  y += 20;
+  y += 30;
 
   doc.setFont("helvetica", "normal");
   let totalTaxable = 0;
@@ -307,8 +329,14 @@ export async function generateProformaPdf(
   let grandTotal = 0;
 
   rows.forEach((row) => {
+    const descLines = row.description.split("\n");
     doc.text(String(row.sno), colX.sno, y);
-    doc.text(row.description, colX.desc, y);
+    doc.text(descLines[0], colX.desc, y);
+    if (descLines[1]) {
+      doc.setFontSize(6);
+      doc.text(descLines[1], colX.desc, y + 8);
+      doc.setFontSize(7);
+    }
     doc.text(row.currency, colX.curr, y);
     doc.text(formatInr(row.unitAmount), colX.unit, y);
     doc.text(formatInr(row.roe), colX.roe, y);
@@ -323,7 +351,7 @@ export async function generateProformaPdf(
     totalCgst += row.cgstAmount;
     totalSgst += row.sgstAmount;
     grandTotal += row.totalInr;
-    y += 14;
+    y += descLines[1] ? 22 : 14;
   });
 
   y += 8;
