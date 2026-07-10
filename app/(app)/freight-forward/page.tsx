@@ -33,7 +33,6 @@ import {
   FreightSortKey,
   parseFreightSortValue,
 } from "@/lib/freightForward/sortRecords";
-import { generateJobNumber } from "@/lib/freightForward/generateJobNumber";
 import {
   computeProfitLoss,
   computeTotalExpenses,
@@ -658,17 +657,12 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
     setExistingDebitDocs(item.debitDocuments ?? []);
   };
 
-  const openAdd = async () => {
+  const openAdd = () => {
     setSelected(null);
     setErrors({});
     setSubmitError("");
     setDrawerMode("add");
-    try {
-      const jobNumber = await generateJobNumber();
-      setForm({ ...emptyForm(), jobNumber });
-    } catch {
-      setForm(emptyForm());
-    }
+    setForm(emptyForm());
   };
 
   const openEdit = (item: FreightForward) => {
@@ -923,6 +917,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
             <input
               value={form.jobNumber ?? ""}
               readOnly
+              placeholder={drawerMode === "add" ? "Auto-generated on save" : undefined}
               className={`${fieldClass("jobNumber")} bg-zinc-100 cursor-not-allowed`}
             />
           </div>

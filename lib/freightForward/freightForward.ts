@@ -81,7 +81,7 @@ export async function createFreightForward(
   data: FreightForwardFormData,
   createdBy: string
 ) {
-  const jobNumber = data.jobNumber?.trim() || (await generateJobNumber());
+  const jobNumber = await generateJobNumber();
   const timeline = [
     {
       status: "in_process",
