@@ -241,11 +241,13 @@ function removeUndefined<T extends object>(obj: T): T {
 
 function buildPayload(form: FreightForwardFormData): Record<string, unknown> {
   const containers = (form.containers ?? [])
-    .map((c) => ({
-      containerNumber: c.containerNumber.trim().toUpperCase(),
-      containerSize: c.containerSize || undefined,
-      containerType: c.containerType || undefined,
-    }))
+    .map((c) =>
+      removeUndefined({
+        containerNumber: c.containerNumber.trim().toUpperCase(),
+        containerSize: c.containerSize?.trim() || undefined,
+        containerType: c.containerType?.trim() || undefined,
+      })
+    )
     .filter((c) => c.containerNumber);
 
   const primary = containers[0];
@@ -262,9 +264,9 @@ function buildPayload(form: FreightForwardFormData): Record<string, unknown> {
     hbl: form.hbl.trim(),
     blType: form.blType || undefined,
     containers,
-    containerNumber: primary.containerNumber,
-    containerSize: primary.containerSize,
-    containerType: primary.containerType,
+    containerNumber: primary?.containerNumber,
+    containerSize: primary?.containerSize,
+    containerType: primary?.containerType,
     etd: form.etd || undefined,
     eta: form.eta || undefined,
     vesselName: form.vesselName?.trim() || undefined,
@@ -692,33 +694,73 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
     }`;
 
   const clearError = (key: string) => {
-    if (errors[key]) setErrors((prev) => ({ ...prev, [key]: undefined }));
+    if (errors[key]) {
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
+  };
+
+  const scrollToFirstError = (errorKeys: string[]) => {
+    if (!errorKeys.length) return;
+    requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-field="${errorKeys[0]}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
   };
 
   const validate = (): boolean => {
     const next: FormErrors = {};
-    if (!form.consignmentName.trim()) next.consignmentName = "Consignee Name is required.";
-    if (!form.mbl.trim()) next.mbl = "MBL is required.";
-    if (!form.hbl.trim()) next.hbl = "HBL is required.";
+
+    if (!form.consignmentName.trim()) {
+      next.consignmentName = "Consignee Name is required.";
+    }
+    if (!form.mbl.trim()) {
+      next.mbl = "MBL is required.";
+    }
+    if (!form.hbl.trim()) {
+      next.hbl = "HBL is required.";
+    }
 
     const containers = form.containers ?? [];
-    const filledContainers = containers.filter((c) => c.containerNumber.trim());
-    if (!filledContainers.length) {
-      next["containers.0.containerNumber"] = "At least one container is required.";
-    } else {
-      containers.forEach((container, index) => {
-        if (!container.containerNumber.trim()) return;
-        if (!CONTAINER_NUMBER_REGEX.test(container.containerNumber.trim().toUpperCase())) {
-          next[`containers.${index}.containerNumber`] =
-            "Format must be 4 uppercase letters followed by 7 digits (e.g. ABCD1234567).";
+    let hasValidContainer = false;
+
+    containers.forEach((container, index) => {
+      const number = container.containerNumber.trim().toUpperCase();
+      if (!number) {
+        if (containers.length === 1 || index === 0) {
+          next[`containers.${index}.containerNumber`] = "Container Number is required.";
         }
-      });
+        return;
+      }
+      if (!CONTAINER_NUMBER_REGEX.test(number)) {
+        next[`containers.${index}.containerNumber`] =
+          "Format must be 4 uppercase letters followed by 7 digits (e.g. ABCD1234567).";
+        return;
+      }
+      hasValidContainer = true;
+    });
+
+    if (!hasValidContainer && !next["containers.0.containerNumber"]) {
+      next["containers.0.containerNumber"] = "At least one container is required.";
     }
+
     setErrors(next);
-    return Object.keys(next).length === 0;
+    const errorKeys = Object.keys(next);
+    if (errorKeys.length > 0) {
+      setSubmitError("Please correct the required fields highlighted below.");
+      scrollToFirstError(errorKeys);
+      return false;
+    }
+
+    return true;
   };
 
   const handleSave = async () => {
+    if (saving) return;
     setSubmitError("");
     if (!validate()) return;
     const username = user?.username ?? "unknown";
@@ -905,7 +947,13 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
       </div>
 
       {submitError && (
-        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+        <div
+          className={`mt-4 rounded-xl border px-3 py-2 text-xs ${
+            Object.keys(errors).length > 0
+              ? "border-amber-200 bg-amber-50 text-amber-800"
+              : "border-red-200 bg-red-50 text-red-600"
+          }`}
+        >
           {submitError}
         </div>
       )}
@@ -959,7 +1007,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
                   )}
                 </div>
                 <div className="space-y-2">
-                  <div>
+                  <div data-field={`containers.${index}.containerNumber`}>
                     <label className="mb-1 block text-[11px] font-medium text-zinc-600">
                       Container Number <span className="text-red-500">*</span>
                     </label>
@@ -1025,7 +1073,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <div>
+          <div data-field="consignmentName">
             <label className="mb-1 block text-[11px] font-medium text-zinc-600">
               Consignee Name <span className="text-red-500">*</span>
             </label>
@@ -1090,6 +1138,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
+          <div data-field="mbl">
           <FieldWithUpload
             label="MBL"
             required
@@ -1108,6 +1157,8 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
             error={errors.mbl}
             fieldClass={fieldClass("mbl")}
           />
+          </div>
+          <div data-field="hbl">
           <FieldWithUpload
             label="HBL"
             required
@@ -1126,6 +1177,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
             error={errors.hbl}
             fieldClass={fieldClass("hbl")}
           />
+          </div>
         </div>
 
         <div>

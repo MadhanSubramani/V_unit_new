@@ -1,6 +1,5 @@
 import { db } from "../firebase";
 import {
-  addDoc,
   arrayUnion,
   collection,
   deleteDoc,
@@ -10,13 +9,18 @@ import {
   orderBy,
   query,
   QueryConstraint,
+  runTransaction,
   serverTimestamp,
   Timestamp,
   updateDoc,
   where,
 } from "firebase/firestore";
 import { FreightForward, FreightForwardFormData, FreightForwardStatus } from "@/types/freightForward";
-import { generateJobNumber } from "./generateJobNumber";
+import {
+  ensureFreightForwardCounterSeeded,
+  formatFreightJobNumber,
+  FREIGHT_COUNTER_DOC,
+} from "./generateJobNumber";
 import { computePipelineFlags } from "./pipelineFlags";
 import { normalizeEtaSort } from "./etaSort";
 import {
@@ -29,10 +33,36 @@ import { sortFreightRecords } from "./sortRecords";
 
 const REF = () => collection(db, "freightForward");
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Object.prototype.toString.call(value) === "[object Object]"
+  );
+}
+
+/** Firestore rejects `undefined` at any depth (including inside arrays). */
+function stripUndefinedDeep(value: unknown): unknown {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (value instanceof Timestamp || value instanceof Date) return value;
+  if (Array.isArray(value)) {
+    return value
+      .map(stripUndefinedDeep)
+      .filter((item) => item !== undefined);
+  }
+  if (isPlainObject(value)) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .map(([key, entry]) => [key, stripUndefinedDeep(entry)] as const)
+        .filter(([, entry]) => entry !== undefined)
+    );
+  }
+  return value;
+}
+
 function stripUndefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
-  return Object.fromEntries(
-    Object.entries(obj).filter(([, value]) => value !== undefined)
-  ) as Partial<T>;
+  return stripUndefinedDeep(obj) as Partial<T>;
 }
 
 export { usesBalanceCardFilter };
@@ -81,7 +111,9 @@ export async function createFreightForward(
   data: FreightForwardFormData,
   createdBy: string
 ) {
-  const jobNumber = await generateJobNumber();
+  await ensureFreightForwardCounterSeeded();
+
+  const { jobNumber: _ignored, ...recordData } = data;
   const timeline = [
     {
       status: "in_process",
@@ -91,22 +123,37 @@ export async function createFreightForward(
   ];
   const flags = computePipelineFlags(timeline);
 
-  const result = await addDoc(REF(), {
-    ...stripUndefined({
-      ...data,
-      jobNumber,
-      etaSort: normalizeEtaSort(data.eta),
-      ...flags,
-      status: data.status ?? "in_process",
-      statusTimeline: timeline,
-      createdBy,
-      updatedBy: createdBy,
-    } as Record<string, unknown>),
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+  const newDocRef = doc(collection(db, "freightForward"));
+  const counterRef = doc(db, "counters", FREIGHT_COUNTER_DOC);
+
+  const jobNumber = await runTransaction(db, async (transaction) => {
+    const counterSnap = await transaction.get(counterRef);
+    const lastSeq = counterSnap.exists() ? (counterSnap.data().lastSeq as number) : 0;
+    const next = lastSeq + 1;
+    const allocated = formatFreightJobNumber(next);
+
+    transaction.set(counterRef, { lastSeq: next }, { merge: true });
+    transaction.set(
+      newDocRef,
+      stripUndefinedDeep({
+        ...recordData,
+        jobNumber: allocated,
+        etaSort: normalizeEtaSort(data.eta),
+        ...flags,
+        status: data.status ?? "in_process",
+        statusTimeline: timeline,
+        createdBy,
+        updatedBy: createdBy,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }) as Record<string, unknown>
+    );
+
+    return allocated;
   });
+
   invalidateFreightForwardListCache();
-  return result;
+  return { id: newDocRef.id, jobNumber };
 }
 
 export async function updateFreightForward(
