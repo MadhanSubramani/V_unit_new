@@ -38,6 +38,8 @@ import {
   computeTotalExpenses,
   formatDollar,
   getRecordProfitLoss,
+  normalizeBilledAmountInput,
+  getBilledAmount,
   getRecordTotalExpenses,
   parseAmount,
   sumExpenseItems,
@@ -219,7 +221,9 @@ function toFormData(item: FreightForward): FreightForwardFormData {
     oceanFreight: getTotalOceanFreight(item),
     exWorks: item.exWorks ?? [],
     otherExpenses: item.otherExpenses ?? [],
-    billedAmount: parseAmount(item.billedAmount ?? item.buildAmount),
+    billedAmount: normalizeBilledAmountInput(
+      item.billedAmount ?? item.buildAmount
+    ),
     creditNote: parseAmount(item.creditNote),
     totalExpenses: computeTotalExpenses(
       item.exWorks,
@@ -282,7 +286,7 @@ function buildPayload(form: FreightForwardFormData): Record<string, unknown> {
       sumExpenseItems(form.exWorks) +
       sumExpenseItems(form.otherExpenses) +
       totalOceanFreight,
-    billedAmount: parseAmount(form.billedAmount),
+    billedAmount: normalizeBilledAmountInput(form.billedAmount) ?? 0,
     creditNote: parseAmount(form.creditNote),
     exWorks: (form.exWorks ?? []).filter((i) => i.name.trim() || i.amount),
     otherExpenses: (form.otherExpenses ?? []).filter((i) => i.name.trim() || i.amount),
@@ -921,6 +925,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
     "Trade Terms",
     "Vessel Name",
     "ETA",
+    "Location",
     "Consignee",
     "Client",
     "MBL",
@@ -1784,7 +1789,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
               />
               <Info
                 label="Billed Amount"
-                value={displayDollar(selected.billedAmount ?? selected.buildAmount)}
+                value={displayDollar(getBilledAmount(selected))}
               />
               <DocInfo label="Billed Amount Document" doc={selected.billedAmountUrl} />
               <Info
@@ -2161,9 +2166,9 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={12} className="py-10 text-center text-zinc-500">Loading...</td></tr>
+                  <tr><td colSpan={13} className="py-10 text-center text-zinc-500">Loading...</td></tr>
                 ) : rows.length === 0 ? (
-                  <tr><td colSpan={12} className="py-10 text-center text-zinc-400">No freight forward records found.</td></tr>
+                  <tr><td colSpan={13} className="py-10 text-center text-zinc-400">No freight forward records found.</td></tr>
                 ) : (
                   rows.map((item) => (
                     <tr key={item.id} onClick={() => openView(item)} className="cursor-pointer border-b border-zinc-100 hover:bg-zinc-50 transition-colors">
@@ -2173,6 +2178,9 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
                       <td className="px-4 py-3 text-zinc-600">{item.tradeTerms || "—"}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.vesselName || "—"}</td>
                       <td className="px-4 py-3 text-zinc-600">{formatDate(item.eta)}</td>
+                      <td className="px-4 py-3 text-zinc-600">
+                        {getLocationCode(item, cfsList, sezList)}
+                      </td>
                       <td className="px-4 py-3 font-medium text-zinc-800">{item.consignmentName}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.clientName || "—"}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.mbl}</td>

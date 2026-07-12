@@ -49,10 +49,25 @@ export function getRecordTotalExpenses(item: FreightForward) {
   return computeTotalExpensesForRecord(item);
 }
 
+/** Treat missing or invalid (e.g. legacy -1) billed amounts as 0. */
+export function getBilledAmount(item: FreightForward): number {
+  const billed = parseAmount(item.billedAmount);
+  if (billed !== undefined && billed >= 0) return billed;
+  const legacy = parseAmount(item.buildAmount);
+  if (legacy !== undefined && legacy >= 0) return legacy;
+  return 0;
+}
+
+export function normalizeBilledAmountInput(value: unknown): number | undefined {
+  const amount = parseAmount(value);
+  if (amount === undefined || amount < 0) return undefined;
+  return amount;
+}
+
 export function getRecordProfitLoss(item: FreightForward) {
   return computeProfitLoss(
     item.creditNote,
-    item.billedAmount ?? item.buildAmount,
+    getBilledAmount(item),
     getRecordTotalExpenses(item)
   );
 }

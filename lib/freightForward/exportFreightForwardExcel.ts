@@ -3,6 +3,7 @@ import { FreightForward } from "@/types/freightForward";
 import {
   formatDollar,
   formatExpenseItems,
+  getBilledAmount,
   getRecordProfitLoss,
   getRecordTotalExpenses,
   parseAmount,
@@ -58,7 +59,7 @@ export function exportFreightForwardToExcel(
       "Ex Works": formatExpenseItems(item.exWorks),
       "Other Expenses": formatExpenseItems(item.otherExpenses),
       "Total Expenses": formatDollar(totalExpenses),
-      "Billed Amount": formatDollar(item.billedAmount ?? item.buildAmount),
+      "Billed Amount": formatDollar(getBilledAmount(item)),
       "Billed Amount URL": docUrl(item.billedAmountUrl),
       "Credit Note": formatDollar(item.creditNote),
       "Credit Note URL": docUrl(item.creditNoteUrl),
@@ -74,7 +75,7 @@ export function exportFreightForwardToExcel(
   });
 
   const totalBilledAmount = records.reduce(
-    (sum, item) => sum + (parseAmount(item.billedAmount ?? item.buildAmount) ?? 0),
+    (sum, item) => sum + getBilledAmount(item),
     0
   );
   const totalCreditNote = records.reduce(
