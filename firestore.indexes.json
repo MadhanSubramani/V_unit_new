@@ -4,6 +4,14 @@
       "collectionGroup": "freightForward",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "isDeleted", "order": "ASCENDING" },
+        { "fieldPath": "deletedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "etaSort", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]

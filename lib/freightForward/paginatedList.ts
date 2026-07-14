@@ -20,7 +20,8 @@ import {
   isStatusPending,
   matchesBalanceCard,
 } from "@/lib/freightForward/statusBalance";
-import { FreightSortDir, FreightSortKey, sortFreightRecords } from "@/lib/freightForward/sortRecords";
+import { FreightSortDir, FreightSortKey, requiresClientNaturalSort, sortFreightRecords } from "@/lib/freightForward/sortRecords";
+import { matchesFreightSearch } from "@/lib/freightForward/searchFields";
 
 const REF = () => collection(db, "freightForward");
 
@@ -136,12 +137,24 @@ function buildOrderConstraints(
   const dir = sortDir === "asc" ? "asc" : "desc";
 
   if (hasEtaRange) {
+    if (sortKey === "jobNumber") {
+      return [orderBy("etaSort", "asc"), orderBy("jobNumber", dir)];
+    }
+    if (sortKey === "ezRefNumber") {
+      return [orderBy("etaSort", "asc"), orderBy("ezRefNumber", dir)];
+    }
     if (sortKey === "createdAt") {
       return [orderBy("etaSort", "asc"), orderBy("createdAt", dir)];
     }
     return [orderBy("etaSort", dir), orderBy("createdAt", "desc")];
   }
 
+  if (sortKey === "jobNumber") {
+    return [orderBy("jobNumber", dir)];
+  }
+  if (sortKey === "ezRefNumber") {
+    return [orderBy("ezRefNumber", dir)];
+  }
   if (sortKey === "createdAt") {
     return [orderBy("createdAt", dir)];
   }
@@ -164,7 +177,7 @@ function filterRecordsForRequest(
   records: FreightForward[],
   request: FreightListRequest
 ): FreightForward[] {
-  let filtered = records;
+  let filtered = records.filter((item) => !item.isDeleted);
 
   if (request.activeStatus) {
     filtered = filtered.filter((item) =>
@@ -183,12 +196,9 @@ function filterRecordsForRequest(
   }
 
   if (request.searchValue?.trim()) {
-    const q = request.searchValue.trim().toLowerCase();
-    const field = request.searchField ?? "consignmentName";
-    filtered = filtered.filter((item) => {
-      const val = (item as unknown as Record<string, unknown>)[field];
-      return typeof val === "string" && val.toLowerCase().includes(q);
-    });
+    filtered = filtered.filter((item) =>
+      matchesFreightSearch(item, request.searchValue!, request.searchField)
+    );
   }
 
   return sortFreightRecords(filtered, request.sortKey, request.sortDir);
@@ -282,7 +292,7 @@ async function fetchServerListPage(
   );
 
   return {
-    items: snap.docs.map(docToRecord),
+    items: snap.docs.map(docToRecord).filter((item) => !item.isDeleted),
     lastDoc: snap.docs[snap.docs.length - 1] ?? null,
     total,
     mode: "server",
@@ -316,7 +326,8 @@ async function resolveListPage(
 export async function getFreightForwardPaginated(
   request: FreightListRequest
 ): Promise<FreightListPage> {
-  if (request.searchValue?.trim()) {
+  // FF No / EZ No must use client natural-number sort (VO1, VO2… VO10; FF01, FF02…).
+  if (request.searchValue?.trim() || requiresClientNaturalSort(request.sortKey)) {
     return fetchClientListPage(request);
   }
 
@@ -353,7 +364,7 @@ export async function getFreightForwardCardCountsFromServer() {
     if (!clientRecords) {
       clientRecords = await fetchAllRecordsForClient();
     }
-    return pick(computeBalanceCounts(clientRecords));
+    return pick(computeBalanceCounts(clientRecords.filter((item) => !item.isDeleted)));
   };
 
   try {
@@ -410,7 +421,7 @@ export async function getFreightForwardCardCountsFromServer() {
     };
   } catch (error) {
     if (!isFirestoreIndexError(error)) throw error;
-    const records = await fetchAllRecordsForClient();
+    const records = (await fetchAllRecordsForClient()).filter((item) => !item.isDeleted);
     return computeBalanceCounts(records);
   }
 }

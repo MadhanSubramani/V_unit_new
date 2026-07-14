@@ -10,6 +10,9 @@ import {
   Paperclip,
   Download,
   FileSpreadsheet,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
 } from "lucide-react";
 import { DocumentSnapshot, Timestamp } from "firebase/firestore";
 import ModuleHeader from "@/components/ModuleHeader";
@@ -19,7 +22,7 @@ import { getCfsList } from "@/lib/cfs/cfs";
 import { getConfigByCategory } from "@/lib/configurations/configurations";
 import {
   createFreightForward,
-  deleteFreightForward,
+  softDeleteFreightForward,
   getFreightForwardCardCounts,
   getFreightForwardPaginated,
   updateFreightForward,
@@ -28,10 +31,8 @@ import {
   getFreightForwardForExport,
 } from "@/lib/freightForward/freightForward";
 import {
-  FREIGHT_SORT_DROPDOWN_OPTIONS,
   FreightSortDir,
   FreightSortKey,
-  parseFreightSortValue,
 } from "@/lib/freightForward/sortRecords";
 import {
   computeProfitLoss,
@@ -87,15 +88,6 @@ type CardFilter =
   | "completed"
   | null;
 type DrawerMode = "add" | "edit" | "view" | null;
-
-const SEARCH_FIELDS = [
-  { label: "EZ No", value: "ezRefNumber" },
-  { label: "Consignee Name", value: "consignmentName" },
-  { label: "MBL", value: "mbl" },
-  { label: "HBL", value: "hbl" },
-  { label: "Container Number", value: "containerNumber" },
-  { label: "Vessel Name", value: "vesselName" },
-];
 
 const PAGE_SIZE = 10;
 
@@ -321,7 +313,6 @@ export default function FreightForwardPage() {
 
   // ── Filters ───────────────────────────────────────────────────────────────
   const [activeCard, setActiveCard] = useState<CardFilter>(null);
-  const [searchField, setSearchField] = useState("consignmentName");
   const [searchValue, setSearchValue] = useState("");
   const [debouncedSearchValue, setDebouncedSearchValue] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -491,7 +482,7 @@ export default function FreightForwardPage() {
           activeStatus,
           etaFrom: dateFrom || undefined,
           etaTo: dateTo || undefined,
-          searchField,
+          searchField: "all",
           searchValue: debouncedSearchValue,
           sortKey,
           sortDir,
@@ -526,7 +517,6 @@ export default function FreightForwardPage() {
       cursors,
       dateFrom,
       dateTo,
-      searchField,
       debouncedSearchValue,
       sortKey,
       sortDir,
@@ -576,7 +566,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
     loadCounts();
     loadPage(0, [null]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCard, activeStatus, dateFrom, dateTo, debouncedSearchValue, searchField, sortKey, sortDir]);
+  }, [activeCard, activeStatus, dateFrom, dateTo, debouncedSearchValue, sortKey, sortDir]);
 
   const reload = async () => {
     await Promise.all([loadCounts(), loadPage(page)]);
@@ -830,7 +820,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
 
   const handleDelete = async () => {
     if (!deleteId) return;
-    await deleteFreightForward(deleteId);
+    await softDeleteFreightForward(deleteId, user?.username ?? "unknown");
     setDeleteId(null);
     await reload();
   };
@@ -910,31 +900,67 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
   const currencyInputClass = (key: string, extra = "") =>
     `pl-7 ${extra} ${fieldClass(key)}`;
 
-  const handleSortChange = (value: string) => {
-    const { sortKey: nextKey, sortDir: nextDir } = parseFreightSortValue(value);
-    setSortKey(nextKey);
-    setSortDir(nextDir);
+  const handleColumnSort = (key: FreightSortKey) => {
+    if (sortKey === key) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
     setPage(0);
-    // useEffect on sortKey/sortDir reloads page 0 for both list modes
+    setCursors([null]);
   };
 
-  const listColumns = [
-    "FF No",
-    "EZ No",
-    "BL Type",
-    "Trade Terms",
-    "Vessel Name",
-    "ETA",
-    "Location",
-    "Consignee",
-    "Client",
-    "MBL",
-    "HBL",
-    "Cont No",
-    "Actions",
+  type ListColumn = {
+    label: string;
+    sortKey?: FreightSortKey;
+  };
+
+  const listColumns: ListColumn[] = [
+    { label: "FF No", sortKey: "jobNumber" },
+    { label: "EZ No", sortKey: "ezRefNumber" },
+    { label: "BL Type" },
+    { label: "Agent" },
+    { label: "Trade Terms" },
+    { label: "Vessel Name" },
+    { label: "ETA", sortKey: "eta" },
+    { label: "Location" },
+    { label: "Consignee" },
+    { label: "Client" },
+    { label: "MBL" },
+    { label: "HBL" },
+    { label: "Cont No" },
+    { label: "Actions" },
   ];
 
   // ── Render: form ──────────────────────────────────────────────────────────
+  const FormSection = ({
+    title,
+    description,
+    children,
+    action,
+  }: {
+    title: string;
+    description?: string;
+    children: React.ReactNode;
+    action?: React.ReactNode;
+  }) => (
+    <section className="rounded-2xl border border-zinc-200 bg-zinc-50/40 p-4">
+      <div className="mb-4 flex items-start justify-between gap-3 border-b border-zinc-200 pb-3">
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-800">
+            {title}
+          </h3>
+          {description ? (
+            <p className="mt-0.5 text-[11px] text-zinc-500">{description}</p>
+          ) : null}
+        </div>
+        {action}
+      </div>
+      <div className="space-y-3">{children}</div>
+    </section>
+  );
+
   const renderForm = () => (
     <div className="p-5">
       <div className="flex items-center justify-between">
@@ -964,38 +990,170 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
       )}
 
       <div className="mt-4 space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-zinc-600">Job Number</label>
-            <input
-              value={form.jobNumber ?? ""}
-              readOnly
-              placeholder={drawerMode === "add" ? "Auto-generated on save" : undefined}
-              className={`${fieldClass("jobNumber")} bg-zinc-100 cursor-not-allowed`}
-            />
+        <FormSection title="Job Reference" description="Job identity and external reference numbers.">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-zinc-600">Job Number</label>
+              <input
+                value={form.jobNumber ?? ""}
+                readOnly
+                placeholder={drawerMode === "add" ? "Auto-generated on save" : undefined}
+                className={`${fieldClass("jobNumber")} bg-zinc-100 cursor-not-allowed`}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-zinc-600">EZ Ref Number</label>
+              <input value={form.ezRefNumber ?? ""} onChange={(e) => { setForm({ ...form, ezRefNumber: e.target.value }); clearError("ezRefNumber"); }} className={fieldClass("ezRefNumber")} />
+            </div>
           </div>
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-zinc-600">EZ Ref Number</label>
-            <input value={form.ezRefNumber ?? ""} onChange={(e) => { setForm({ ...form, ezRefNumber: e.target.value }); clearError("ezRefNumber"); }} className={fieldClass("ezRefNumber")} />
-          </div>
-        </div>
+        </FormSection>
 
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <label className="text-[11px] font-medium text-zinc-600">Containers</label>
+        <FormSection title="Parties" description="Consignee, client, and trade terms.">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div data-field="consignmentName">
+              <label className="mb-1 block text-[11px] font-medium text-zinc-600">
+                Consignee Name <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={form.consignmentName}
+                onChange={(e) => {
+                  setForm({ ...form, consignmentName: e.target.value });
+                  clearError("consignmentName");
+                }}
+                className={fieldClass("consignmentName")}
+              >
+                <option value="">Select consignee from KYC</option>
+                {form.consignmentName &&
+                  !kycList.some((k) => k.companyName === form.consignmentName) && (
+                    <option value={form.consignmentName}>{form.consignmentName}</option>
+                  )}
+                {kycList.map((kyc) => (
+                  <option key={kyc.id ?? kyc.companyName} value={kyc.companyName}>
+                    {kyc.companyName}
+                  </option>
+                ))}
+              </select>
+              {errors.consignmentName && (
+                <p className="mt-1 text-[11px] text-red-500">{errors.consignmentName}</p>
+              )}
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-zinc-600">
+                Client Name
+              </label>
+              <input
+                value={form.clientName ?? ""}
+                onChange={(e) => setForm({ ...form, clientName: e.target.value })}
+                className={fieldClass("clientName")}
+              />
+            </div>
+          </div>
+
+          {selectedConsigneeKyc?.billingAddress && (
+            <div className="rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-xs text-zinc-600">
+              <span className="font-medium text-zinc-700">Consignee address: </span>
+              {selectedConsigneeKyc.billingAddress}
+            </div>
+          )}
+
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-zinc-600">
+              Trade Terms
+            </label>
+            <select
+              value={form.tradeTerms ?? ""}
+              onChange={(e) => setForm({ ...form, tradeTerms: e.target.value })}
+              className={fieldClass("tradeTerms")}
+            >
+              <option value="">Select trade terms</option>
+              {tradeTermsList.map((item) => (
+                <option key={item.id} value={item.value}>
+                  {item.value}
+                </option>
+              ))}
+            </select>
+          </div>
+        </FormSection>
+
+        <FormSection title="Bill of Lading" description="MBL, HBL and BL type details.">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div data-field="mbl">
+              <FieldWithUpload
+                label="MBL"
+                required
+                value={form.mbl}
+                onChange={(v) => {
+                  setForm({ ...form, mbl: v });
+                  clearError("mbl");
+                }}
+                file={mblFile}
+                existingFile={existingMblDoc}
+                onFileChange={(f) => {
+                  setMblFile(f);
+                  if (f) setExistingMblDoc(undefined);
+                }}
+                onRemoveExisting={() => setExistingMblDoc(undefined)}
+                error={errors.mbl}
+                fieldClass={fieldClass("mbl")}
+              />
+            </div>
+            <div data-field="hbl">
+              <FieldWithUpload
+                label="HBL"
+                required
+                value={form.hbl}
+                onChange={(v) => {
+                  setForm({ ...form, hbl: v });
+                  clearError("hbl");
+                }}
+                file={hblFile}
+                existingFile={existingHblDoc}
+                onFileChange={(f) => {
+                  setHblFile(f);
+                  if (f) setExistingHblDoc(undefined);
+                }}
+                onRemoveExisting={() => setExistingHblDoc(undefined)}
+                error={errors.hbl}
+                fieldClass={fieldClass("hbl")}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-zinc-600">BL Type</label>
+            <select
+              value={form.blType ?? ""}
+              onChange={(e) => setForm({ ...form, blType: e.target.value })}
+              className={fieldClass("blType")}
+            >
+              <option value="">Select BL type</option>
+              {blTypes.map((item) => (
+                <option key={item.id} value={item.value}>
+                  {item.value}
+                </option>
+              ))}
+            </select>
+          </div>
+        </FormSection>
+
+        <FormSection
+          title="Containers"
+          description="Add one or more container numbers with size and type."
+          action={
             <button
               type="button"
               onClick={addContainer}
-              className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-[11px] text-zinc-600 hover:bg-zinc-50"
+              className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 hover:bg-zinc-50"
             >
               <Plus size={12} /> Add container
             </button>
-          </div>
+          }
+        >
           <div className="space-y-3">
             {(form.containers ?? []).map((container, index) => (
               <div
                 key={index}
-                className="rounded-xl border border-zinc-200 bg-zinc-50/50 p-3"
+                className="rounded-xl border border-zinc-200 bg-white p-3"
               >
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-[11px] font-medium text-zinc-500">
@@ -1005,7 +1163,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
                     <button
                       type="button"
                       onClick={() => removeContainer(index)}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 hover:bg-white"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 hover:bg-zinc-50"
                     >
                       <Trash2 size={12} />
                     </button>
@@ -1075,538 +1233,420 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
               </div>
             ))}
           </div>
-        </div>
+        </FormSection>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div data-field="consignmentName">
-            <label className="mb-1 block text-[11px] font-medium text-zinc-600">
-              Consignee Name <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={form.consignmentName}
-              onChange={(e) => {
-                setForm({ ...form, consignmentName: e.target.value });
-                clearError("consignmentName");
-              }}
-              className={fieldClass("consignmentName")}
-            >
-              <option value="">Select consignee from KYC</option>
-              {form.consignmentName &&
-                !kycList.some((k) => k.companyName === form.consignmentName) && (
-                  <option value={form.consignmentName}>{form.consignmentName}</option>
-                )}
-              {kycList.map((kyc) => (
-                <option key={kyc.id ?? kyc.companyName} value={kyc.companyName}>
-                  {kyc.companyName}
-                </option>
+        <FormSection title="Voyage & Route" description="Vessel schedule and port movement.">
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-zinc-600">Vessel Name</label>
+            <input value={form.vesselName ?? ""} onChange={(e) => setForm({ ...form, vesselName: e.target.value })} className={fieldClass("vesselName")} />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-zinc-600">ETD</label>
+              <input type="date" value={form.etd ?? ""} onChange={(e) => setForm({ ...form, etd: e.target.value })} className={fieldClass("etd")} />
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-zinc-600">ETA</label>
+              <input type="date" value={form.eta ?? ""} onChange={(e) => setForm({ ...form, eta: e.target.value })} className={fieldClass("eta")} />
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-zinc-600">POL</label>
+              <input value={form.pol ?? ""} onChange={(e) => setForm({ ...form, pol: e.target.value })} className={fieldClass("pol")} />
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-zinc-600">POD</label>
+              <input value={form.pod ?? ""} onChange={(e) => setForm({ ...form, pod: e.target.value })} className={fieldClass("pod")} />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-[11px] font-medium text-zinc-600">Location</label>
+            <div className="flex gap-1 rounded-xl border border-zinc-200 bg-zinc-50 p-1">
+              {(["cfs", "sez"] as const).map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setLocationType(type)}
+                  className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium uppercase transition
+                    ${form.locationType === type
+                      ? "bg-zinc-900 text-white shadow-md"
+                      : "text-zinc-500 hover:bg-white hover:text-zinc-900"
+                    }`}
+                >
+                  {type}
+                </button>
               ))}
-            </select>
-            {errors.consignmentName && (
-              <p className="mt-1 text-[11px] text-red-500">{errors.consignmentName}</p>
-            )}
-          </div>
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-zinc-600">
-              Client Name
-            </label>
-            <input
-              value={form.clientName ?? ""}
-              onChange={(e) => setForm({ ...form, clientName: e.target.value })}
-              className={fieldClass("clientName")}
-            />
-          </div>
-        </div>
-
-        {selectedConsigneeKyc?.billingAddress && (
-          <div className="rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-xs text-zinc-600">
-            <span className="font-medium text-zinc-700">Consignee address: </span>
-            {selectedConsigneeKyc.billingAddress}
-          </div>
-        )}
-
-        <div>
-          <label className="mb-1 block text-[11px] font-medium text-zinc-600">
-            Trade Terms
-          </label>
-          <select
-            value={form.tradeTerms ?? ""}
-            onChange={(e) => setForm({ ...form, tradeTerms: e.target.value })}
-            className={fieldClass("tradeTerms")}
-          >
-            <option value="">Select trade terms</option>
-            {tradeTermsList.map((item) => (
-              <option key={item.id} value={item.value}>
-                {item.value}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div data-field="mbl">
-          <FieldWithUpload
-            label="MBL"
-            required
-            value={form.mbl}
-            onChange={(v) => {
-              setForm({ ...form, mbl: v });
-              clearError("mbl");
-            }}
-            file={mblFile}
-            existingFile={existingMblDoc}
-            onFileChange={(f) => {
-              setMblFile(f);
-              if (f) setExistingMblDoc(undefined);
-            }}
-            onRemoveExisting={() => setExistingMblDoc(undefined)}
-            error={errors.mbl}
-            fieldClass={fieldClass("mbl")}
-          />
-          </div>
-          <div data-field="hbl">
-          <FieldWithUpload
-            label="HBL"
-            required
-            value={form.hbl}
-            onChange={(v) => {
-              setForm({ ...form, hbl: v });
-              clearError("hbl");
-            }}
-            file={hblFile}
-            existingFile={existingHblDoc}
-            onFileChange={(f) => {
-              setHblFile(f);
-              if (f) setExistingHblDoc(undefined);
-            }}
-            onRemoveExisting={() => setExistingHblDoc(undefined)}
-            error={errors.hbl}
-            fieldClass={fieldClass("hbl")}
-          />
-          </div>
-        </div>
-
-        <div>
-          <label className="mb-1 block text-[11px] font-medium text-zinc-600">BL Type</label>
-          <select
-            value={form.blType ?? ""}
-            onChange={(e) => setForm({ ...form, blType: e.target.value })}
-            className={fieldClass("blType")}
-          >
-            <option value="">Select BL type</option>
-            {blTypes.map((item) => (
-              <option key={item.id} value={item.value}>
-                {item.value}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-zinc-600">ETD</label>
-            <input type="date" value={form.etd ?? ""} onChange={(e) => setForm({ ...form, etd: e.target.value })} className={fieldClass("etd")} />
-          </div>
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-zinc-600">ETA</label>
-            <input type="date" value={form.eta ?? ""} onChange={(e) => setForm({ ...form, eta: e.target.value })} className={fieldClass("eta")} />
-          </div>
-        </div>
-
-        <div>
-          <label className="mb-1 block text-[11px] font-medium text-zinc-600">Vessel Name</label>
-          <input value={form.vesselName ?? ""} onChange={(e) => setForm({ ...form, vesselName: e.target.value })} className={fieldClass("vesselName")} />
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-zinc-600">POL</label>
-            <input value={form.pol ?? ""} onChange={(e) => setForm({ ...form, pol: e.target.value })} className={fieldClass("pol")} />
-          </div>
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-zinc-600">POD</label>
-            <input value={form.pod ?? ""} onChange={(e) => setForm({ ...form, pod: e.target.value })} className={fieldClass("pod")} />
-          </div>
-        </div>
-
-        <div>
-          <label className="mb-2 block text-[11px] font-medium text-zinc-600">Location</label>
-          <div className="flex gap-1 rounded-xl border border-zinc-200 bg-zinc-50 p-1">
-            {(["cfs", "sez"] as const).map((type) => (
-              <button
-                key={type}
-                type="button"
-                onClick={() => setLocationType(type)}
-                className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium uppercase transition
-                  ${form.locationType === type
-                    ? "bg-zinc-900 text-white shadow-md"
-                    : "text-zinc-500 hover:bg-white hover:text-zinc-900"
-                  }`}
-              >
-                {type}
-              </button>
-            ))}
-          </div>
-          <div className="mt-3">
-            {form.locationType === "cfs" ? (
-              <select value={form.cfs ?? ""} onChange={(e) => setForm({ ...form, cfs: e.target.value ? e.target.value : undefined })} className={fieldClass("cfs")}>
-                <option value="">Select CFS</option>
-                {cfsList.map((item) => <option key={item.id} value={item.code}>{item.code}</option>)}
-              </select>
-            ) : (
-              <select value={form.sez ?? ""} onChange={(e) => setForm({ ...form, sez: e.target.value ? e.target.value : undefined })} className={fieldClass("sez")}>
-                <option value="">Select SEZ</option>
-                {sezList.map((item) => <option key={item.id} value={item.code}>{item.code}</option>)}
-              </select>
-            )}
-          </div>
-
-          {selectedLocation && (
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-[11px] font-medium text-zinc-600">
-                  Name
-                </label>
-                <input
-                  readOnly
-                  value={selectedLocation.name}
-                  className={`${fieldClass("location-name")} bg-zinc-100 cursor-not-allowed`}
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-[11px] font-medium text-zinc-600">
-                  Code
-                </label>
-                <input
-                  readOnly
-                  value={selectedLocation.code}
-                  className={`${fieldClass("location-code")} bg-zinc-100 cursor-not-allowed`}
-                />
-              </div>
-              {(form.locationType === "cfs" && selectedCfs) && (
-                <>
-                  <div>
-                    <label className="mb-1 block text-[11px] font-medium text-zinc-600">
-                      PAN
-                    </label>
-                    <input
-                      readOnly
-                      value={selectedCfs.pan || '-'}
-                      className={`${fieldClass("location-pan")} bg-zinc-100 cursor-not-allowed`}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-[11px] font-medium text-zinc-600">
-                      Bond
-                    </label>
-                    <input
-                      readOnly
-                      value={selectedCfs.bond || '-'}
-                      className={`${fieldClass("location-bond")} bg-zinc-100 cursor-not-allowed`}
-                    />
-                  </div>
-                </>
+            </div>
+            <div className="mt-3">
+              {form.locationType === "cfs" ? (
+                <select value={form.cfs ?? ""} onChange={(e) => setForm({ ...form, cfs: e.target.value ? e.target.value : undefined })} className={fieldClass("cfs")}>
+                  <option value="">Select CFS</option>
+                  {cfsList.map((item) => <option key={item.id} value={item.code}>{item.code}</option>)}
+                </select>
+              ) : (
+                <select value={form.sez ?? ""} onChange={(e) => setForm({ ...form, sez: e.target.value ? e.target.value : undefined })} className={fieldClass("sez")}>
+                  <option value="">Select SEZ</option>
+                  {sezList.map((item) => <option key={item.id} value={item.code}>{item.code}</option>)}
+                </select>
               )}
             </div>
-          )}
 
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-zinc-600">Liner</label>
-            <input value={form.liner ?? ""} onChange={(e) => setForm({ ...form, liner: e.target.value })} className={fieldClass("liner")} />
-          </div>
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-zinc-600">Agent</label>
-            <input value={form.agent ?? ""} onChange={(e) => setForm({ ...form, agent: e.target.value })} className={fieldClass("agent")} />
-          </div>
-        </div>
-
-        <div>
-          <label className="mb-1 block text-[11px] font-medium text-zinc-600">
-            Ocean Freight per container
-          </label>
-          <div className="relative">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
-            <input
-              type="number"
-              value={form.oceanFreightPerContainer ?? ""}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  oceanFreightPerContainer:
-                    e.target.value === "" ? undefined : Number(e.target.value),
-                })
-              }
-              className={currencyInputClass("oceanFreightPerContainer")}
-            />
-          </div>
-          {totalOceanFreightAmount > 0 && (
-            <div className="mt-2">
-              <span className="inline-flex rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-700 ring-1 ring-zinc-200">
-                Total Ocean Freight • {displayDollar(totalOceanFreightAmount)}
-                {filledContainerCount > 1 ? ` (${filledContainerCount} containers)` : ""}
-              </span>
-            </div>
-          )}
-        </div>
-
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <label className="text-[11px] font-medium text-zinc-600">Ex-Works</label>
-            <button type="button" onClick={addExWorks} className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-[11px] text-zinc-600 hover:bg-zinc-50">
-              <Plus size={12} /> Add row
-            </button>
-          </div>
-          {(form.exWorks ?? []).length === 0 ? (
-            <p className="rounded-xl border border-dashed border-zinc-200 px-3 py-4 text-center text-[11px] text-zinc-400">
-              No Ex-Works entries. Click &quot;Add row&quot; to add one.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {(form.exWorks ?? []).map((item, index) => (
-                <div key={index} className="flex items-center gap-2">
+            {selectedLocation && (
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium text-zinc-600">
+                    Name
+                  </label>
                   <input
-                    placeholder="Name"
-                    value={item.name}
-                    onChange={(e) => updateExWorks(index, "name", e.target.value)}
-                    className={`w-64 ${fieldClass(`exWorks-name-${index}`)}`}
+                    readOnly
+                    value={selectedLocation.name}
+                    className={`${fieldClass("location-name")} bg-zinc-100 cursor-not-allowed`}
                   />
-
-                  <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
-                    <input
-                      type="number"
-                      placeholder="Amount"
-                      value={item.amount || ""}
-                      onChange={(e) =>
-                        updateExWorks(
-                          index,
-                          "amount",
-                          e.target.value === "" ? 0 : Number(e.target.value)
-                        )
-                      }
-                      className={currencyInputClass(`exWorks-amount-${index}`, "w-28")}
-                    />
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => removeExWorks(index)}
-                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-zinc-200"
-                  >
-                    <Trash2 size={14} />
-                  </button>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
 
-        <div className="mt-4">
-          <label className="mb-1 block text-[11px] font-medium text-zinc-600">
-            Total Ex-Works Amount
-          </label>
-          <div className="relative">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
-            <input
-              type="number"
-              value={totalExWorksAmount}
-              readOnly
-              className={`${currencyInputClass("totalExWorks")} bg-zinc-100 cursor-not-allowed`}
-            />
-          </div>
-        </div>
-
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <label className="text-[11px] font-medium text-zinc-600">Other Expenses</label>
-            <button type="button" onClick={addOtherExpenses} className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-[11px] text-zinc-600 hover:bg-zinc-50">
-              <Plus size={12} /> Add row
-            </button>
-          </div>
-          {(form.otherExpenses ?? []).length === 0 ? (
-            <p className="rounded-xl border border-dashed border-zinc-200 px-3 py-4 text-center text-[11px] text-zinc-400">
-              No Other Expenses entries. Click &quot;Add row&quot; to add one.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {(form.otherExpenses ?? []).map((item, index) => (
-                <div key={index} className="flex items-center gap-2">
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium text-zinc-600">
+                    Code
+                  </label>
                   <input
-                    placeholder="Name"
-                    value={item.name}
-                    onChange={(e) => updateOtherExpenses(index, "name", e.target.value)}
-                    className={`w-64 ${fieldClass(`otherExpenses-name-${index}`)}`}
+                    readOnly
+                    value={selectedLocation.code}
+                    className={`${fieldClass("location-code")} bg-zinc-100 cursor-not-allowed`}
                   />
-
-                  <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
-                    <input
-                      type="number"
-                      placeholder="Amount"
-                      value={item.amount || ""}
-                      onChange={(e) =>
-                        updateOtherExpenses(
-                          index,
-                          "amount",
-                          e.target.value === "" ? 0 : Number(e.target.value)
-                        )
-                      }
-                      className={currencyInputClass(`otherExpenses-amount-${index}`, "w-28")}
-                    />
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => removeOtherExpenses(index)}
-                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-zinc-200"
-                  >
-                    <Trash2 size={14} />
-                  </button>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+                {(form.locationType === "cfs" && selectedCfs) && (
+                  <>
+                    <div>
+                      <label className="mb-1 block text-[11px] font-medium text-zinc-600">
+                        PAN
+                      </label>
+                      <input
+                        readOnly
+                        value={selectedCfs.pan || '-'}
+                        className={`${fieldClass("location-pan")} bg-zinc-100 cursor-not-allowed`}
+                      />
+                    </div>
 
-        <div className="mt-4">
-          <label className="mb-1 block text-[11px] font-medium text-zinc-600">
-            Total Other Expenses Amount
-          </label>
-          <div className="relative">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
-            <input
-              type="number"
-              value={totalOtherExpensesAmount}
-              readOnly
-              className={`${currencyInputClass("totalOtherExpenses")} bg-zinc-100 cursor-not-allowed`}
-            />
+                    <div>
+                      <label className="mb-1 block text-[11px] font-medium text-zinc-600">
+                        Bond
+                      </label>
+                      <input
+                        readOnly
+                        value={selectedCfs.bond || '-'}
+                        className={`${fieldClass("location-bond")} bg-zinc-100 cursor-not-allowed`}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
-        </div>
+        </FormSection>
 
-        <div className="mt-4">
-          <label className="mb-1 block text-[11px] font-medium text-zinc-600">
-            Debit Note
-          </label>
-          <MultiDocumentFileUpload
-            files={debitFiles}
-            existingFiles={existingDebitDocs}
-            onFilesAdd={(added) => setDebitFiles((prev) => [...prev, ...added])}
-            onFileRemove={(index) =>
-              setDebitFiles((prev) => prev.filter((_, i) => i !== index))
-            }
-            onExistingRemove={(index) =>
-              setExistingDebitDocs((prev) => prev.filter((_, i) => i !== index))
-            }
-          />
-        </div>
-
-        <div className="mt-2 rounded-xl border border-zinc-200 bg-zinc-50/60 p-4">
-          <p className="mb-3 text-xs font-semibold text-zinc-800">Financial Summary</p>
-          <div className="grid gap-4 sm:grid-cols-3">
+        <FormSection title="Carrier" description="Liner and agent details.">
+          <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-[11px] font-medium text-zinc-600">Total Expenses</label>
-              <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
-                <input
-                  type="number"
-                  value={totalExpensesAmount}
-                  readOnly
-                  className={`${currencyInputClass("totalExpenses")} h-9 w-full bg-zinc-100 cursor-not-allowed`}
-                />
-              </div>
+              <label className="mb-1 block text-[11px] font-medium text-zinc-600">Liner</label>
+              <input value={form.liner ?? ""} onChange={(e) => setForm({ ...form, liner: e.target.value })} className={fieldClass("liner")} />
             </div>
-
             <div>
-              <label className="mb-1 block text-[11px] font-medium text-zinc-600">Billed Amount</label>
-              <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
-                <input
-                  type="number"
-                  value={form.billedAmount ?? ""}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      billedAmount: e.target.value === "" ? undefined : Number(e.target.value),
-                    })
-                  }
-                  className={`${currencyInputClass("billedAmount")} h-9 w-full`}
-                />
-              </div>
-              <DocumentFileUpload
-                file={billedAmountFile}
-                existingFile={existingBilledAmountDoc}
-                onFileChange={(f) => {
-                  setBilledAmountFile(f);
-                  if (f) setExistingBilledAmountDoc(undefined);
-                }}
-                onRemoveExisting={() => setExistingBilledAmountDoc(undefined)}
+              <label className="mb-1 block text-[11px] font-medium text-zinc-600">Agent</label>
+              <input value={form.agent ?? ""} onChange={(e) => setForm({ ...form, agent: e.target.value })} className={fieldClass("agent")} />
+            </div>
+          </div>
+        </FormSection>
+
+        <FormSection title="Charges & Expenses" description="Ocean freight, ex-works and other cost lines.">
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-zinc-600">
+              Ocean Freight per container
+            </label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
+              <input
+                type="number"
+                value={form.oceanFreightPerContainer ?? ""}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    oceanFreightPerContainer:
+                      e.target.value === "" ? undefined : Number(e.target.value),
+                  })
+                }
+                className={currencyInputClass("oceanFreightPerContainer")}
               />
             </div>
+            {totalOceanFreightAmount > 0 && (
+              <div className="mt-2">
+                <span className="inline-flex rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-700 ring-1 ring-zinc-200">
+                  Total Ocean Freight • {displayDollar(totalOceanFreightAmount)}
+                  {filledContainerCount > 1 ? ` (${filledContainerCount} containers)` : ""}
+                </span>
+              </div>
+            )}
+          </div>
 
-            <div>
-              <label className="mb-1 block text-[11px] font-medium text-zinc-600">Profit / Loss</label>
-              <div className="flex h-9 items-center">
-                <ProfitLossChip amount={profitLossAmount} />
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <label className="text-[11px] font-medium text-zinc-600">Ex-Works</label>
+              <button type="button" onClick={addExWorks} className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 hover:bg-zinc-50">
+                <Plus size={12} /> Add row
+              </button>
+            </div>
+            {(form.exWorks ?? []).length === 0 ? (
+              <p className="rounded-xl border border-dashed border-zinc-200 bg-white px-3 py-4 text-center text-[11px] text-zinc-400">
+                No Ex-Works entries. Click &quot;Add row&quot; to add one.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {(form.exWorks ?? []).map((item, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <input
+                      placeholder="Name"
+                      value={item.name}
+                      onChange={(e) => updateExWorks(index, "name", e.target.value)}
+                      className={`w-64 ${fieldClass(`exWorks-name-${index}`)}`}
+                    />
+
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
+                      <input
+                        type="number"
+                        placeholder="Amount"
+                        value={item.amount || ""}
+                        onChange={(e) =>
+                          updateExWorks(
+                            index,
+                            "amount",
+                            e.target.value === "" ? 0 : Number(e.target.value)
+                          )
+                        }
+                        className={currencyInputClass(`exWorks-amount-${index}`, "w-28")}
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => removeExWorks(index)}
+                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-zinc-600">
+              Total Ex-Works Amount
+            </label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
+              <input
+                type="number"
+                value={totalExWorksAmount}
+                readOnly
+                className={`${currencyInputClass("totalExWorks")} bg-zinc-100 cursor-not-allowed`}
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <label className="text-[11px] font-medium text-zinc-600">Other Expenses</label>
+              <button type="button" onClick={addOtherExpenses} className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 hover:bg-zinc-50">
+                <Plus size={12} /> Add row
+              </button>
+            </div>
+            {(form.otherExpenses ?? []).length === 0 ? (
+              <p className="rounded-xl border border-dashed border-zinc-200 bg-white px-3 py-4 text-center text-[11px] text-zinc-400">
+                No Other Expenses entries. Click &quot;Add row&quot; to add one.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {(form.otherExpenses ?? []).map((item, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <input
+                      placeholder="Name"
+                      value={item.name}
+                      onChange={(e) => updateOtherExpenses(index, "name", e.target.value)}
+                      className={`w-64 ${fieldClass(`otherExpenses-name-${index}`)}`}
+                    />
+
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
+                      <input
+                        type="number"
+                        placeholder="Amount"
+                        value={item.amount || ""}
+                        onChange={(e) =>
+                          updateOtherExpenses(
+                            index,
+                            "amount",
+                            e.target.value === "" ? 0 : Number(e.target.value)
+                          )
+                        }
+                        className={currencyInputClass(`otherExpenses-amount-${index}`, "w-28")}
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => removeOtherExpenses(index)}
+                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-zinc-600">
+              Total Other Expenses Amount
+            </label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
+              <input
+                type="number"
+                value={totalOtherExpensesAmount}
+                readOnly
+                className={`${currencyInputClass("totalOtherExpenses")} bg-zinc-100 cursor-not-allowed`}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-zinc-600">
+              Debit Note
+            </label>
+            <MultiDocumentFileUpload
+              files={debitFiles}
+              existingFiles={existingDebitDocs}
+              onFilesAdd={(added) => setDebitFiles((prev) => [...prev, ...added])}
+              onFileRemove={(index) =>
+                setDebitFiles((prev) => prev.filter((_, i) => i !== index))
+              }
+              onExistingRemove={(index) =>
+                setExistingDebitDocs((prev) => prev.filter((_, i) => i !== index))
+              }
+            />
+          </div>
+        </FormSection>
+
+        <FormSection title="Financial Summary" description="Totals, billing and credit note.">
+          <div className="rounded-xl border border-zinc-200 bg-white p-4">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-zinc-600">Total Expenses</label>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
+                  <input
+                    type="number"
+                    value={totalExpensesAmount}
+                    readOnly
+                    className={`${currencyInputClass("totalExpenses")} h-9 w-full bg-zinc-100 cursor-not-allowed`}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-zinc-600">Billed Amount</label>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
+                  <input
+                    type="number"
+                    value={form.billedAmount ?? ""}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        billedAmount: e.target.value === "" ? undefined : Number(e.target.value),
+                      })
+                    }
+                    className={`${currencyInputClass("billedAmount")} h-9 w-full`}
+                  />
+                </div>
+                <DocumentFileUpload
+                  file={billedAmountFile}
+                  existingFile={existingBilledAmountDoc}
+                  onFileChange={(f) => {
+                    setBilledAmountFile(f);
+                    if (f) setExistingBilledAmountDoc(undefined);
+                  }}
+                  onRemoveExisting={() => setExistingBilledAmountDoc(undefined)}
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-zinc-600">Profit / Loss</label>
+                <div className="flex h-9 items-center">
+                  <ProfitLossChip amount={profitLossAmount} />
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div>
-          <label className="mb-1 block text-[11px] font-medium text-zinc-600">Credit Note</label>
-          <div className="relative max-w-sm">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
-            <input
-              type="number"
-              value={form.creditNote ?? ""}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  creditNote: e.target.value === "" ? undefined : Number(e.target.value),
-                })
-              }
-              className={`${currencyInputClass("creditNote")} h-9 w-full`}
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-zinc-600">Credit Note</label>
+            <div className="relative max-w-sm">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">$</span>
+              <input
+                type="number"
+                value={form.creditNote ?? ""}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    creditNote: e.target.value === "" ? undefined : Number(e.target.value),
+                  })
+                }
+                className={`${currencyInputClass("creditNote")} h-9 w-full`}
+              />
+            </div>
+            <DocumentFileUpload
+              file={creditNoteFile}
+              existingFile={existingCreditNoteDoc}
+              onFileChange={(f) => {
+                setCreditNoteFile(f);
+                if (f) setExistingCreditNoteDoc(undefined);
+              }}
+              onRemoveExisting={() => setExistingCreditNoteDoc(undefined)}
             />
           </div>
-          <DocumentFileUpload
-            file={creditNoteFile}
-            existingFile={existingCreditNoteDoc}
-            onFileChange={(f) => {
-              setCreditNoteFile(f);
-              if (f) setExistingCreditNoteDoc(undefined);
-            }}
-            onRemoveExisting={() => setExistingCreditNoteDoc(undefined)}
-          />
-        </div>
+        </FormSection>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-zinc-600">Payment Type</label>
-            <select value={form.paymentType ?? ""} onChange={(e) => setForm({ ...form, paymentType: e.target.value })} className={fieldClass("paymentType")}>
-              <option value="">Select payment type</option>
-              {paymentTypes.map((item) => <option key={item.id} value={item.value}>{item.value}</option>)}
-            </select>
+        <FormSection title="Payment" description="Payment type and payment date.">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-zinc-600">Payment Type</label>
+              <select value={form.paymentType ?? ""} onChange={(e) => setForm({ ...form, paymentType: e.target.value })} className={fieldClass("paymentType")}>
+                <option value="">Select payment type</option>
+                {paymentTypes.map((item) => <option key={item.id} value={item.value}>{item.value}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-zinc-600">Payment Date</label>
+              <input type="date" value={form.paymentDate ?? ""} onChange={(e) => setForm({ ...form, paymentDate: e.target.value })} className={fieldClass("paymentDate")} />
+              <DocumentFileUpload
+                file={paymentDateFile}
+                existingFile={existingPaymentDateDoc}
+                onFileChange={(f) => {
+                  setPaymentDateFile(f);
+                  if (f) setExistingPaymentDateDoc(undefined);
+                }}
+                onRemoveExisting={() => setExistingPaymentDateDoc(undefined)}
+              />
+            </div>
           </div>
-        </div>
-
-        <div>
-          <label className="mb-1 block text-[11px] font-medium text-zinc-600">Payment Date</label>
-          <input type="date" value={form.paymentDate ?? ""} onChange={(e) => setForm({ ...form, paymentDate: e.target.value })} className={fieldClass("paymentDate")} />
-          <DocumentFileUpload
-            file={paymentDateFile}
-            existingFile={existingPaymentDateDoc}
-            onFileChange={(f) => {
-              setPaymentDateFile(f);
-              if (f) setExistingPaymentDateDoc(undefined);
-            }}
-            onRemoveExisting={() => setExistingPaymentDateDoc(undefined)}
-          />
-        </div>
-
+        </FormSection>
       </div>
 
       <div className="mt-5 flex gap-2">
@@ -1741,7 +1781,11 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
                   <Info label="Type" value={container.containerType} />
                 </div>
               ))}
-              <Info label="Vessel" value={selected.vesselName} />
+              <div className="grid grid-cols-2 gap-4">
+                <Info label="Vessel" value={selected.vesselName} />
+                <Info label="Liner" value={selected.liner} />
+                <Info label="Agent" value={selected.agent} />
+              </div>
             </div>
           </section>
 
@@ -2039,16 +2083,9 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
         {/* Filters */}
         <div className="mt-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-1 gap-2">
-            <select
-              value={searchField}
-              onChange={(e) => { setSearchField(e.target.value); setSearchValue(""); }}
-              className="rounded-xl border border-zinc-200 px-3 py-2 text-xs outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-            >
-              {SEARCH_FIELDS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
-            </select>
             <input
               type="text"
-              placeholder={`Search by ${SEARCH_FIELDS.find((f) => f.value === searchField)?.label ?? ""}...`}
+              placeholder="Search FF No, EZ No, Consignee, MBL, HBL, Cont No..."
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
               className="flex-1 rounded-xl border border-zinc-200 px-3 py-2 text-xs outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
@@ -2112,18 +2149,6 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={`${sortKey}:${sortDir}`}
-              onChange={(e) => handleSortChange(e.target.value)}
-              className="rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-[11px] outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-            >
-              {FREIGHT_SORT_DROPDOWN_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  Sort: {option.label}
-                </option>
-              ))}
-            </select>
-
             {(activeStatus || activeCard) && (
               <div className="flex items-center gap-2">
                 <span className="text-xs text-zinc-500">
@@ -2157,24 +2182,58 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-zinc-200 bg-slate-50">
-                  {listColumns.map((h) => (
-                    <th key={h} className={`whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 ${h === "Actions" ? "text-center" : "text-left"}`}>
-                      {h}
-                    </th>
-                  ))}
+                  {listColumns.map((column) => {
+                    const isSortable = Boolean(column.sortKey);
+                    const isActive = column.sortKey === sortKey;
+                    return (
+                      <th
+                        key={column.label}
+                        className={`whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 ${
+                          column.label === "Actions" ? "text-center" : "text-left"
+                        }`}
+                      >
+                        {isSortable && column.sortKey ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleColumnSort(column.sortKey!);
+                            }}
+                            className={`inline-flex items-center gap-1 transition hover:text-zinc-800 ${
+                              isActive ? "text-zinc-900" : "text-zinc-500"
+                            }`}
+                          >
+                            {column.label}
+                            {isActive ? (
+                              sortDir === "asc" ? (
+                                <ArrowUp size={12} />
+                              ) : (
+                                <ArrowDown size={12} />
+                              )
+                            ) : (
+                              <ArrowUpDown size={12} className="opacity-50" />
+                            )}
+                          </button>
+                        ) : (
+                          column.label
+                        )}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={13} className="py-10 text-center text-zinc-500">Loading...</td></tr>
+                  <tr><td colSpan={14} className="py-10 text-center text-zinc-500">Loading...</td></tr>
                 ) : rows.length === 0 ? (
-                  <tr><td colSpan={13} className="py-10 text-center text-zinc-400">No freight forward records found.</td></tr>
+                  <tr><td colSpan={14} className="py-10 text-center text-zinc-400">No freight forward records found.</td></tr>
                 ) : (
                   rows.map((item) => (
                     <tr key={item.id} onClick={() => openView(item)} className="cursor-pointer border-b border-zinc-100 hover:bg-zinc-50 transition-colors">
                       <td className="px-4 py-3 font-medium text-zinc-800">{item.jobNumber || "—"}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.ezRefNumber || "—"}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.blType || "—"}</td>
+                      <td className="px-4 py-3 text-zinc-600">{item.agent || "—"}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.tradeTerms || "—"}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.vesselName || "—"}</td>
                       <td className="px-4 py-3 text-zinc-600">{formatDate(item.eta)}</td>
@@ -2229,8 +2288,9 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
 
       <ConfirmDialog
         open={!!deleteId}
-        title="Delete Freight Forward"
-        message="Are you sure you want to delete this freight forward record?"
+        title="Move to Trash"
+        message="This job will be moved to Trash. You can permanently delete it later from Freight Forward → Trash."
+        confirmLabel="Move to Trash"
         onCancel={() => setDeleteId(null)}
         onConfirm={handleDelete}
       />

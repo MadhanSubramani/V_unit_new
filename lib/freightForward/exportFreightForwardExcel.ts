@@ -15,10 +15,6 @@ import {
   getTotalOceanFreight,
 } from "./containers";
 
-function docUrl(doc?: { url?: string }) {
-  return doc?.url ?? "";
-}
-
 export function exportFreightForwardToExcel(
   records: FreightForward[],
   etaFrom: string,
@@ -35,13 +31,13 @@ export function exportFreightForwardToExcel(
       "Client Name": item.clientName ?? "",
       "Trade Terms": item.tradeTerms ?? "",
       MBL: item.mbl ?? "",
-      "MBL URL": docUrl(item.mblUrl),
       HBL: item.hbl ?? "",
-      "HBL URL": docUrl(item.hblUrl),
       "Container Number": formatContainersDisplay(item),
-      "Containers": getContainersFromRecord(item)
+      Containers: getContainersFromRecord(item)
         .map((c) =>
-          [c.containerNumber, c.containerSize, c.containerType].filter(Boolean).join(" / ")
+          [c.containerNumber, c.containerSize, c.containerType]
+            .filter(Boolean)
+            .join(" / ")
         )
         .join("; "),
       "Container Size": item.containerSize ?? "",
@@ -60,14 +56,11 @@ export function exportFreightForwardToExcel(
       "Other Expenses": formatExpenseItems(item.otherExpenses),
       "Total Expenses": formatDollar(totalExpenses),
       "Billed Amount": formatDollar(getBilledAmount(item)),
-      "Billed Amount URL": docUrl(item.billedAmountUrl),
       "Credit Note": formatDollar(item.creditNote),
-      "Credit Note URL": docUrl(item.creditNoteUrl),
       "Profit / Loss Amount": formatDollar(Math.abs(profitLoss)),
       "Profit / Loss": profitLoss > 0 ? "Profit" : "Loss",
       "Payment Type": item.paymentType ?? "",
       "Payment Date": item.paymentDate ?? "",
-      "Payment Date URL": docUrl(item.paymentDateUrl),
       Status: item.status ?? "",
       "Created By": item.createdBy ?? "",
       "Updated By": item.updatedBy ?? "",

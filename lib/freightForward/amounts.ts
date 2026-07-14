@@ -58,7 +58,9 @@ export function getBilledAmount(item: FreightForward): number {
   return 0;
 }
 
-export function normalizeBilledAmountInput(value: unknown): number | undefined {
+export function normalizeBilledAmountInput(
+  value: unknown
+): number | undefined {
   const amount = parseAmount(value);
   if (amount === undefined || amount < 0) return undefined;
   return amount;
@@ -75,7 +77,10 @@ export function getRecordProfitLoss(item: FreightForward) {
 export function formatDollar(value?: number | string | null) {
   const num = parseAmount(value);
   if (num === undefined) return "";
-  return `$${num.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+  return `$${num.toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 export function formatExpenseItems(items?: ExpenseItem[]) {

@@ -3,6 +3,7 @@ import {
   arrayUnion,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -144,6 +145,7 @@ export async function createFreightForward(
         statusTimeline: timeline,
         createdBy,
         updatedBy: createdBy,
+        isDeleted: false,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }) as Record<string, unknown>
@@ -217,15 +219,97 @@ export async function getFreightForwardForExport(etaFrom: string, etaTo: string)
   if (etaFrom) constraints.push(where("etaSort", ">=", etaFrom));
   if (etaTo) constraints.push(where("etaSort", "<=", etaTo));
   const snap = await getDocs(query(ref, ...constraints, orderBy("etaSort", "asc")));
-  return snap.docs.map((d) => ({
-    id: d.id,
-    ...(d.data() as Omit<FreightForward, "id">),
-  }));
+  return snap.docs
+    .map((d) => ({
+      id: d.id,
+      ...(d.data() as Omit<FreightForward, "id">),
+    }))
+    .filter((item) => !item.isDeleted);
 }
 
-export async function deleteFreightForward(id: string) {
-  await deleteDoc(doc(db, "freightForward", id));
+/** Soft-delete: hide from main list; keep data for Trash. */
+export async function softDeleteFreightForward(id: string, deletedBy: string) {
+  await updateDoc(doc(db, "freightForward", id), {
+    isDeleted: true,
+    deletedBy,
+    deletedAt: serverTimestamp(),
+    updatedBy: deletedBy,
+    updatedAt: serverTimestamp(),
+  });
   invalidateFreightForwardListCache();
+}
+
+/** Recover soft-deleted jobs back to the main list. */
+export async function restoreFreightForwards(ids: string[], restoredBy: string) {
+  await Promise.all(
+    ids.map((id) =>
+      updateDoc(doc(db, "freightForward", id), {
+        isDeleted: false,
+        deletedBy: deleteField(),
+        deletedAt: deleteField(),
+        updatedBy: restoredBy,
+        updatedAt: serverTimestamp(),
+      })
+    )
+  );
+  invalidateFreightForwardListCache();
+}
+
+export async function getTrashedFreightForwards(): Promise<FreightForward[]> {
+  try {
+    const snap = await getDocs(
+      query(REF(), where("isDeleted", "==", true), orderBy("deletedAt", "desc"))
+    );
+    return snap.docs.map((d) => ({
+      id: d.id,
+      ...(d.data() as Omit<FreightForward, "id">),
+    }));
+  } catch {
+    // Fallback when deletedAt index is missing.
+    const snap = await getDocs(query(REF(), where("isDeleted", "==", true)));
+    return snap.docs
+      .map((d) => ({
+        id: d.id,
+        ...(d.data() as Omit<FreightForward, "id">),
+      }))
+      .sort((a, b) => {
+        const timeA =
+          a.deletedAt &&
+          typeof a.deletedAt === "object" &&
+          a.deletedAt !== null &&
+          "toMillis" in a.deletedAt
+            ? (a.deletedAt as { toMillis: () => number }).toMillis()
+            : 0;
+        const timeB =
+          b.deletedAt &&
+          typeof b.deletedAt === "object" &&
+          b.deletedAt !== null &&
+          "toMillis" in b.deletedAt
+            ? (b.deletedAt as { toMillis: () => number }).toMillis()
+            : 0;
+        return timeB - timeA;
+      });
+  }
+}
+
+/** Permanently delete docs and attached Storage files. */
+export async function permanentlyDeleteFreightForwards(ids: string[]) {
+  const { deleteFreightForwardStorageFiles } = await import("./deleteStorage");
+
+  for (const id of ids) {
+    const snap = await getDoc(doc(db, "freightForward", id));
+    if (!snap.exists()) continue;
+    const item = { id: snap.id, ...(snap.data() as Omit<FreightForward, "id">) };
+    await deleteFreightForwardStorageFiles(item);
+    await deleteDoc(doc(db, "freightForward", id));
+  }
+
+  invalidateFreightForwardListCache();
+}
+
+/** @deprecated use softDeleteFreightForward — kept for compatibility */
+export async function deleteFreightForward(id: string) {
+  await softDeleteFreightForward(id, "unknown");
 }
 
 // Legacy helpers — prefer getFreightForwardPaginated

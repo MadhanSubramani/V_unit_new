@@ -100,13 +100,24 @@ export interface FreightForward {
   createdAt?: Date;
   updatedAt?: Date;
   statusTimeline?: StatusTimeline[];
+  /** Soft-delete flag; missing/false = active job. */
+  isDeleted?: boolean;
+  deletedBy?: string;
+  deletedAt?: Date | Timestamp | unknown;
 }
 
 export const CONTAINER_NUMBER_REGEX = /^[A-Z]{4}\d{7}$/;
 
 export type FreightForwardFormData = Omit<
   FreightForward,
-  "id" | "createdAt" | "updatedAt" | "createdBy" | "updatedBy"
+  | "id"
+  | "createdAt"
+  | "updatedAt"
+  | "createdBy"
+  | "updatedBy"
+  | "isDeleted"
+  | "deletedBy"
+  | "deletedAt"
 >;
 
 export enum FreightForwardStatusObject {

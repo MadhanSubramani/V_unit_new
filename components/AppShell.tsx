@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Ship,
   StickyNote,
+  Trash2,
   Users,
   User,
   Warehouse,
@@ -26,8 +27,12 @@ const OPERATIONS_SUB = [
   { href: "/operations/configurations", label: "Configurations", icon: Settings },
 ] as const;
 
+const FREIGHT_FORWARD_SUB = [
+  { href: "/freight-forward", label: "Job List", icon: Ship, adminOnly: false },
+  { href: "/freight-forward/trash", label: "Trash", icon: Trash2, adminOnly: true },
+] as const;
+
 const NAV_ITEMS = [
-  { href: "/freight-forward", label: "Freight Forward", icon: Ship },
   { href: "/import", label: "Import", icon: ArrowDownToLine },
   { href: "/export", label: "Export", icon: ArrowUpFromLine },
   { href: "/kyc", label: "KYC", icon: ShieldCheck },
@@ -42,6 +47,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<{ username?: string; role?: string } | null>(null);
   const [operationsOpen, setOperationsOpen] = useState(
     pathname.startsWith("/operations")
+  );
+  const [freightOpen, setFreightOpen] = useState(
+    pathname.startsWith("/freight-forward")
   );
 
   useEffect(() => {
@@ -63,6 +71,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (pathname.startsWith("/operations")) {
       setOperationsOpen(true);
     }
+    if (pathname.startsWith("/freight-forward")) {
+      setFreightOpen(true);
+    }
   }, [pathname]);
 
   const handleLogout = () => {
@@ -72,7 +83,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   if (!ready) return null;
 
+  const isAdmin = user?.role === "admin";
   const isOperationsActive = pathname.startsWith("/operations");
+  const isFreightActive = pathname.startsWith("/freight-forward");
+  const freightSubItems = FREIGHT_FORWARD_SUB.filter(
+    (item) => !item.adminOnly || isAdmin
+  );
 
   const flatNavClass = (active: boolean) =>
     `flex items-center transition-all duration-200 ${
@@ -83,11 +99,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
     }`;
 
-  const operationsParentClass = () =>
+  const groupParentClass = (active: boolean) =>
     `flex w-full items-center transition-all duration-200 ${
       collapsed ? "justify-center rounded-xl p-2.5" : "gap-2.5 rounded-xl px-3 py-2.5"
     } ${
-      isOperationsActive
+      active
         ? "bg-zinc-100 font-medium text-zinc-900"
         : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
     }`;
@@ -160,7 +176,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               }
               setOperationsOpen((v) => !v);
             }}
-            className={operationsParentClass()}
+            className={groupParentClass(isOperationsActive)}
           >
             <ClipboardList size={collapsed ? 16 : 15} strokeWidth={isOperationsActive ? 2.25 : 2} />
             {!collapsed && (
@@ -179,6 +195,46 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {!collapsed && operationsOpen && (
             <div className="my-2 ml-5 space-y-1 border-l border-zinc-200 py-1.5 pl-2">
               {OPERATIONS_SUB.map(({ href, label, icon: Icon }) => {
+                const active = pathname === href;
+                return (
+                  <Link key={href} href={href} className={subNavClass(active)}>
+                    <Icon size={14} strokeWidth={active ? 2.5 : 2} />
+                    <span>{label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <button
+            onClick={() => {
+              if (collapsed) {
+                router.push("/freight-forward");
+                return;
+              }
+              setFreightOpen((v) => !v);
+            }}
+            className={groupParentClass(isFreightActive)}
+          >
+            <Ship size={collapsed ? 16 : 15} strokeWidth={isFreightActive ? 2.25 : 2} />
+            {!collapsed && (
+              <>
+                <span className="flex-1 text-left text-xs font-medium">Freight Forward</span>
+                <ChevronDown
+                  size={14}
+                  className={`shrink-0 opacity-60 transition-transform duration-200 ${
+                    freightOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </>
+            )}
+          </button>
+
+          {!collapsed && freightOpen && (
+            <div className="my-2 ml-5 space-y-1 border-l border-zinc-200 py-1.5 pl-2">
+              {freightSubItems.map(({ href, label, icon: Icon }) => {
                 const active = pathname === href;
                 return (
                   <Link key={href} href={href} className={subNavClass(active)}>
