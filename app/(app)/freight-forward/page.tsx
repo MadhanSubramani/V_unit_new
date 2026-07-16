@@ -290,6 +290,35 @@ function buildPayload(form: FreightForwardFormData): Record<string, unknown> {
   return removeUndefined(raw);
 }
 
+function FormSection({
+  title,
+  description,
+  children,
+  action,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-zinc-200 bg-zinc-50/40 p-4">
+      <div className="mb-4 flex items-start justify-between gap-3 border-b border-zinc-200 pb-3">
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-800">
+            {title}
+          </h3>
+          {description ? (
+            <p className="mt-0.5 text-[11px] text-zinc-500">{description}</p>
+          ) : null}
+        </div>
+        {action}
+      </div>
+      <div className="space-y-3">{children}</div>
+    </section>
+  );
+}
+
 export default function FreightForwardPage() {
   // ── Data ──────────────────────────────────────────────────────────────────
   const [rows, setRows] = useState<FreightForward[]>([]);
@@ -322,6 +351,21 @@ export default function FreightForwardPage() {
   const [sortDir, setSortDir] = useState<FreightSortDir>("asc");
 
   const isSearching = debouncedSearchValue.trim().length > 0;
+
+  // Auto-scroll-to-error can fight the user's taps/typing on mobile.
+  // Initialize from `window` immediately to avoid a race on the first Save attempt.
+  const isCoarsePointerRef = useRef(
+    typeof window !== "undefined" &&
+      ((window.matchMedia?.("(pointer: coarse)")?.matches ?? false) ||
+        (navigator.maxTouchPoints ?? 0) > 0)
+  );
+
+  useEffect(() => {
+    isCoarsePointerRef.current =
+      typeof window !== "undefined" &&
+      ((window.matchMedia?.("(pointer: coarse)")?.matches ?? false) ||
+        (navigator.maxTouchPoints ?? 0) > 0);
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -697,13 +741,27 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
     }
   };
 
+  const scrollReqRef = useRef<number | null>(null);
+
   const scrollToFirstError = (errorKeys: string[]) => {
     if (!errorKeys.length) return;
-    requestAnimationFrame(() => {
+    if (isCoarsePointerRef.current) return;
+    if (scrollReqRef.current) {
+      cancelAnimationFrame(scrollReqRef.current);
+    }
+    scrollReqRef.current = requestAnimationFrame(() => {
       document
         .querySelector(`[data-field="${errorKeys[0]}"]`)
-        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        ?.scrollIntoView({ behavior: "auto", block: "nearest" });
+      scrollReqRef.current = null;
     });
+  };
+
+  const clearPendingScroll = () => {
+    if (scrollReqRef.current) {
+      cancelAnimationFrame(scrollReqRef.current);
+      scrollReqRef.current = null;
+    }
   };
 
   const validate = (): boolean => {
@@ -757,6 +815,100 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
     if (saving) return;
     setSubmitError("");
     if (!validate()) return;
+
+    // ── Duplicate check (MBL / HBL / Container No.) ────────────────────────
+    // Prevent saving a job with identifiers that already exist in other records.
+    const excludeId = selected?.id;
+    const normalizedMbl = form.mbl.trim().toLowerCase();
+    const normalizedHbl = form.hbl.trim().toLowerCase();
+    const containerNumbers = [
+      ...(form.containers ?? []),
+    ]
+      .map((c) => c.containerNumber.trim().toUpperCase())
+      .filter(Boolean);
+
+    const uniqueContainerNumbers = Array.from(new Set(containerNumbers));
+
+    const dupErrors: FormErrors = {};
+    let dupMessage = "";
+
+    const findCandidates = async (searchField: string, searchValue: string) => {
+      const result = await getFreightForwardPaginated({
+        activeCard: null,
+        activeStatus: null,
+        etaFrom: undefined,
+        etaTo: undefined,
+        searchField,
+        searchValue,
+        sortKey: "eta",
+        sortDir: "asc",
+        pageSize: 5000,
+        pageIndex: 0,
+        cursor: null,
+      });
+      return result.items;
+    };
+
+    if (normalizedMbl) {
+      const candidates = await findCandidates("mbl", form.mbl.trim());
+      const conflict = candidates.find(
+        (r) =>
+          r.id !== excludeId &&
+          (r.mbl ?? "").trim().toLowerCase() === normalizedMbl
+      );
+      if (conflict) {
+        dupMessage = `MBL already exists in job ${conflict.jobNumber || "—"}.`;
+        dupErrors.mbl = dupMessage;
+      }
+    }
+
+    if (!dupMessage && normalizedHbl) {
+      const candidates = await findCandidates("hbl", form.hbl.trim());
+      const conflict = candidates.find(
+        (r) =>
+          r.id !== excludeId &&
+          (r.hbl ?? "").trim().toLowerCase() === normalizedHbl
+      );
+      if (conflict) {
+        dupMessage = `HBL already exists in job ${conflict.jobNumber || "—"}.`;
+        dupErrors.hbl = dupMessage;
+      }
+    }
+
+    if (!dupMessage && uniqueContainerNumbers.length) {
+      for (const cNo of uniqueContainerNumbers) {
+        const candidates = await findCandidates("containerNumber", cNo);
+        const conflict = candidates.find(
+          (r) =>
+            r.id !== excludeId &&
+            getContainersFromRecord(r).some(
+              (ct) => (ct.containerNumber ?? "").trim().toUpperCase() === cNo
+            )
+        );
+        if (conflict) {
+          dupMessage = `Container ${cNo} already exists in job ${
+            conflict.jobNumber || "—"
+          }.`;
+
+          // Mark all rows that have this conflicting container number.
+          (form.containers ?? []).forEach((row, idx) => {
+            const rowNo = row.containerNumber.trim().toUpperCase();
+            if (rowNo && rowNo === cNo) {
+              dupErrors[`containers.${idx}.containerNumber`] = dupMessage;
+            }
+          });
+          break;
+        }
+      }
+    }
+
+    if (dupMessage) {
+      setErrors(dupErrors);
+      setSubmitError(dupMessage);
+      scrollToFirstError(Object.keys(dupErrors));
+      return;
+    }
+
     const username = user?.username ?? "unknown";
     setSaving(true);
     try {
@@ -934,33 +1086,6 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
   ];
 
   // ── Render: form ──────────────────────────────────────────────────────────
-  const FormSection = ({
-    title,
-    description,
-    children,
-    action,
-  }: {
-    title: string;
-    description?: string;
-    children: React.ReactNode;
-    action?: React.ReactNode;
-  }) => (
-    <section className="rounded-2xl border border-zinc-200 bg-zinc-50/40 p-4">
-      <div className="mb-4 flex items-start justify-between gap-3 border-b border-zinc-200 pb-3">
-        <div>
-          <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-800">
-            {title}
-          </h3>
-          {description ? (
-            <p className="mt-0.5 text-[11px] text-zinc-500">{description}</p>
-          ) : null}
-        </div>
-        {action}
-      </div>
-      <div className="space-y-3">{children}</div>
-    </section>
-  );
-
   const renderForm = () => (
     <div className="p-5">
       <div className="flex items-center justify-between">
@@ -2281,6 +2406,9 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
       <div
         className={`fixed right-0 top-0 z-50 h-full overflow-y-auto border-l border-zinc-200 bg-white shadow-2xl transition-transform duration-300 ${drawerOpen ? "translate-x-0" : "translate-x-full"
           } ${drawerMode === "view" ? "w-full max-w-lg" : "w-full max-w-2xl"}`}
+        onFocusCapture={clearPendingScroll}
+        onPointerDownCapture={clearPendingScroll}
+        onTouchStartCapture={clearPendingScroll}
       >
         {(drawerMode === "add" || drawerMode === "edit") && renderForm()}
         {drawerMode === "view" && renderViewDrawer()}
