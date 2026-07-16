@@ -384,6 +384,10 @@ export default function FreightForwardPage() {
   const [tradeTermsList, setTradeTermsList] = useState<ConfigItem[]>([]);
   const [kycList, setKycList] = useState<Kyc[]>([]);
   const [proformaOpen, setProformaOpen] = useState(false);
+  const [timelinePopupOpen, setTimelinePopupOpen] = useState(false);
+  const [timelineRecord, setTimelineRecord] = useState<FreightForward | null>(null);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const rowClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Drawer ────────────────────────────────────────────────────────────────
   const [drawerMode, setDrawerMode] = useState<DrawerMode>(null);
@@ -577,21 +581,25 @@ export default function FreightForwardPage() {
     FreightForwardStatusObject.COMPLETED,
   ];
 
-const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
-    if (!selected || !user) return;
-    if (!canUpdateToStatus(nextStatus, selected.statusTimeline)) return;
+const handleStatusUpdate = async (
+  nextStatus: FreightForwardStatus,
+  record?: FreightForward
+) => {
+    const target = record ?? selected;
+    if (!target?.id || !user) return;
+    if (!canUpdateToStatus(nextStatus, target.statusTimeline)) return;
 
     await updateWorkflowStatus(
-        selected?.id!,
+        target.id,
         nextStatus,
         user.username!
     );
 
     const updated = {
-        ...selected,
+        ...target,
         status: nextStatus,
         statusTimeline: [
-            ...(selected.statusTimeline ?? []),
+            ...(target.statusTimeline ?? []),
             {
                 status: nextStatus,
                 updatedBy: user.username ?? "Unknown",
@@ -599,9 +607,52 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
             },
         ],
     };
-    setSelected(updated);
+
+    if (selected?.id === target.id) {
+      setSelected(updated);
+    }
+    if (timelineRecord?.id === target.id) {
+      setTimelineRecord(updated);
+    }
     await reload();
 };
+
+  const closeTimelinePopup = () => {
+    setTimelinePopupOpen(false);
+    setTimelineRecord(null);
+  };
+
+  const openTimelinePopup = async (item: FreightForward) => {
+    if (!item.id) return;
+
+    setTimelinePopupOpen(true);
+    setTimelineLoading(true);
+    try {
+      const latest = await getFreightForwardById(item.id);
+      setTimelineRecord(latest ?? item);
+    } finally {
+      setTimelineLoading(false);
+    }
+  };
+
+  const handleRowClick = (item: FreightForward) => {
+    if (rowClickTimerRef.current) {
+      clearTimeout(rowClickTimerRef.current);
+    }
+    rowClickTimerRef.current = setTimeout(() => {
+      openTimelinePopup(item);
+      rowClickTimerRef.current = null;
+    }, 250);
+  };
+
+  const handleRowDoubleClick = (item: FreightForward) => {
+    if (rowClickTimerRef.current) {
+      clearTimeout(rowClickTimerRef.current);
+      rowClickTimerRef.current = null;
+    }
+    closeTimelinePopup();
+    openView(item);
+  };
 
   // Re-fetch from scratch whenever filters change
   useEffect(() => {
@@ -2080,15 +2131,7 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
         </div>
       )}
       <div className="h-5" />
-      {selected && (
-        <WorkflowTimeline
-          selected={selected}
-          currentUserRole={userRole}
-          onComplete={handleStatusUpdate}
-        />
-      )}
 
-      {/* Footer */}
       <div className="mt-8 flex gap-3 border-t border-zinc-200 pt-5">
         <button
           onClick={closeDrawer}
@@ -2354,7 +2397,12 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
                   <tr><td colSpan={14} className="py-10 text-center text-zinc-400">No freight forward records found.</td></tr>
                 ) : (
                   rows.map((item) => (
-                    <tr key={item.id} onClick={() => openView(item)} className="cursor-pointer border-b border-zinc-100 hover:bg-zinc-50 transition-colors">
+                    <tr
+                      key={item.id}
+                      onClick={() => handleRowClick(item)}
+                      onDoubleClick={() => handleRowDoubleClick(item)}
+                      className="cursor-pointer border-b border-zinc-100 transition-colors hover:bg-zinc-50"
+                    >
                       <td className="px-4 py-3 font-medium text-zinc-800">{item.jobNumber || "—"}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.ezRefNumber || "—"}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.blType || "—"}</td>
@@ -2396,6 +2444,50 @@ const handleStatusUpdate = async (nextStatus: FreightForwardStatus) => {
           <button disabled={page + 1 >= totalPages} onClick={goNext} className="rounded-lg border border-zinc-200 px-3 py-1.5 text-xs disabled:opacity-40">Next</button>
         </div>
       </div>
+
+      {/* Workflow timeline popup — single click, bottom-right corner */}
+      {timelinePopupOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-[65] bg-black/20"
+            onClick={closeTimelinePopup}
+          />
+          <div
+            className="fixed bottom-4 right-4 z-[66] flex w-[min(100vw-2rem,24rem)] max-h-[min(75vh,32rem)] flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-zinc-100 px-4 py-3">
+              <div className="min-w-0 pr-2">
+                <h2 className="truncate text-sm font-semibold text-zinc-900">Workflow Timeline</h2>
+                <p className="truncate text-[11px] text-zinc-500">
+                  {timelineRecord?.jobNumber || "—"} · {timelineRecord?.consignmentName || "—"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeTimelinePopup}
+                className="shrink-0 rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              {timelineLoading ? (
+                <p className="p-4 text-xs text-zinc-500">Loading workflow...</p>
+              ) : timelineRecord ? (
+                <WorkflowTimeline
+                  selected={timelineRecord}
+                  currentUserRole={userRole}
+                  compact
+                  onComplete={(nextStatus) =>
+                    handleStatusUpdate(nextStatus, timelineRecord)
+                  }
+                />
+              ) : null}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Backdrop */}
       {drawerOpen && (

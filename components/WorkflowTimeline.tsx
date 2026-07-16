@@ -33,6 +33,7 @@ const WORKFLOW = WORKFLOW_STEPS.map((step) => ({
 type Props = {
   selected: FreightForward;
   currentUserRole: string;
+  compact?: boolean;
   onComplete: (nextStatus: FreightForwardStatus) => Promise<void>;
 };
 
@@ -66,6 +67,7 @@ function formatTimelineDate(value: unknown) {
 export default function WorkflowTimeline({
   selected,
   currentUserRole,
+  compact = false,
   onComplete,
 }: Props) {
   const dropdownOptions = useMemo(
@@ -137,11 +139,21 @@ export default function WorkflowTimeline({
     canUpdateToStatus(nextStatus, selected.statusTimeline);
 
   return (
-    <div className="mb-6 rounded-xl border bg-white p-5">
-      <h3 className="mb-5 text-base font-semibold">Workflow Timeline</h3>
+    <div
+      className={
+        compact
+          ? "p-1"
+          : "mb-6 rounded-xl border bg-white p-5 shadow-xl"
+      }
+    >
+      {!compact && <h3 className="mb-5 text-base font-semibold">Workflow Timeline</h3>}
 
       {canJumpStatus && dropdownOptions.length > 0 && (
-        <div className="mb-5 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+        <div
+          className={`rounded-xl border border-zinc-200 bg-zinc-50 ${
+            compact ? "mb-3 p-3" : "mb-5 p-4"
+          }`}
+        >
           <p className="mb-2 text-xs font-medium text-zinc-600">Update status</p>
           <div className="flex flex-col gap-2 sm:flex-row">
             <select
@@ -183,7 +195,11 @@ export default function WorkflowTimeline({
       )}
 
       {canCompleteNext && nextStatus && (
-        <div className="mb-5 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+        <div
+          className={`rounded-xl border border-zinc-200 bg-zinc-50 ${
+            compact ? "mb-3 p-3" : "mb-5 p-4"
+          }`}
+        >
           <p className="mb-2 text-xs text-zinc-600">
             Next stage:{" "}
             <span className="font-medium text-zinc-900">{nextStep?.label}</span>
@@ -227,12 +243,12 @@ export default function WorkflowTimeline({
               {index !== WORKFLOW.length - 1 && (
                 <div
                   className={`mt-1 w-0.5 flex-1 ${completed ? "bg-black" : "bg-zinc-300"}`}
-                  style={{ minHeight: 52 }}
+                  style={{ minHeight: compact ? 36 : 52 }}
                 />
               )}
             </div>
 
-            <div className="flex-1 pb-8">
+            <div className={`flex-1 ${compact ? "pb-4" : "pb-8"}`}>
               <div className="flex items-center justify-between">
                 <h4 className="font-semibold text-zinc-900">{timelineStepLabel(step.key)}</h4>
 

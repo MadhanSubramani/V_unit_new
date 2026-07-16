@@ -41,6 +41,95 @@ interface ChargeRow {
   totalInr: number;
 }
 
+const BANK_DETAILS = {
+  accountName: "V UNIT LOGISTICS INDIA PRIVATE LIMITED",
+  accountNo: "259600802609",
+  ifsc: "INDB0000167",
+  bank: "INDUSIND BANK",
+  address: "Rajaji Salai,Chennai",
+};
+
+const ONES = [
+  "",
+  "One",
+  "Two",
+  "Three",
+  "Four",
+  "Five",
+  "Six",
+  "Seven",
+  "Eight",
+  "Nine",
+  "Ten",
+  "Eleven",
+  "Twelve",
+  "Thirteen",
+  "Fourteen",
+  "Fifteen",
+  "Sixteen",
+  "Seventeen",
+  "Eighteen",
+  "Nineteen",
+];
+
+const TENS = [
+  "",
+  "",
+  "Twenty",
+  "Thirty",
+  "Forty",
+  "Fifty",
+  "Sixty",
+  "Seventy",
+  "Eighty",
+  "Ninety",
+];
+
+function twoDigitsToWords(n: number): string {
+  if (n < 20) return ONES[n];
+  const tens = Math.floor(n / 10);
+  const ones = n % 10;
+  return ones ? `${TENS[tens]} ${ONES[ones]}` : TENS[tens];
+}
+
+function threeDigitsToWords(n: number): string {
+  const hundred = Math.floor(n / 100);
+  const rest = n % 100;
+  if (hundred && rest) {
+    return `${ONES[hundred]} Hundred ${twoDigitsToWords(rest)}`;
+  }
+  if (hundred) return `${ONES[hundred]} Hundred`;
+  return twoDigitsToWords(rest);
+}
+
+function integerToIndianWords(n: number): string {
+  if (n === 0) return "Zero";
+
+  const crore = Math.floor(n / 10000000);
+  const lakh = Math.floor((n % 10000000) / 100000);
+  const thousand = Math.floor((n % 100000) / 1000);
+  const hundred = n % 1000;
+  const parts: string[] = [];
+
+  if (crore) parts.push(`${threeDigitsToWords(crore)} Crore`);
+  if (lakh) parts.push(`${twoDigitsToWords(lakh)} Lakh`);
+  if (thousand) parts.push(`${twoDigitsToWords(thousand)} Thousand`);
+  if (hundred) parts.push(threeDigitsToWords(hundred));
+
+  return parts.join(" ").replace(/\s+/g, " ").trim();
+}
+
+function amountToWordsInr(amount: number): string {
+  const rupees = Math.floor(Math.abs(amount));
+  const paise = Math.round((Math.abs(amount) - rupees) * 100);
+
+  let words = `Rupees ${integerToIndianWords(rupees)}`;
+  if (paise > 0) {
+    words += ` and ${integerToIndianWords(paise)} Paise`;
+  }
+  return `${words} Only`;
+}
+
 function formatUsd(value: number) {
   return value.toLocaleString("en-US", {
     minimumFractionDigits: 0,
@@ -361,7 +450,36 @@ export async function generateProformaPdf(
   doc.text(formatInr(totalCgst), colX.cgstA, y);
   doc.text(formatInr(totalSgst), colX.sgstA, y);
   doc.text(formatInr(grandTotal), colX.total, y);
-  y += 36;
+  y += 18;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.text("Total in Words :", margin, y);
+  doc.setFont("helvetica", "normal");
+  const amountWords = amountToWordsInr(grandTotal);
+  const wordLines = doc.splitTextToSize(amountWords, pageWidth - margin * 2 - 70);
+  doc.text(wordLines, margin + 70, y);
+  y += wordLines.length * 10 + 12;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.text("Bank Details", margin, y);
+  y += 12;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  const bankLines = [
+    `A/C Name : ${BANK_DETAILS.accountName}`,
+    `A/C No : ${BANK_DETAILS.accountNo}`,
+    `IFSC : ${BANK_DETAILS.ifsc}`,
+    `Bank : ${BANK_DETAILS.bank}`,
+    `Address : ${BANK_DETAILS.address}`,
+  ];
+  bankLines.forEach((line) => {
+    doc.text(line, margin, y);
+    y += 11;
+  });
+  y += 16;
 
   const sigX = pageWidth - margin - 200;
 
