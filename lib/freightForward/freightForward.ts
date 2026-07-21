@@ -173,7 +173,20 @@ export async function updateFreightForward(
     patch.etaSort = normalizeEtaSort(data.eta);
   }
 
-  await updateDoc(doc(db, "freightForward", id), stripUndefined(patch));
+  const cleaned: Record<string, unknown> = stripUndefined(patch);
+
+  // When switching CFS ↔ SEZ, clear the unused field. Omitting it leaves the
+  // old value in Firestore, so view/list keep showing the previous location.
+  // Apply deleteField after stripUndefined so the sentinel is not corrupted.
+  if (data.locationType === "cfs") {
+    cleaned.cfs = data.cfs ?? deleteField();
+    cleaned.sez = deleteField();
+  } else if (data.locationType === "sez") {
+    cleaned.sez = data.sez ?? deleteField();
+    cleaned.cfs = deleteField();
+  }
+
+  await updateDoc(doc(db, "freightForward", id), cleaned);
   invalidateFreightForwardListCache();
 }
 

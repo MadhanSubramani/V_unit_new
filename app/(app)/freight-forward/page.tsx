@@ -54,6 +54,7 @@ import {
   getTotalOceanFreight,
 } from "@/lib/freightForward/containers";
 import { canUpdateToStatus } from "@/lib/freightForward/workflowStatus";
+import { computePipelineFlags } from "@/lib/freightForward/pipelineFlags";
 import { uploadDocument } from "@/lib/kyc/uploadDocument";
 import { getSezList } from "@/lib/sez/sez";
 import { Cfs } from "@/types/cfs";
@@ -113,7 +114,12 @@ function getLocationCode(
   cfsList: Cfs[],
   sezList: Sez[]
 ): string {
-  if (item.sez || item.locationType === "sez") {
+  // Prefer explicit locationType so a leftover sez/cfs field after switching
+  // types cannot override what was last saved.
+  const locationType =
+    item.locationType ?? (item.sez && !item.cfs ? "sez" : "cfs");
+
+  if (locationType === "sez") {
     const stored = item.sez?.trim() ?? "";
     if (!stored) return "—";
     const match = sezList.find(
@@ -328,7 +334,7 @@ export default function FreightForwardPage() {
   const [page, setPage] = useState(0); // 0-indexed
   const [cursors, setCursors] = useState<(DocumentSnapshot | null)[]>([null]);
 
-  // ── Card counts (getCountFromServer — zero document reads) ─────────────────
+  // ── Card counts (non-deleted records only) ─────────────────────────────────
   const [cardCounts, setCardCounts] = useState({
     inProcess: 0,
     next7Days: 0,
@@ -338,6 +344,7 @@ export default function FreightForwardPage() {
     receivable: 0,
     payable: 0,
     completed: 0,
+    incomplete: 0,
   });
 
   // ── Filters ───────────────────────────────────────────────────────────────
@@ -505,7 +512,13 @@ export default function FreightForwardPage() {
     { key: "next7Days" as CardFilter, label: "Next 7 Days", count: cardCounts.next7Days },
     { key: "momentum" as CardFilter, label: "Movement", count: cardCounts.momentum },
     { key: "split_manifest" as CardFilter, label: "Split Manifest", count: cardCounts.split_manifest },
-    { key: "completed" as CardFilter, label: "Completed", count: cardCounts.completed },
+    {
+      key: "completed" as CardFilter,
+      label: "Completed / Incomplete",
+      count: cardCounts.completed,
+      // Deleted jobs are never included in either number.
+      displayCount: `${cardCounts.completed} / ${cardCounts.incomplete}`,
+    },
   ];
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -595,17 +608,19 @@ const handleStatusUpdate = async (
         user.username!
     );
 
-    const updated = {
-        ...target,
+    const nextTimeline = [
+      ...(target.statusTimeline ?? []),
+      {
         status: nextStatus,
-        statusTimeline: [
-            ...(target.statusTimeline ?? []),
-            {
-                status: nextStatus,
-                updatedBy: user.username ?? "Unknown",
-                updatedAt: Timestamp.now(),
-            },
-        ],
+        updatedBy: user.username ?? "Unknown",
+        updatedAt: Timestamp.now(),
+      },
+    ];
+    const updated = {
+      ...target,
+      status: nextStatus,
+      statusTimeline: nextTimeline,
+      ...computePipelineFlags(nextTimeline),
     };
 
     if (selected?.id === target.id) {
@@ -2241,7 +2256,9 @@ const handleStatusUpdate = async (
                 </p>
 
                 <p className="mt-1 text-2xl font-bold leading-none text-zinc-900">
-                  {card.count}
+                  {"displayCount" in card && card.displayCount
+                    ? card.displayCount
+                    : card.count}
                 </p>
               </button>
             );

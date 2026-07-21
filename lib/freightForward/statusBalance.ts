@@ -81,6 +81,12 @@ export function matchesBalanceCard(
 
 /** Card counts: workflow steps count pending records; Completed counts updated records. */
 export function computeBalanceCounts(records: FreightForward[]) {
+  const completed = records.filter((item) =>
+    hasStatusInTimeline(item, "completed")
+  ).length;
+  // Active jobs that are not completed (deleted records must be excluded by caller).
+  const incomplete = records.length - completed;
+
   return {
     inProcess: records.filter((item) => matchesBalanceCard(item, "inProcess")).length,
     next7Days: records.filter((item) => matchesBalanceCard(item, "next7Days")).length,
@@ -92,8 +98,8 @@ export function computeBalanceCounts(records: FreightForward[]) {
     receivable: records.filter((item) => matchesBalanceCard(item, "receivable"))
       .length,
     payable: records.filter((item) => matchesBalanceCard(item, "payable")).length,
-    completed: records.filter((item) => hasStatusInTimeline(item, "completed"))
-      .length,
+    completed,
+    incomplete,
   };
 }
 

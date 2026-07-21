@@ -343,87 +343,14 @@ export async function getFreightForwardPaginated(
   }
 }
 
-async function countWithFallback(
-  constraints: QueryConstraint[],
-  fallback: () => Promise<number>
-): Promise<number> {
-  try {
-    const snap = await getCountFromServer(query(REF(), ...constraints));
-    return snap.data().count;
-  } catch (error) {
-    if (!isFirestoreIndexError(error)) throw error;
-    return fallback();
-  }
-}
-
 export async function getFreightForwardCardCountsFromServer() {
-  const { from, to } = getNext7DayEtaRange();
-
-  let clientRecords: FreightForward[] | null = null;
-  const clientCount = async (pick: (counts: ReturnType<typeof computeBalanceCounts>) => number) => {
-    if (!clientRecords) {
-      clientRecords = await fetchAllRecordsForClient();
-    }
-    return pick(computeBalanceCounts(clientRecords.filter((item) => !item.isDeleted)));
-  };
-
-  try {
-    const [
-      inProcess,
-      next7Days,
-      momentum,
-      split_manifest,
-      billing,
-      receivable,
-      payable,
-      completed,
-    ] = await Promise.all([
-      countWithFallback([where("status", "==", "in_process")], () =>
-        clientCount((c) => c.inProcess)
-      ),
-      countWithFallback(
-        [
-          where("workflowCompleted", "==", false),
-          where("etaSort", ">=", from),
-          where("etaSort", "<=", to),
-        ],
-        () => clientCount((c) => c.next7Days)
-      ),
-      countWithFallback([where("pendingMomentum", "==", true)], () =>
-        clientCount((c) => c.momentum)
-      ),
-      countWithFallback([where("pendingSplitManifest", "==", true)], () =>
-        clientCount((c) => c.split_manifest)
-      ),
-      countWithFallback([where("pendingBilling", "==", true)], () =>
-        clientCount((c) => c.billing)
-      ),
-      countWithFallback([where("pendingReceivable", "==", true)], () =>
-        clientCount((c) => c.receivable)
-      ),
-      countWithFallback([where("pendingPayable", "==", true)], () =>
-        clientCount((c) => c.payable)
-      ),
-      countWithFallback([where("workflowCompleted", "==", true)], () =>
-        clientCount((c) => c.completed)
-      ),
-    ]);
-
-    return {
-      inProcess,
-      next7Days,
-      momentum,
-      split_manifest,
-      billing,
-      receivable,
-      payable,
-      completed,
-    };
-  } catch (error) {
-    if (!isFirestoreIndexError(error)) throw error;
-    const records = (await fetchAllRecordsForClient()).filter((item) => !item.isDeleted);
-    return computeBalanceCounts(records);
-  }
+  // Always derive counts from active (non-deleted) records using the same
+  // timeline rules as the list filters. Server count queries alone can include
+  // trashed jobs and miss legacy docs without pending*/workflowCompleted flags.
+  const records = (await fetchAllRecordsForClient()).filter(
+    (item) => !item.isDeleted
+  );
+  return computeBalanceCounts(records);
 }
 
 export { normalizeEtaSort };
