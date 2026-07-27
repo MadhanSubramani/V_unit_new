@@ -29,6 +29,11 @@ import {
   getFreightForwardPaginated,
   invalidateFreightForwardListCache,
 } from "./paginatedList";
+import {
+  getFreightForwardCardCountsFromCounters,
+  isFreightForwardCounterDashboardEnabled,
+  syncFreightForwardCounts,
+} from "./freightForwardCounts";
 import { usesBalanceCardFilter } from "./statusBalance";
 import { sortFreightRecords } from "./sortRecords";
 
@@ -74,10 +79,15 @@ export {
   type FreightListRequest,
 } from "./paginatedList";
 
-// ── Card counts (server-side count queries) ────────────────────────────────
+// ── Card counts (server-side count queries or stats doc) ─────────────────
 export async function getFreightForwardCardCounts() {
+  if (isFreightForwardCounterDashboardEnabled()) {
+    return getFreightForwardCardCountsFromCounters();
+  }
   return getFreightForwardCardCountsFromServer();
 }
+
+export { getFreightForwardCardCountsFromCounters } from "./freightForwardCounts";
 
 // ── Client-side text search helper (used only when search is active) ───────
 export async function getFreightForwardSearch({
@@ -155,6 +165,23 @@ export async function createFreightForward(
   });
 
   invalidateFreightForwardListCache();
+
+  const createdRecord: FreightForward = {
+    id: newDocRef.id,
+    ...(stripUndefinedDeep({
+      ...recordData,
+      jobNumber,
+      etaSort: normalizeEtaSort(data.eta),
+      ...flags,
+      status: data.status ?? "in_process",
+      statusTimeline: timeline,
+      createdBy,
+      updatedBy: createdBy,
+      isDeleted: false,
+    }) as Omit<FreightForward, "id">),
+  };
+  await syncFreightForwardCounts(null, createdRecord);
+
   return { id: newDocRef.id, jobNumber };
 }
 
@@ -163,6 +190,12 @@ export async function updateFreightForward(
   data: Partial<FreightForwardFormData>,
   updatedBy: string
 ) {
+  const docRef = doc(db, "freightForward", id);
+  const beforeSnap = await getDoc(docRef);
+  const beforeRecord = beforeSnap.exists()
+    ? ({ id: beforeSnap.id, ...(beforeSnap.data() as Omit<FreightForward, "id">) } as FreightForward)
+    : null;
+
   const patch: Record<string, unknown> = {
     ...data,
     updatedBy,
@@ -186,8 +219,28 @@ export async function updateFreightForward(
     cleaned.cfs = deleteField();
   }
 
-  await updateDoc(doc(db, "freightForward", id), cleaned);
+  await updateDoc(docRef, cleaned);
   invalidateFreightForwardListCache();
+
+  if (beforeRecord) {
+    const afterRecord: FreightForward = {
+      ...beforeRecord,
+      ...data,
+      id,
+      updatedBy,
+    };
+    if (data.eta !== undefined) {
+      afterRecord.etaSort = normalizeEtaSort(data.eta);
+    }
+    if (data.locationType === "cfs") {
+      afterRecord.cfs = data.cfs ?? beforeRecord.cfs;
+      afterRecord.sez = undefined;
+    } else if (data.locationType === "sez") {
+      afterRecord.sez = data.sez ?? beforeRecord.sez;
+      afterRecord.cfs = undefined;
+    }
+    await syncFreightForwardCounts(beforeRecord, afterRecord);
+  }
 }
 
 export async function updateWorkflowStatus(
@@ -195,8 +248,14 @@ export async function updateWorkflowStatus(
   nextStatus: FreightForwardStatus,
   updatedBy: string
 ) {
-  const snap = await getDoc(doc(db, "freightForward", id));
+  const docRef = doc(db, "freightForward", id);
+  const snap = await getDoc(docRef);
   if (!snap.exists()) return;
+
+  const beforeRecord = {
+    id: snap.id,
+    ...(snap.data() as Omit<FreightForward, "id">),
+  } as FreightForward;
 
   const existing = snap.data();
   const newEntry = {
@@ -207,7 +266,7 @@ export async function updateWorkflowStatus(
   const timeline = [...(existing.statusTimeline ?? []), newEntry];
   const flags = computePipelineFlags(timeline);
 
-  await updateDoc(doc(db, "freightForward", id), {
+  await updateDoc(docRef, {
     status: nextStatus,
     updatedBy,
     updatedAt: serverTimestamp(),
@@ -215,6 +274,15 @@ export async function updateWorkflowStatus(
     statusTimeline: arrayUnion(newEntry),
   });
   invalidateFreightForwardListCache();
+
+  const afterRecord: FreightForward = {
+    ...beforeRecord,
+    status: nextStatus,
+    statusTimeline: timeline,
+    updatedBy,
+    ...flags,
+  };
+  await syncFreightForwardCounts(beforeRecord, afterRecord);
 }
 
 export async function getFreightForwardById(id: string) {
@@ -242,7 +310,13 @@ export async function getFreightForwardForExport(etaFrom: string, etaTo: string)
 
 /** Soft-delete: hide from main list; keep data for Trash. */
 export async function softDeleteFreightForward(id: string, deletedBy: string) {
-  await updateDoc(doc(db, "freightForward", id), {
+  const docRef = doc(db, "freightForward", id);
+  const beforeSnap = await getDoc(docRef);
+  const beforeRecord = beforeSnap.exists()
+    ? ({ id: beforeSnap.id, ...(beforeSnap.data() as Omit<FreightForward, "id">) } as FreightForward)
+    : null;
+
+  await updateDoc(docRef, {
     isDeleted: true,
     deletedBy,
     deletedAt: serverTimestamp(),
@@ -250,20 +324,42 @@ export async function softDeleteFreightForward(id: string, deletedBy: string) {
     updatedAt: serverTimestamp(),
   });
   invalidateFreightForwardListCache();
+
+  if (beforeRecord) {
+    const afterRecord: FreightForward = { ...beforeRecord, isDeleted: true, deletedBy };
+    await syncFreightForwardCounts(beforeRecord, afterRecord);
+  }
 }
 
 /** Recover soft-deleted jobs back to the main list. */
 export async function restoreFreightForwards(ids: string[], restoredBy: string) {
   await Promise.all(
-    ids.map((id) =>
-      updateDoc(doc(db, "freightForward", id), {
+    ids.map(async (id) => {
+      const docRef = doc(db, "freightForward", id);
+      const beforeSnap = await getDoc(docRef);
+      const beforeRecord = beforeSnap.exists()
+        ? ({ id: beforeSnap.id, ...(beforeSnap.data() as Omit<FreightForward, "id">) } as FreightForward)
+        : null;
+
+      await updateDoc(docRef, {
         isDeleted: false,
         deletedBy: deleteField(),
         deletedAt: deleteField(),
         updatedBy: restoredBy,
         updatedAt: serverTimestamp(),
-      })
-    )
+      });
+
+      if (beforeRecord) {
+        const afterRecord: FreightForward = {
+          ...beforeRecord,
+          isDeleted: false,
+          deletedBy: undefined,
+          deletedAt: undefined,
+          updatedBy: restoredBy,
+        };
+        await syncFreightForwardCounts(beforeRecord, afterRecord);
+      }
+    })
   );
   invalidateFreightForwardListCache();
 }
@@ -310,11 +406,17 @@ export async function permanentlyDeleteFreightForwards(ids: string[]) {
   const { deleteFreightForwardStorageFiles } = await import("./deleteStorage");
 
   for (const id of ids) {
-    const snap = await getDoc(doc(db, "freightForward", id));
+    const docRef = doc(db, "freightForward", id);
+    const snap = await getDoc(docRef);
     if (!snap.exists()) continue;
-    const item = { id: snap.id, ...(snap.data() as Omit<FreightForward, "id">) };
+    const beforeRecord = {
+      id: snap.id,
+      ...(snap.data() as Omit<FreightForward, "id">),
+    } as FreightForward;
+    const item = beforeRecord;
     await deleteFreightForwardStorageFiles(item);
-    await deleteDoc(doc(db, "freightForward", id));
+    await deleteDoc(docRef);
+    await syncFreightForwardCounts(beforeRecord, null);
   }
 
   invalidateFreightForwardListCache();

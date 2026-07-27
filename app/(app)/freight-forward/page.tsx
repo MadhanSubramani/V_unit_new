@@ -25,6 +25,7 @@ import {
   softDeleteFreightForward,
   getFreightForwardCardCounts,
   getFreightForwardPaginated,
+  invalidateFreightForwardListCache,
   updateFreightForward,
   updateWorkflowStatus,
   getFreightForwardById,
@@ -526,6 +527,7 @@ export default function FreightForwardPage() {
   // ── Load card counts via getCountFromServer ────────────────────────────────
   const loadCounts = useCallback(async () => {
     try {
+      invalidateFreightForwardListCache();
       const counts = await getFreightForwardCardCounts();
       setCardCounts(counts);
     } catch (error) {
@@ -679,7 +681,8 @@ const handleStatusUpdate = async (
   }, [activeCard, activeStatus, dateFrom, dateTo, debouncedSearchValue, sortKey, sortDir]);
 
   const reload = async () => {
-    await Promise.all([loadCounts(), loadPage(page)]);
+    await loadPage(page);
+    await loadCounts();
   };
 
   useEffect(() => {

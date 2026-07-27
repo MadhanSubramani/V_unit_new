@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import { FreightForward } from "@/types/freightForward";
 import { Kyc } from "@/types/kyc";
-import { parseAmount, sumExpenseItems } from "@/lib/freightForward/amounts";
+import { parseAmount, sumExpenseItems, getRecordProfitLoss } from "@/lib/freightForward/amounts";
 import {
   getContainerCount,
   getContainersFromRecord,
@@ -203,7 +203,7 @@ function buildChargeRows(
 ): ChargeRow[] {
   const rows: ChargeRow[] = [];
   const totalExWorksUsd = sumExpenseItems(record.exWorks);
-  const oceanFreightUsd = getTotalOceanFreight(record);
+  const baseOceanFreightUsd = getTotalOceanFreight(record);
 
   if (totalExWorksUsd > 0) {
     const { cgstRate, sgstRate } = splitGst(input.exWorksGstPercent);
@@ -226,14 +226,20 @@ function buildChargeRows(
     });
   }
 
-  if (oceanFreightUsd > 0) {
+  if (baseOceanFreightUsd > 0) {
+    const containerCount = getContainerCount(record);
+    const basePerContainer = getOceanFreightPerContainer(record) ?? 0;
+    const profit = getRecordProfitLoss(record);
+    const profitPerContainer =
+      profit > 0 ? profit / containerCount : 0;
+    const displayPerContainer = basePerContainer + profitPerContainer;
+    const oceanFreightUsd = displayPerContainer * containerCount;
+
     const { cgstRate, sgstRate } = splitGst(input.oceanFreightGstPercent);
     const taxableInr = oceanFreightUsd * input.rupeePerDollar;
     const cgstAmount = (taxableInr * cgstRate) / 100;
     const sgstAmount = (taxableInr * sgstRate) / 100;
-    const containerCount = getContainerCount(record);
-    const perContainer = getOceanFreightPerContainer(record) ?? 0;
-    const oceanDetail = `(${containerCount} container${containerCount === 1 ? "" : "s"} × $${formatUsd(perContainer)})`;
+    const oceanDetail = `(${containerCount} container${containerCount === 1 ? "" : "s"} × $${formatUsd(displayPerContainer)})`;
 
     rows.push({
       sno: rows.length + 1,
