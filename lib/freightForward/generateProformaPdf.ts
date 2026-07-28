@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import { FreightForward } from "@/types/freightForward";
 import { Kyc } from "@/types/kyc";
-import { parseAmount, sumExpenseItems, getRecordProfitLoss } from "@/lib/freightForward/amounts";
+import { sumExpenseItems, getRecordProfitLoss } from "@/lib/freightForward/amounts";
 import {
   getContainerCount,
   getContainersFromRecord,
@@ -19,7 +19,10 @@ const COMPANY = {
   pan: "AAJCV5466B",
 };
 
+export type GstMode = "cgst_sgst" | "igst";
+
 export interface ProformaInput {
+  gstMode: GstMode;
   exWorksGstPercent: number;
   oceanFreightGstPercent: number;
   blFeeGstPercent: number;
@@ -34,10 +37,14 @@ interface ChargeRow {
   unitAmount: number;
   roe: number;
   taxableInr: number;
+  /** Full GST % entered by user (used for IGST column). */
+  gstPercent: number;
   cgstRate: number;
   sgstRate: number;
+  igstRate: number;
   cgstAmount: number;
   sgstAmount: number;
+  igstAmount: number;
   totalInr: number;
 }
 
@@ -151,9 +158,36 @@ function formatDate(d: Date) {
   return `${day}.${month}.${year}`;
 }
 
-function splitGst(gstPercent: number) {
+function taxFromPercent(
+  taxableInr: number,
+  gstPercent: number,
+  gstMode: GstMode
+) {
+  if (gstMode === "igst") {
+    const igstAmount = (taxableInr * gstPercent) / 100;
+    return {
+      cgstRate: 0,
+      sgstRate: 0,
+      igstRate: gstPercent,
+      cgstAmount: 0,
+      sgstAmount: 0,
+      igstAmount,
+      taxTotal: igstAmount,
+    };
+  }
+
   const half = gstPercent / 2;
-  return { cgstRate: half, sgstRate: half };
+  const cgstAmount = (taxableInr * half) / 100;
+  const sgstAmount = (taxableInr * half) / 100;
+  return {
+    cgstRate: half,
+    sgstRate: half,
+    igstRate: 0,
+    cgstAmount,
+    sgstAmount,
+    igstAmount: 0,
+    taxTotal: cgstAmount + sgstAmount,
+  };
 }
 
 async function loadRasterImageDataUrl(
@@ -204,12 +238,11 @@ function buildChargeRows(
   const rows: ChargeRow[] = [];
   const totalExWorksUsd = sumExpenseItems(record.exWorks);
   const baseOceanFreightUsd = getTotalOceanFreight(record);
+  const gstMode = input.gstMode ?? "cgst_sgst";
 
   if (totalExWorksUsd > 0) {
-    const { cgstRate, sgstRate } = splitGst(input.exWorksGstPercent);
     const taxableInr = totalExWorksUsd * input.rupeePerDollar;
-    const cgstAmount = (taxableInr * cgstRate) / 100;
-    const sgstAmount = (taxableInr * sgstRate) / 100;
+    const tax = taxFromPercent(taxableInr, input.exWorksGstPercent, gstMode);
 
     rows.push({
       sno: rows.length + 1,
@@ -218,11 +251,9 @@ function buildChargeRows(
       unitAmount: totalExWorksUsd,
       roe: input.rupeePerDollar,
       taxableInr,
-      cgstRate,
-      sgstRate,
-      cgstAmount,
-      sgstAmount,
-      totalInr: taxableInr + cgstAmount + sgstAmount,
+      gstPercent: input.exWorksGstPercent,
+      ...tax,
+      totalInr: taxableInr + tax.taxTotal,
     });
   }
 
@@ -230,15 +261,12 @@ function buildChargeRows(
     const containerCount = getContainerCount(record);
     const basePerContainer = getOceanFreightPerContainer(record) ?? 0;
     const profit = getRecordProfitLoss(record);
-    const profitPerContainer =
-      profit > 0 ? profit / containerCount : 0;
+    const profitPerContainer = profit > 0 ? profit / containerCount : 0;
     const displayPerContainer = basePerContainer + profitPerContainer;
     const oceanFreightUsd = displayPerContainer * containerCount;
 
-    const { cgstRate, sgstRate } = splitGst(input.oceanFreightGstPercent);
     const taxableInr = oceanFreightUsd * input.rupeePerDollar;
-    const cgstAmount = (taxableInr * cgstRate) / 100;
-    const sgstAmount = (taxableInr * sgstRate) / 100;
+    const tax = taxFromPercent(taxableInr, input.oceanFreightGstPercent, gstMode);
     const oceanDetail = `(${containerCount} container${containerCount === 1 ? "" : "s"} × $${formatUsd(displayPerContainer)})`;
 
     rows.push({
@@ -248,19 +276,15 @@ function buildChargeRows(
       unitAmount: oceanFreightUsd,
       roe: input.rupeePerDollar,
       taxableInr,
-      cgstRate,
-      sgstRate,
-      cgstAmount,
-      sgstAmount,
-      totalInr: taxableInr + cgstAmount + sgstAmount,
+      gstPercent: input.oceanFreightGstPercent,
+      ...tax,
+      totalInr: taxableInr + tax.taxTotal,
     });
   }
 
   if (input.blFee > 0) {
-    const { cgstRate, sgstRate } = splitGst(input.blFeeGstPercent);
     const taxableInr = input.blFee;
-    const cgstAmount = (taxableInr * cgstRate) / 100;
-    const sgstAmount = (taxableInr * sgstRate) / 100;
+    const tax = taxFromPercent(taxableInr, input.blFeeGstPercent, gstMode);
 
     rows.push({
       sno: rows.length + 1,
@@ -269,11 +293,9 @@ function buildChargeRows(
       unitAmount: input.blFee,
       roe: 1,
       taxableInr,
-      cgstRate,
-      sgstRate,
-      cgstAmount,
-      sgstAmount,
-      totalInr: taxableInr + cgstAmount + sgstAmount,
+      gstPercent: input.blFeeGstPercent,
+      ...tax,
+      totalInr: taxableInr + tax.taxTotal,
     });
   }
 
@@ -292,6 +314,8 @@ export async function generateProformaPdf(
   kycList: Kyc[],
   input: ProformaInput
 ) {
+  const gstMode = input.gstMode ?? "cgst_sgst";
+  const useIgst = gstMode === "igst";
   const kyc = findKycForConsignee(kycList, record.consignmentName);
   const rows = buildChargeRows(record, input);
   const [logoData, stampData] = await Promise.all([
@@ -386,19 +410,31 @@ export async function generateProformaPdf(
   doc.text(`Final Destination : ${record.pod || "—"}`, rightX, y);
   y += 18;
 
-  const colX = {
-    sno: margin,
-    desc: margin + 28,
-    curr: margin + 200,
-    unit: margin + 235,
-    roe: margin + 300,
-    taxable: margin + 350,
-    cgstR: margin + 415,
-    cgstA: margin + 450,
-    sgstR: margin + 495,
-    sgstA: margin + 530,
-    total: margin + 575,
-  };
+  const colX = useIgst
+    ? {
+        sno: margin,
+        desc: margin + 28,
+        curr: margin + 210,
+        unit: margin + 250,
+        roe: margin + 320,
+        taxable: margin + 380,
+        igstR: margin + 460,
+        igstA: margin + 510,
+        total: margin + 580,
+      }
+    : {
+        sno: margin,
+        desc: margin + 28,
+        curr: margin + 200,
+        unit: margin + 235,
+        roe: margin + 300,
+        taxable: margin + 350,
+        cgstR: margin + 415,
+        cgstA: margin + 450,
+        sgstR: margin + 495,
+        sgstA: margin + 530,
+        total: margin + 575,
+      };
 
   doc.setFillColor(240, 240, 240);
   doc.rect(margin, y, pageWidth - margin * 2, 16, "F");
@@ -410,10 +446,15 @@ export async function generateProformaPdf(
   doc.text("Amt", colX.unit, y + 11);
   doc.text("ROE", colX.roe, y + 11);
   doc.text("Taxable", colX.taxable, y + 11);
-  doc.text("CGST%", colX.cgstR, y + 11);
-  doc.text("CGST", colX.cgstA, y + 11);
-  doc.text("SGST%", colX.sgstR, y + 11);
-  doc.text("SGST", colX.sgstA, y + 11);
+  if (useIgst) {
+    doc.text("IGST%", colX.igstR!, y + 11);
+    doc.text("IGST", colX.igstA!, y + 11);
+  } else {
+    doc.text("CGST%", colX.cgstR!, y + 11);
+    doc.text("CGST", colX.cgstA!, y + 11);
+    doc.text("SGST%", colX.sgstR!, y + 11);
+    doc.text("SGST", colX.sgstA!, y + 11);
+  }
   doc.text("Total", colX.total, y + 11);
   y += 30;
 
@@ -421,6 +462,7 @@ export async function generateProformaPdf(
   let totalTaxable = 0;
   let totalCgst = 0;
   let totalSgst = 0;
+  let totalIgst = 0;
   let grandTotal = 0;
 
   rows.forEach((row) => {
@@ -436,15 +478,21 @@ export async function generateProformaPdf(
     doc.text(formatInr(row.unitAmount), colX.unit, y);
     doc.text(formatInr(row.roe), colX.roe, y);
     doc.text(formatInr(row.taxableInr), colX.taxable, y);
-    doc.text(`${row.cgstRate.toFixed(2)}%`, colX.cgstR, y);
-    doc.text(formatInr(row.cgstAmount), colX.cgstA, y);
-    doc.text(`${row.sgstRate.toFixed(2)}%`, colX.sgstR, y);
-    doc.text(formatInr(row.sgstAmount), colX.sgstA, y);
+    if (useIgst) {
+      doc.text(`${row.igstRate.toFixed(2)}%`, colX.igstR!, y);
+      doc.text(formatInr(row.igstAmount), colX.igstA!, y);
+    } else {
+      doc.text(`${row.cgstRate.toFixed(2)}%`, colX.cgstR!, y);
+      doc.text(formatInr(row.cgstAmount), colX.cgstA!, y);
+      doc.text(`${row.sgstRate.toFixed(2)}%`, colX.sgstR!, y);
+      doc.text(formatInr(row.sgstAmount), colX.sgstA!, y);
+    }
     doc.text(formatInr(row.totalInr), colX.total, y);
 
     totalTaxable += row.taxableInr;
     totalCgst += row.cgstAmount;
     totalSgst += row.sgstAmount;
+    totalIgst += row.igstAmount;
     grandTotal += row.totalInr;
     y += descLines[1] ? 22 : 14;
   });
@@ -453,8 +501,12 @@ export async function generateProformaPdf(
   doc.setFont("helvetica", "bold");
   doc.text("Total", colX.taxable - 30, y);
   doc.text(formatInr(totalTaxable), colX.taxable, y);
-  doc.text(formatInr(totalCgst), colX.cgstA, y);
-  doc.text(formatInr(totalSgst), colX.sgstA, y);
+  if (useIgst) {
+    doc.text(formatInr(totalIgst), colX.igstA!, y);
+  } else {
+    doc.text(formatInr(totalCgst), colX.cgstA!, y);
+    doc.text(formatInr(totalSgst), colX.sgstA!, y);
+  }
   doc.text(formatInr(grandTotal), colX.total, y);
   y += 18;
 

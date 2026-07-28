@@ -7,6 +7,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
   orderBy,
   query,
   QueryConstraint,
@@ -306,6 +307,51 @@ export async function getFreightForwardForExport(etaFrom: string, etaTo: string)
       ...(d.data() as Omit<FreightForward, "id">),
     }))
     .filter((item) => !item.isDeleted);
+}
+
+/** Active (non-deleted) jobs whose vessel name matches (case-insensitive, exact trim). */
+export async function findFreightByVesselName(vesselName: string) {
+  const needle = vesselName.trim().toLowerCase();
+  if (!needle) return [] as FreightForward[];
+
+  const snap = await getDocs(query(REF(), limit(5000)));
+  return snap.docs
+    .map(
+      (d) =>
+        ({
+          id: d.id,
+          ...(d.data() as Omit<FreightForward, "id">),
+        }) as FreightForward
+    )
+    .filter(
+      (item) =>
+        !item.isDeleted &&
+        (item.vesselName ?? "").trim().toLowerCase() === needle
+    )
+    .sort((a, b) => (a.jobNumber ?? "").localeCompare(b.jobNumber ?? ""));
+}
+
+/** Set the same ETA on every active job with this vessel name. */
+export async function updateEtaByVesselName(
+  vesselName: string,
+  eta: string,
+  updatedBy: string
+) {
+  const matches = await findFreightByVesselName(vesselName);
+  if (!matches.length) return { updated: 0 };
+
+  const etaValue = eta.trim().slice(0, 10);
+
+  for (const item of matches) {
+    if (!item.id) continue;
+    await updateFreightForward(
+      item.id,
+      { eta: etaValue } as Partial<FreightForwardFormData>,
+      updatedBy
+    );
+  }
+
+  return { updated: matches.length };
 }
 
 /** Soft-delete: hide from main list; keep data for Trash. */

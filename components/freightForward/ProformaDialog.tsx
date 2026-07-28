@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { FreightForward } from "@/types/freightForward";
 import { Kyc } from "@/types/kyc";
-import type { ProformaInput } from "@/lib/freightForward/generateProformaPdf";
+import type { GstMode, ProformaInput } from "@/lib/freightForward/generateProformaPdf";
 import { getTotalOceanFreight } from "@/lib/freightForward/containers";
 
 interface ProformaDialogProps {
@@ -19,6 +19,7 @@ export default function ProformaDialog({
   kycList,
   onClose,
 }: ProformaDialogProps) {
+  const [gstMode, setGstMode] = useState<GstMode>("cgst_sgst");
   const [exWorksGstPercent, setExWorksGstPercent] = useState("5");
   const [oceanFreightGstPercent, setOceanFreightGstPercent] = useState("5");
   const [blFeeGstPercent, setBlFeeGstPercent] = useState("18");
@@ -54,6 +55,7 @@ export default function ProformaDialog({
     }
 
     const input: ProformaInput = {
+      gstMode,
       exWorksGstPercent: exGst,
       oceanFreightGstPercent: oceanGst,
       blFeeGstPercent: blGst,
@@ -84,6 +86,41 @@ export default function ProformaDialog({
         </p>
 
         <div className="mt-4 space-y-3">
+          <div>
+            <label className="mb-1.5 block text-[11px] font-medium text-zinc-600">
+              Tax Type
+            </label>
+            <div className="flex rounded-xl border border-zinc-200 bg-zinc-50 p-1">
+              <button
+                type="button"
+                onClick={() => setGstMode("cgst_sgst")}
+                className={`flex-1 rounded-lg px-3 py-2 text-[11px] font-semibold transition ${
+                  gstMode === "cgst_sgst"
+                    ? "bg-white text-zinc-900 shadow-sm"
+                    : "text-zinc-500 hover:text-zinc-700"
+                }`}
+              >
+                SGST / CGST
+              </button>
+              <button
+                type="button"
+                onClick={() => setGstMode("igst")}
+                className={`flex-1 rounded-lg px-3 py-2 text-[11px] font-semibold transition ${
+                  gstMode === "igst"
+                    ? "bg-white text-zinc-900 shadow-sm"
+                    : "text-zinc-500 hover:text-zinc-700"
+                }`}
+              >
+                IGST
+              </button>
+            </div>
+            <p className="mt-1.5 text-[10px] text-zinc-400">
+              {gstMode === "igst"
+                ? "PDF will show a single IGST column using the full GST % entered below."
+                : "PDF will split each GST % equally into CGST and SGST columns."}
+            </p>
+          </div>
+
           <div>
             <label className="mb-1 block text-[11px] font-medium text-zinc-600">
               GST % on Total Ex Works

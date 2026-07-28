@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
+  CalendarClock,
   ChevronDown,
   ClipboardList,
   LogOut,
@@ -29,6 +30,7 @@ const OPERATIONS_SUB = [
 
 const FREIGHT_FORWARD_SUB = [
   { href: "/freight-forward", label: "Job List", icon: Ship, adminOnly: false },
+  { href: "/freight-forward/eta-updater", label: "ETA Updater", icon: CalendarClock, adminOnly: false },
   { href: "/freight-forward/trash", label: "Trash", icon: Trash2, adminOnly: true },
 ] as const;
 
