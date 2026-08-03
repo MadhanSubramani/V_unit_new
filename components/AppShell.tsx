@@ -34,8 +34,16 @@ const FREIGHT_FORWARD_SUB = [
   { href: "/freight-forward/trash", label: "Trash", icon: Trash2, adminOnly: true },
 ] as const;
 
+const IMPORT_SUB = [
+  { href: "/import/liner", label: "Liner", icon: Ship, enabled: true },
+  { href: "/import/boe-in", label: "BOE In", icon: ClipboardList, enabled: false },
+  { href: "/import/transport", label: "Transport", icon: Warehouse, enabled: false },
+  { href: "/import/boe-out", label: "BOE Out", icon: ClipboardList, enabled: false },
+  { href: "/import/accounts", label: "Accounts", icon: Settings, enabled: false },
+  { href: "/import/trash", label: "Trash", icon: Trash2, enabled: true },
+] as const;
+
 const NAV_ITEMS = [
-  { href: "/import", label: "Import", icon: ArrowDownToLine },
   { href: "/export", label: "Export", icon: ArrowUpFromLine },
   { href: "/kyc", label: "KYC", icon: ShieldCheck },
 ] as const;
@@ -53,6 +61,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [freightOpen, setFreightOpen] = useState(
     pathname.startsWith("/freight-forward")
   );
+  const [importOpen, setImportOpen] = useState(pathname.startsWith("/import"));
 
   useEffect(() => {
     const stored = sessionStorage.getItem("user");
@@ -76,6 +85,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (pathname.startsWith("/freight-forward")) {
       setFreightOpen(true);
     }
+    if (pathname.startsWith("/import")) {
+      setImportOpen(true);
+    }
   }, [pathname]);
 
   const handleLogout = () => {
@@ -88,6 +100,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const isAdmin = user?.role === "admin";
   const isOperationsActive = pathname.startsWith("/operations");
   const isFreightActive = pathname.startsWith("/freight-forward");
+  const isImportActive = pathname.startsWith("/import");
   const freightSubItems = FREIGHT_FORWARD_SUB.filter(
     (item) => !item.adminOnly || isAdmin
   );
@@ -243,6 +256,58 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     <Icon size={14} strokeWidth={active ? 2.5 : 2} />
                     <span>{label}</span>
                   </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <button
+            onClick={() => {
+              if (collapsed) {
+                router.push("/import/liner");
+                return;
+              }
+              setImportOpen((value) => !value);
+            }}
+            className={groupParentClass(isImportActive)}
+          >
+            <ArrowDownToLine
+              size={collapsed ? 16 : 15}
+              strokeWidth={isImportActive ? 2.25 : 2}
+            />
+            {!collapsed && (
+              <>
+                <span className="flex-1 text-left text-xs font-medium">Import</span>
+                <ChevronDown
+                  size={14}
+                  className={`shrink-0 opacity-60 transition-transform duration-200 ${
+                    importOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </>
+            )}
+          </button>
+
+          {!collapsed && importOpen && (
+            <div className="my-2 ml-5 space-y-1 border-l border-zinc-200 py-1.5 pl-2">
+              {IMPORT_SUB.map(({ href, label, icon: Icon, enabled }) => {
+                const active = pathname === href;
+                return enabled ? (
+                  <Link key={href} href={href} className={subNavClass(active)}>
+                    <Icon size={14} strokeWidth={active ? 2.5 : 2} />
+                    <span>{label}</span>
+                  </Link>
+                ) : (
+                  <div
+                    key={href}
+                    title="Coming soon"
+                    className="flex cursor-not-allowed items-center gap-2 rounded-lg py-2 pr-3 pl-2.5 text-xs font-medium text-zinc-300"
+                  >
+                    <Icon size={14} />
+                    <span>{label}</span>
+                  </div>
                 );
               })}
             </div>

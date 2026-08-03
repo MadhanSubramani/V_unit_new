@@ -37,8 +37,8 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
   const [adCode, setAdCode] = useState("");
   const [loiNo, setLoiNo] = useState("");
   const [loiDate, setLoiDate] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
+  const [emails, setEmails] = useState<string[]>([""]);
+  const [phones, setPhones] = useState<string[]>([""]);
 
   const [gstinFile, setGstinFile] = useState<File | null>(null);
   const [panFile, setPanFile] = useState<File | null>(null);
@@ -57,6 +57,38 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
   const [existingAadharDocs, setExistingAadharDocs] = useState<KycDocument[]>([]);
   const [existingPanDocs, setExistingPanDocs] = useState<KycDocument[]>([]);
   const [existingSupportingDocs, setExistingSupportingDocs] = useState<KycDocument[]>([]);
+
+  const resetForm = () => {
+    setGstin("");
+    setGstStatus(null);
+    setCompanyName("");
+    setBillingAddress("");
+    setBranchAddresses([""]);
+    setPan("");
+    setIec("");
+    setAdCode("");
+    setLoiNo("");
+    setLoiDate("");
+    setEmails([""]);
+    setPhones([""]);
+    setGstinFile(null);
+    setPanFile(null);
+    setIecFile(null);
+    setAdCodeFile(null);
+    setLoiFile(null);
+    setDirectorAadharFiles([]);
+    setDirectorPanFiles([]);
+    setSupportingDocs([]);
+    setExistingGstinDoc(undefined);
+    setExistingPanDoc(undefined);
+    setExistingIecDoc(undefined);
+    setExistingAdCodeDoc(undefined);
+    setExistingLoiDoc(undefined);
+    setExistingAadharDocs([]);
+    setExistingPanDocs([]);
+    setExistingSupportingDocs([]);
+    setErrors({});
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -77,8 +109,20 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
     setAdCode(selected.adCode);
     setLoiNo(selected.loiNo);
     setLoiDate(selected.loiDate);
-    setEmail(selected.email);
-    setPhone(selected.phone);
+    setEmails(
+      selected.emails?.length
+        ? selected.emails
+        : selected.email
+          ? [selected.email]
+          : [""]
+    );
+    setPhones(
+      selected.phones?.length
+        ? selected.phones
+        : selected.phone
+          ? [selected.phone]
+          : [""]
+    );
 
     setExistingGstinDoc(selected.gstinDocument);
     setExistingPanDoc(selected.panDocument);
@@ -166,11 +210,17 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
     if (!companyName.trim()) next.companyName = "Company name is required.";
     if (!billingAddress.trim()) next.billingAddress = "Billing address is required.";
 
-    if (!email.trim()) next.email = "Email is required.";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      next.email = "Enter a valid email address.";
+    const cleanedEmails = emails.map((item) => item.trim()).filter(Boolean);
+    const cleanedPhones = phones.map((item) => item.trim()).filter(Boolean);
 
-    if (!phone.trim()) next.phone = "Phone is required.";
+    if (!cleanedEmails.length) next.email = "At least one email is required.";
+    else if (
+      cleanedEmails.some((item) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item))
+    ) {
+      next.email = "Enter valid email address(es).";
+    }
+
+    if (!cleanedPhones.length) next.phone = "At least one phone is required.";
 
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -211,6 +261,9 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
 
       const fileNo = selected?.fileNo ?? (await generateFileNo());
 
+      const cleanedEmails = emails.map((item) => item.trim()).filter(Boolean);
+      const cleanedPhones = phones.map((item) => item.trim()).filter(Boolean);
+
       const payload = buildKycFirestoreData({
         fileNo,
         gstin,
@@ -228,8 +281,10 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
         loiNo,
         loiDate,
         loiDocument,
-        email,
-        phone,
+        emails: cleanedEmails,
+        phones: cleanedPhones,
+        email: cleanedEmails[0] ?? "",
+        phone: cleanedPhones[0] ?? "",
         directorAadhar: [...existingAadharDocs, ...newAadhar],
         directorPan: [...existingPanDocs, ...newPan],
         supportingDocuments: [...existingSupportingDocs, ...newSupporting],
@@ -250,38 +305,6 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
     } finally {
       setLoading(false);
     }
-  };
-
-  const resetForm = () => {
-    setGstin("");
-    setGstStatus(null);
-    setCompanyName("");
-    setBillingAddress("");
-    setBranchAddresses([""]);
-    setPan("");
-    setIec("");
-    setAdCode("");
-    setLoiNo("");
-    setLoiDate("");
-    setEmail("");
-    setPhone("");
-    setGstinFile(null);
-    setPanFile(null);
-    setIecFile(null);
-    setAdCodeFile(null);
-    setLoiFile(null);
-    setDirectorAadharFiles([]);
-    setDirectorPanFiles([]);
-    setSupportingDocs([]);
-    setExistingGstinDoc(undefined);
-    setExistingPanDoc(undefined);
-    setExistingIecDoc(undefined);
-    setExistingAdCodeDoc(undefined);
-    setExistingLoiDoc(undefined);
-    setExistingAadharDocs([]);
-    setExistingPanDocs([]);
-    setExistingSupportingDocs([]);
-    setErrors({});
   };
 
   if (!open) return null;
@@ -492,27 +515,83 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
             error={errors.loiDocument}
           />
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Email" required error={errors.email}>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value);
-                  clearError("email");
-                }}
-                className={fieldClass(!!errors.email)}
-              />
+              <div className="space-y-2">
+                {emails.map((value, index) => (
+                  <div key={`email-${index}`} className="flex gap-2">
+                    <input
+                      type="email"
+                      value={value}
+                      onChange={(e) => {
+                        const next = [...emails];
+                        next[index] = e.target.value;
+                        setEmails(next);
+                        clearError("email");
+                      }}
+                      placeholder={`Email ${index + 1}`}
+                      className={fieldClass(!!errors.email)}
+                    />
+                    {emails.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setEmails(emails.filter((_, i) => i !== index))
+                        }
+                        className="shrink-0 rounded-lg border border-zinc-200 px-2 text-zinc-500 hover:bg-zinc-100"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setEmails([...emails, ""])}
+                  className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-50"
+                >
+                  <Plus size={14} />
+                  Add Email
+                </button>
+              </div>
             </Field>
             <Field label="Phone" required error={errors.phone}>
-              <input
-                value={phone}
-                onChange={(e) => {
-                  setPhone(e.target.value);
-                  clearError("phone");
-                }}
-                className={fieldClass(!!errors.phone)}
-              />
+              <div className="space-y-2">
+                {phones.map((value, index) => (
+                  <div key={`phone-${index}`} className="flex gap-2">
+                    <input
+                      value={value}
+                      onChange={(e) => {
+                        const next = [...phones];
+                        next[index] = e.target.value;
+                        setPhones(next);
+                        clearError("phone");
+                      }}
+                      placeholder={`Phone ${index + 1}`}
+                      className={fieldClass(!!errors.phone)}
+                    />
+                    {phones.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPhones(phones.filter((_, i) => i !== index))
+                        }
+                        className="shrink-0 rounded-lg border border-zinc-200 px-2 text-zinc-500 hover:bg-zinc-100"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setPhones([...phones, ""])}
+                  className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-50"
+                >
+                  <Plus size={14} />
+                  Add Phone
+                </button>
+              </div>
             </Field>
           </div>
 

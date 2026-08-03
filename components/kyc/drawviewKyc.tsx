@@ -83,8 +83,22 @@ export default function KycViewDrawer({ open, onClose, kyc }: Props) {
             <FieldWithDoc label="LOI Document" doc={kyc.loiDocument} />
 
             <div className="grid grid-cols-2 gap-5">
-              <Info title="Email" value={kyc.email} />
-              <Info title="Phone" value={kyc.phone} />
+              <Info
+                title="Email"
+                value={
+                  (kyc.emails?.length ? kyc.emails : [kyc.email])
+                    .filter(Boolean)
+                    .join(", ") || "—"
+                }
+              />
+              <Info
+                title="Phone"
+                value={
+                  (kyc.phones?.length ? kyc.phones : [kyc.phone])
+                    .filter(Boolean)
+                    .join(", ") || "—"
+                }
+              />
             </div>
 
             <MultiDocField label="Director Aadhaar" docs={aadharDocs} />

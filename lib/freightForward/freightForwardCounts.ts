@@ -1,8 +1,13 @@
 import {
+  collection,
   doc,
+  getCountFromServer,
   getDocFromServer,
+  query,
   runTransaction,
   serverTimestamp,
+  setDoc,
+  where,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import {
@@ -11,6 +16,7 @@ import {
 } from "@/types/freightForwardCounts";
 import { FreightForward } from "@/types/freightForward";
 import {
+  getNext7DayEtaRange,
   hasStatusInTimeline,
   isStatusPending,
   matchesBalanceCard,
@@ -39,8 +45,9 @@ const COUNT_KEYS: FreightForwardCountsKey[] = [
   "pendingPayable",
 ];
 
+/** @deprecated Counters are auto-used when the stats doc exists; flag kept for compatibility. */
 export function isFreightForwardCounterDashboardEnabled() {
-  return process.env.NEXT_PUBLIC_FF_USE_COUNTER_DASHBOARD === "true";
+  return process.env.NEXT_PUBLIC_FF_USE_COUNTER_DASHBOARD !== "false";
 }
 
 function zeroContributions(): Record<FreightForwardCountsKey, number> {
@@ -146,23 +153,53 @@ export function syncFreightForwardCounts(
   });
 }
 
+/** Live next-7-days count so the stored counter does not drift by calendar day. */
+export async function countNext7DaysFromServer(): Promise<number | null> {
+  try {
+    const { from, to } = getNext7DayEtaRange();
+    const ref = collection(db, "freightForward");
+    const snap = await getCountFromServer(
+      query(
+        ref,
+        where("workflowCompleted", "==", false),
+        where("etaSort", ">=", from),
+        where("etaSort", "<=", to)
+      )
+    );
+    return snap.data().count;
+  } catch (error) {
+    console.warn("[freightForwardCounts] Live next7Days count failed:", error);
+    return null;
+  }
+}
+
+/** Returns null when the stats doc is missing (caller should fall back / seed). */
 export async function getFreightForwardCardCountsFromCounters() {
   const ref = doc(db, FREIGHT_FORWARD_COUNTS_PATH.collection, FREIGHT_FORWARD_COUNTS_PATH.id);
   const snap = await getDocFromServer(ref);
 
   if (!snap.exists()) {
-    return statsDocToBalanceCounts({
-      inProcess: 0,
-      next7Days: 0,
-      movement: 0,
-      splitManifest: 0,
-      completedCount: 0,
-      incompleteCount: 0,
-      pendingBilling: 0,
-      pendingReceivable: 0,
-      pendingPayable: 0,
-    });
+    return null;
   }
 
-  return statsDocToBalanceCounts(snap.data() as FreightForwardCounts);
+  const counts = statsDocToBalanceCounts(snap.data() as FreightForwardCounts);
+  const liveNext7 = await countNext7DaysFromServer();
+  if (liveNext7 !== null) {
+    counts.next7Days = liveNext7;
+  }
+  return counts;
+}
+
+export async function seedFreightForwardCountsDoc(
+  counts: ReturnType<typeof statsDocToBalanceCounts>
+) {
+  const ref = doc(db, FREIGHT_FORWARD_COUNTS_PATH.collection, FREIGHT_FORWARD_COUNTS_PATH.id);
+  await setDoc(
+    ref,
+    {
+      ...balanceCountsToStatsDoc(counts),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
 }

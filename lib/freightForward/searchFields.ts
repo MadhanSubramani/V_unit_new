@@ -82,5 +82,26 @@ export function matchesFreightSearch(
   if (!q) return true;
 
   const field = (searchField?.trim() || "all") as FreightSearchField | string;
+
+  // Prefer precomputed searchText / field indexes when present (faster at scale).
+  if (field === "all" && item.searchText) {
+    return item.searchText.includes(q);
+  }
+
+  const indexed: Record<string, string | undefined> = {
+    jobNumber: item.searchJobNumber,
+    ezRefNumber: item.searchEzRef,
+    mbl: item.searchMbl,
+    hbl: item.searchHbl,
+    vesselName: item.searchVessel,
+    consignmentName: item.searchConsignee,
+    clientName: item.searchClient,
+    agent: item.searchAgent,
+    containerNumber: item.searchContainer,
+  };
+  if (indexed[field]) {
+    return indexed[field]!.includes(q);
+  }
+
   return getFieldSearchText(item, field).toLowerCase().includes(q);
 }

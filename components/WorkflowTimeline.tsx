@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   canUpdateToStatus,
   getMissingPrerequisites,
@@ -15,8 +15,10 @@ import {
 import {
   FreightForward,
   FreightForwardStatus,
+  ImportMovementStatus,
   StatusTimeline,
 } from "@/types/freightForward";
+import { getImportMovementStatus } from "@/lib/import/linerWorkflow";
 import { Check } from "lucide-react";
 
 const WORKFLOW = WORKFLOW_STEPS.map((step) => ({
@@ -35,6 +37,9 @@ type Props = {
   currentUserRole: string;
   compact?: boolean;
   onComplete: (nextStatus: FreightForwardStatus) => Promise<void>;
+  onMovementStatusChange?: (
+    status: ImportMovementStatus
+  ) => Promise<void>;
 };
 
 function getStepState(
@@ -69,10 +74,17 @@ export default function WorkflowTimeline({
   currentUserRole,
   compact = false,
   onComplete,
+  onMovementStatusChange,
 }: Props) {
   const dropdownOptions = useMemo(
-    () => getStatusDropdownOptions(currentUserRole, selected.statusTimeline),
-    [currentUserRole, selected.statusTimeline]
+    () =>
+      getStatusDropdownOptions(currentUserRole, selected.statusTimeline).map(
+        (option) =>
+          selected.useForImport && option.value === "momentum"
+            ? { ...option, disabled: false }
+            : option
+      ),
+    [currentUserRole, selected.statusTimeline, selected.useForImport]
   );
 
   const [jumpStatus, setJumpStatus] = useState<FreightForwardStatus>(
@@ -80,39 +92,46 @@ export default function WorkflowTimeline({
   );
   const [updating, setUpdating] = useState(false);
   const [jumpError, setJumpError] = useState("");
+  const [movementStatus, setMovementStatus] = useState<ImportMovementStatus>(
+    getImportMovementStatus(selected)
+  );
+  const effectiveJumpStatus =
+    dropdownOptions.find(
+      (option) => option.value === jumpStatus && !option.disabled
+    )?.value ??
+    dropdownOptions.find((option) => !option.disabled)?.value ??
+    dropdownOptions[0]?.value ??
+    jumpStatus;
 
   const missingForJump = useMemo(
-    () => getMissingPrerequisites(jumpStatus, selected.statusTimeline),
-    [jumpStatus, selected.statusTimeline]
+    () => getMissingPrerequisites(effectiveJumpStatus, selected.statusTimeline),
+    [effectiveJumpStatus, selected.statusTimeline]
   );
-
-  useEffect(() => {
-    const firstEnabled = dropdownOptions.find((option) => !option.disabled);
-    if (firstEnabled) {
-      setJumpStatus(firstEnabled.value);
-      return;
-    }
-    if (dropdownOptions.length > 0) {
-      setJumpStatus(dropdownOptions[0].value);
-    }
-  }, [dropdownOptions]);
 
   const canJumpStatus =
     currentUserRole === "admin" ||
     currentUserRole === "accountant" ||
     currentUserRole === "user";
 
-  const selectedOption = dropdownOptions.find((option) => option.value === jumpStatus);
+  const selectedOption = dropdownOptions.find(
+    (option) => option.value === effectiveJumpStatus
+  );
+  const isImportMovementUpdate =
+    effectiveJumpStatus === "momentum" &&
+    selected.useForImport &&
+    !!onMovementStatusChange;
   const canSubmitJump =
     !!selectedOption &&
     !selectedOption.disabled &&
-    jumpStatus !== selected.status &&
-    canUpdateToStatus(jumpStatus, selected.statusTimeline);
+    (isImportMovementUpdate
+      ? movementStatus !== getImportMovementStatus(selected)
+      : effectiveJumpStatus !== selected.status) &&
+    canUpdateToStatus(effectiveJumpStatus, selected.statusTimeline);
 
   const handleJump = async () => {
     setJumpError("");
-    if (jumpStatus === selected.status) return;
-    if (!canUpdateToStatus(jumpStatus, selected.statusTimeline)) {
+    if (!isImportMovementUpdate && effectiveJumpStatus === selected.status) return;
+    if (!canUpdateToStatus(effectiveJumpStatus, selected.statusTimeline)) {
       setJumpError(
         `Update these statuses first: ${missingForJump.map(statusLabel).join(", ")}`
       );
@@ -120,7 +139,11 @@ export default function WorkflowTimeline({
     }
     setUpdating(true);
     try {
-      await onComplete(jumpStatus);
+      if (isImportMovementUpdate) {
+        await onMovementStatusChange(movementStatus);
+      } else {
+        await onComplete(effectiveJumpStatus);
+      }
     } finally {
       setUpdating(false);
     }
@@ -137,6 +160,24 @@ export default function WorkflowTimeline({
     nextStep.role === "operations" &&
     nextStatus !== null &&
     canUpdateToStatus(nextStatus, selected.statusTimeline);
+  const isNextImportMovement =
+    nextStatus === "momentum" &&
+    selected.useForImport &&
+    !!onMovementStatusChange;
+
+  const handleNextStage = async () => {
+    if (!nextStatus) return;
+    setUpdating(true);
+    try {
+      if (isNextImportMovement) {
+        await onMovementStatusChange(movementStatus);
+      } else {
+        await onComplete(nextStatus);
+      }
+    } finally {
+      setUpdating(false);
+    }
+  };
 
   return (
     <div
@@ -155,9 +196,15 @@ export default function WorkflowTimeline({
           }`}
         >
           <p className="mb-2 text-xs font-medium text-zinc-600">Update status</p>
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div
+            className={
+              isImportMovementUpdate
+                ? "grid grid-cols-1 gap-2 sm:grid-cols-2"
+                : "flex flex-col gap-2 sm:flex-row"
+            }
+          >
             <select
-              value={jumpStatus}
+              value={effectiveJumpStatus}
               onChange={(e) => {
                 setJumpError("");
                 setJumpStatus(e.target.value as FreightForwardStatus);
@@ -171,20 +218,41 @@ export default function WorkflowTimeline({
                 </option>
               ))}
             </select>
+            {effectiveJumpStatus === "momentum" && selected.useForImport && (
+              <select
+                value={movementStatus}
+                onChange={(event) =>
+                  setMovementStatus(
+                    event.target.value as ImportMovementStatus
+                  )
+                }
+                className="flex-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+              >
+                <option value="pending">Pending</option>
+                <option value="accepted">Accepted</option>
+                <option value="completed">Completed</option>
+              </select>
+            )}
             <button
               type="button"
               onClick={handleJump}
               disabled={updating || !canSubmitJump}
-              className="rounded-xl bg-black px-4 py-2 text-xs font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40"
+              className={`rounded-xl bg-black px-4 py-2 text-xs font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40 ${
+                isImportMovementUpdate ? "w-full sm:col-span-2" : ""
+              }`}
             >
-              {updating ? "Updating..." : "Complete Status"}
+              {updating
+                ? "Updating..."
+                : effectiveJumpStatus === "momentum" && selected.useForImport
+                  ? "Update Movement"
+                  : "Complete Status"}
             </button>
           </div>
           {jumpError && (
             <p className="mt-2 text-[11px] text-red-500">{jumpError}</p>
           )}
           {selectedOption?.disabled &&
-            jumpStatus === "completed" &&
+            effectiveJumpStatus === "completed" &&
             missingForJump.length > 0 &&
             !jumpError && (
               <p className="mt-2 text-[11px] text-amber-600">
@@ -204,13 +272,39 @@ export default function WorkflowTimeline({
             Next stage:{" "}
             <span className="font-medium text-zinc-900">{nextStep?.label}</span>
           </p>
-          <button
-            type="button"
-            onClick={() => onComplete(nextStatus)}
-            className="rounded-lg bg-black px-4 py-2 text-xs font-medium text-white transition hover:bg-zinc-800"
-          >
-            Complete Stage
-          </button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            {isNextImportMovement && (
+              <select
+                value={movementStatus}
+                onChange={(event) =>
+                  setMovementStatus(
+                    event.target.value as ImportMovementStatus
+                  )
+                }
+                className="flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+              >
+                <option value="pending">Pending</option>
+                <option value="accepted">Accepted</option>
+                <option value="completed">Completed</option>
+              </select>
+            )}
+            <button
+              type="button"
+              onClick={handleNextStage}
+              disabled={
+                updating ||
+                (isNextImportMovement &&
+                  movementStatus === getImportMovementStatus(selected))
+              }
+              className="rounded-lg bg-black px-4 py-2 text-xs font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40"
+            >
+              {updating
+                ? "Updating..."
+                : isNextImportMovement
+                  ? "Update Movement"
+                  : "Complete Stage"}
+            </button>
+          </div>
         </div>
       )}
 

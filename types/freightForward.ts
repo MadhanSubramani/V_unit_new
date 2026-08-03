@@ -41,6 +41,31 @@ export interface FreightContainer {
   containerType?: string;
 }
 
+export type ImportMovementStatus = "pending" | "accepted" | "completed";
+export type ImportIgmStatus = "pending" | "posted";
+export type ImportDoStatus = "pending" | "received" | "eod";
+export type ImportWorkflowSection = "movement" | "igm" | "do";
+
+export type ImportWorkflowTimelineEntry =
+  | {
+      section: "movement";
+      status: ImportMovementStatus;
+      updatedBy: string;
+      updatedAt: Timestamp;
+    }
+  | {
+      section: "igm";
+      status: ImportIgmStatus;
+      updatedBy: string;
+      updatedAt: Timestamp;
+    }
+  | {
+      section: "do";
+      status: ImportDoStatus;
+      updatedBy: string;
+      updatedAt: Timestamp;
+    };
+
 export interface FreightForward {
   id?: string;
   jobNumber?: string;
@@ -95,6 +120,29 @@ export interface FreightForward {
   pendingReceivable?: boolean;
   pendingPayable?: boolean;
   workflowCompleted?: boolean;
+  /** When true, the same document is listed in Import > Liner. */
+  useForImport?: boolean;
+  /** Where the job was originally created. Defaults to freight_forward for older records. */
+  createdFrom?: "import" | "freight_forward";
+  importMovementStatus?: ImportMovementStatus;
+  importIgmStatus?: ImportIgmStatus;
+  importDoStatus?: ImportDoStatus;
+  /** True only when Movement=Completed, IGM=Posted, and DO=EOD. */
+  importCompleted?: boolean;
+  importWorkflowTimeline?: ImportWorkflowTimelineEntry[];
+  /** Extra named documents captured from Import Add / documents section. */
+  otherDocuments?: FreightForwardDocument[];
+  /** Lowercase search helpers for scalable filtering/prefix queries. */
+  searchText?: string;
+  searchJobNumber?: string;
+  searchMbl?: string;
+  searchHbl?: string;
+  searchEzRef?: string;
+  searchVessel?: string;
+  searchConsignee?: string;
+  searchClient?: string;
+  searchAgent?: string;
+  searchContainer?: string;
   createdBy?: string;
   updatedBy?: string;
   createdAt?: Date;

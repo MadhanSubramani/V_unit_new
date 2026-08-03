@@ -20,6 +20,8 @@ export type KycSavePayload = {
   loiDocument?: KycDocument;
   email: string;
   phone: string;
+  emails: string[];
+  phones: string[];
   directorAadhar: KycDocument[];
   directorPan: KycDocument[];
   supportingDocuments: KycDocument[];
@@ -40,6 +42,8 @@ export function buildKycFirestoreData(input: KycSavePayload): Record<string, unk
     loiDate: input.loiDate,
     email: input.email,
     phone: input.phone,
+    emails: input.emails,
+    phones: input.phones,
     directorAadhar: input.directorAadhar,
     directorPan: input.directorPan,
     supportingDocuments: input.supportingDocuments,

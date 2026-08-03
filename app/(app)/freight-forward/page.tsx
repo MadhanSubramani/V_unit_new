@@ -27,6 +27,7 @@ import {
   getFreightForwardPaginated,
   invalidateFreightForwardListCache,
   updateFreightForward,
+  updateImportLinerStage,
   updateWorkflowStatus,
   getFreightForwardById,
   getFreightForwardForExport,
@@ -54,7 +55,7 @@ import {
   getOceanFreightPerContainer,
   getTotalOceanFreight,
 } from "@/lib/freightForward/containers";
-import { canUpdateToStatus } from "@/lib/freightForward/workflowStatus";
+import { canUpdateToStatus, getFreightListStatusLabel } from "@/lib/freightForward/workflowStatus";
 import { computePipelineFlags } from "@/lib/freightForward/pipelineFlags";
 import { uploadDocument } from "@/lib/kyc/uploadDocument";
 import { getSezList } from "@/lib/sez/sez";
@@ -71,6 +72,7 @@ import {
   FreightForwardFormData,
   FreightForwardStatus,
   FreightForwardStatusObject,
+  ImportMovementStatus,
 } from "@/types/freightForward";
 import { Sez } from "@/types/sez";
 import WorkflowTimeline from "@/components/WorkflowTimeline";
@@ -172,6 +174,7 @@ const emptyForm = (): FreightForwardFormData => ({
   paymentType: "",
   paymentDate: "",
   status: "in_process",
+  useForImport: false,
 });
 
 function formatDate(value?: string) {
@@ -233,6 +236,7 @@ function toFormData(item: FreightForward): FreightForwardFormData {
     paymentType: item.paymentType ?? "",
     paymentDate: item.paymentDate ?? "",
     status: item.status ?? "in_process",
+    useForImport: item.useForImport ?? false,
   };
 }
 
@@ -293,6 +297,7 @@ function buildPayload(form: FreightForwardFormData): Record<string, unknown> {
     cfs: form.locationType === "cfs" && form.cfs ? form.cfs : undefined,
     sez: form.locationType === "sez" && form.sez ? form.sez : undefined,
     status: form.status,
+    useForImport: form.useForImport ?? false,
   };
   return removeUndefined(raw);
 }
@@ -633,6 +638,24 @@ const handleStatusUpdate = async (
     }
     await reload();
 };
+
+  const handleMovementStatusUpdate = async (
+    movementStatus: ImportMovementStatus,
+    record?: FreightForward
+  ) => {
+    const target = record ?? selected;
+    if (!target?.id || !user) return;
+
+    const updated = await updateImportLinerStage(
+      target.id,
+      "movement",
+      movementStatus,
+      user.username ?? "Unknown"
+    );
+    if (selected?.id === target.id) setSelected(updated);
+    if (timelineRecord?.id === target.id) setTimelineRecord(updated);
+    await reload();
+  };
 
   const closeTimelinePopup = () => {
     setTimelinePopupOpen(false);
@@ -1151,6 +1174,7 @@ const handleStatusUpdate = async (
     { label: "MBL" },
     { label: "HBL" },
     { label: "Cont No" },
+    { label: "Status" },
     { label: "Actions" },
   ];
 
@@ -1170,6 +1194,26 @@ const handleStatusUpdate = async (
           <X size={16} />
         </button>
       </div>
+
+      <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-3">
+        <input
+          type="checkbox"
+          checked={form.useForImport ?? false}
+          onChange={(event) =>
+            setForm({ ...form, useForImport: event.target.checked })
+          }
+          className="mt-0.5 h-4 w-4 rounded border-zinc-300 accent-zinc-900"
+        />
+        <span>
+          <span className="block text-xs font-semibold text-zinc-900">
+            Use this job for Import
+          </span>
+          <span className="mt-0.5 block text-[11px] text-zinc-500">
+            The same job will appear in Import → Liner. Future FF edits will
+            update Import automatically.
+          </span>
+        </span>
+      </label>
 
       {submitError && (
         <div
@@ -2412,9 +2456,9 @@ const handleStatusUpdate = async (
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={14} className="py-10 text-center text-zinc-500">Loading...</td></tr>
+                  <tr><td colSpan={15} className="py-10 text-center text-zinc-500">Loading...</td></tr>
                 ) : rows.length === 0 ? (
-                  <tr><td colSpan={14} className="py-10 text-center text-zinc-400">No freight forward records found.</td></tr>
+                  <tr><td colSpan={15} className="py-10 text-center text-zinc-400">No freight forward records found.</td></tr>
                 ) : (
                   rows.map((item) => (
                     <tr
@@ -2438,6 +2482,11 @@ const handleStatusUpdate = async (
                       <td className="px-4 py-3 text-zinc-600">{item.mbl}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.hbl}</td>
                       <td className="px-4 py-3 text-zinc-600">{formatContainersDisplay(item)}</td>
+                      <td className="px-4 py-3">
+                        <span className="rounded-full bg-zinc-100 px-2 py-1 text-[10px] font-semibold text-zinc-700">
+                          {getFreightListStatusLabel(item.statusTimeline)}
+                        </span>
+                      </td>
                       <td
                         className="px-4 py-3 text-center"
                         onClick={(e) => e.stopPropagation()}
@@ -2501,6 +2550,9 @@ const handleStatusUpdate = async (
                   compact
                   onComplete={(nextStatus) =>
                     handleStatusUpdate(nextStatus, timelineRecord)
+                  }
+                  onMovementStatusChange={(status) =>
+                    handleMovementStatusUpdate(status, timelineRecord)
                   }
                 />
               ) : null}

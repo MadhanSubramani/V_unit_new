@@ -66,11 +66,29 @@ export default function KycTable({
                 </td>
 
                 <td className="px-4 py-3 text-zinc-600">
-                  {item.email}
+                  <div
+                    title={(item.emails?.length ? item.emails : [item.email])
+                      .filter(Boolean)
+                      .join(", ")}
+                    className="max-w-[180px] truncate"
+                  >
+                    {(item.emails?.length ? item.emails : [item.email])
+                      .filter(Boolean)
+                      .join(", ") || "—"}
+                  </div>
                 </td>
 
                 <td className="px-4 py-3 text-zinc-600">
-                  {item.phone}
+                  <div
+                    title={(item.phones?.length ? item.phones : [item.phone])
+                      .filter(Boolean)
+                      .join(", ")}
+                    className="max-w-[160px] truncate"
+                  >
+                    {(item.phones?.length ? item.phones : [item.phone])
+                      .filter(Boolean)
+                      .join(", ") || "—"}
+                  </div>
                 </td>
 
                 <td className="px-4 py-3 text-center">

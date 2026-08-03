@@ -28,6 +28,7 @@ export function getFreightForwardStorageUrls(item: FreightForward): string[] {
     item.creditNoteUrl,
     item.paymentDateUrl,
     ...(item.debitDocuments ?? []),
+    ...(item.otherDocuments ?? []),
   ]);
 }
 

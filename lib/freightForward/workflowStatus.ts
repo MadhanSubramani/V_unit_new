@@ -122,3 +122,16 @@ export function getNextAllowedStatus(
 
   return null;
 }
+
+/** List/table badge: In Process until a stage is completed; then the next pending stage. */
+export function getFreightListStatusLabel(timeline?: StatusTimeline[]) {
+  const visited = getVisitedStatuses(timeline);
+  let furthestIndex = -1;
+  for (let index = 0; index < WORKFLOW_STEPS.length; index++) {
+    if (visited.has(WORKFLOW_STEPS[index].key)) furthestIndex = index;
+  }
+
+  if (furthestIndex <= 0) return "In Process";
+  if (furthestIndex >= WORKFLOW_STEPS.length - 1) return "Completed";
+  return timelineStepLabel(WORKFLOW_STEPS[furthestIndex + 1].key);
+}

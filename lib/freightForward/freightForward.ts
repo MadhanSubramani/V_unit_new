@@ -7,7 +7,6 @@ import {
   doc,
   getDoc,
   getDocs,
-  limit,
   orderBy,
   query,
   QueryConstraint,
@@ -17,11 +16,23 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import { FreightForward, FreightForwardFormData, FreightForwardStatus } from "@/types/freightForward";
+import {
+  FreightForward,
+  FreightForwardFormData,
+  FreightForwardStatus,
+  ImportDoStatus,
+  ImportIgmStatus,
+  ImportMovementStatus,
+  ImportWorkflowSection,
+  ImportWorkflowTimelineEntry,
+} from "@/types/freightForward";
 import {
   ensureFreightForwardCounterSeeded,
+  ensureImportLinerCounterSeeded,
   formatFreightJobNumber,
+  formatImportJobNumber,
   FREIGHT_COUNTER_DOC,
+  IMPORT_COUNTER_DOC,
 } from "./generateJobNumber";
 import { computePipelineFlags } from "./pipelineFlags";
 import { normalizeEtaSort } from "./etaSort";
@@ -33,10 +44,21 @@ import {
 import {
   getFreightForwardCardCountsFromCounters,
   isFreightForwardCounterDashboardEnabled,
+  seedFreightForwardCountsDoc,
   syncFreightForwardCounts,
 } from "./freightForwardCounts";
 import { usesBalanceCardFilter } from "./statusBalance";
 import { sortFreightRecords } from "./sortRecords";
+import { fetchAllImportLinerRecords, fetchAllFreightForwardRecords } from "./chunkedFetch";
+import { buildFreightSearchIndex } from "./searchIndex";
+import {
+  canUpdateImportDo,
+  canUpdateImportIgm,
+  getImportDoStatus,
+  getImportIgmStatus,
+  getImportMovementStatus,
+  isImportLinerCompleted,
+} from "@/lib/import/linerWorkflow";
 
 const REF = () => collection(db, "freightForward");
 
@@ -83,9 +105,23 @@ export {
 // ── Card counts (server-side count queries or stats doc) ─────────────────
 export async function getFreightForwardCardCounts() {
   if (isFreightForwardCounterDashboardEnabled()) {
-    return getFreightForwardCardCountsFromCounters();
+    try {
+      const fromCounters = await getFreightForwardCardCountsFromCounters();
+      if (fromCounters) return fromCounters;
+    } catch (error) {
+      console.warn(
+        "[freightForwardCounts] Counter read failed; falling back to scan.",
+        error
+      );
+    }
   }
-  return getFreightForwardCardCountsFromServer();
+
+  const counted = await getFreightForwardCardCountsFromServer();
+  // Auto-seed once so later loads stay O(1). Never block the UI on seed failure.
+  void seedFreightForwardCountsDoc(counted).catch((error) => {
+    console.warn("[freightForwardCounts] Auto-seed failed:", error);
+  });
+  return counted;
 }
 
 export { getFreightForwardCardCountsFromCounters } from "./freightForwardCounts";
@@ -134,6 +170,19 @@ export async function createFreightForward(
     },
   ];
   const flags = computePipelineFlags(timeline);
+  const importDefaults = data.useForImport
+    ? {
+        useForImport: true,
+        createdFrom: data.createdFrom ?? ("freight_forward" as const),
+        importMovementStatus:
+          data.importMovementStatus ?? ("pending" as const),
+        importIgmStatus: data.importIgmStatus ?? ("pending" as const),
+        importDoStatus: data.importDoStatus ?? ("pending" as const),
+        importCompleted: false,
+      }
+    : {
+        createdFrom: data.createdFrom ?? ("freight_forward" as const),
+      };
 
   const newDocRef = doc(collection(db, "freightForward"));
   const counterRef = doc(db, "counters", FREIGHT_COUNTER_DOC);
@@ -152,6 +201,8 @@ export async function createFreightForward(
         jobNumber: allocated,
         etaSort: normalizeEtaSort(data.eta),
         ...flags,
+        ...importDefaults,
+        ...buildFreightSearchIndex({ ...recordData, jobNumber: allocated }),
         status: data.status ?? "in_process",
         statusTimeline: timeline,
         createdBy,
@@ -174,6 +225,94 @@ export async function createFreightForward(
       jobNumber,
       etaSort: normalizeEtaSort(data.eta),
       ...flags,
+      ...importDefaults,
+      ...buildFreightSearchIndex({ ...recordData, jobNumber }),
+      status: data.status ?? "in_process",
+      statusTimeline: timeline,
+      createdBy,
+      updatedBy: createdBy,
+      isDeleted: false,
+    }) as Omit<FreightForward, "id">),
+  };
+  await syncFreightForwardCounts(null, createdRecord);
+
+  return { id: newDocRef.id, jobNumber };
+}
+
+/**
+ * Creates an Import-originated job on the shared freightForward collection
+ * with IMP001-style numbering. Appears in Import Liner and FF job list.
+ */
+export async function createImportLinerJob(
+  data: FreightForwardFormData,
+  createdBy: string
+) {
+  await ensureImportLinerCounterSeeded();
+
+  const { jobNumber: _ignored, ...recordData } = data;
+  const timeline = [
+    {
+      status: "in_process",
+      updatedBy: createdBy,
+      updatedAt: Timestamp.now(),
+    },
+  ];
+  const flags = computePipelineFlags(timeline);
+  const importDefaults = {
+    useForImport: true,
+    createdFrom: "import" as const,
+    importMovementStatus:
+      data.importMovementStatus ?? ("pending" as const),
+    importIgmStatus: data.importIgmStatus ?? ("pending" as const),
+    importDoStatus: data.importDoStatus ?? ("pending" as const),
+    importCompleted: false,
+  };
+
+  const newDocRef = doc(collection(db, "freightForward"));
+  const counterRef = doc(db, "counters", IMPORT_COUNTER_DOC);
+
+  const jobNumber = await runTransaction(db, async (transaction) => {
+    const counterSnap = await transaction.get(counterRef);
+    const lastSeq = counterSnap.exists()
+      ? (counterSnap.data().lastSeq as number)
+      : 0;
+    const next = lastSeq + 1;
+    const allocated = formatImportJobNumber(next);
+
+    transaction.set(counterRef, { lastSeq: next }, { merge: true });
+    transaction.set(
+      newDocRef,
+      stripUndefinedDeep({
+        ...recordData,
+        jobNumber: allocated,
+        etaSort: normalizeEtaSort(data.eta),
+        ...flags,
+        ...importDefaults,
+        ...buildFreightSearchIndex({ ...recordData, jobNumber: allocated }),
+        status: data.status ?? "in_process",
+        statusTimeline: timeline,
+        createdBy,
+        updatedBy: createdBy,
+        isDeleted: false,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }) as Record<string, unknown>
+    );
+
+    return allocated;
+  });
+
+  invalidateFreightForwardListCache();
+
+  const createdRecord: FreightForward = {
+    id: newDocRef.id,
+    ...(stripUndefinedDeep({
+      ...recordData,
+      jobNumber,
+      etaSort: normalizeEtaSort(data.eta),
+      ...flags,
+      ...importDefaults,
+      ...buildFreightSearchIndex({ ...recordData, jobNumber }),
       status: data.status ?? "in_process",
       statusTimeline: timeline,
       createdBy,
@@ -206,6 +345,28 @@ export async function updateFreightForward(
   if (data.eta !== undefined) {
     patch.etaSort = normalizeEtaSort(data.eta);
   }
+
+  if (data.useForImport === true && !beforeRecord?.useForImport) {
+    patch.importMovementStatus = beforeRecord
+      ? getImportMovementStatus(beforeRecord)
+      : "pending";
+    patch.importIgmStatus = beforeRecord
+      ? getImportIgmStatus(beforeRecord)
+      : "pending";
+    patch.importDoStatus = beforeRecord
+      ? getImportDoStatus(beforeRecord)
+      : "pending";
+    patch.importCompleted = beforeRecord
+      ? isImportLinerCompleted(beforeRecord)
+      : false;
+  }
+
+  const mergedForSearch: FreightForward = {
+    ...(beforeRecord ?? ({} as FreightForward)),
+    ...data,
+    jobNumber: data.jobNumber ?? beforeRecord?.jobNumber,
+  };
+  Object.assign(patch, buildFreightSearchIndex(mergedForSearch));
 
   const cleaned: Record<string, unknown> = stripUndefined(patch);
 
@@ -266,12 +427,36 @@ export async function updateWorkflowStatus(
   };
   const timeline = [...(existing.statusTimeline ?? []), newEntry];
   const flags = computePipelineFlags(timeline);
+  const shouldSyncImportMovement =
+    nextStatus === "momentum" &&
+    beforeRecord.useForImport &&
+    getImportMovementStatus(beforeRecord) !== "completed";
+  const importEntry = shouldSyncImportMovement
+    ? {
+        section: "movement" as const,
+        status: "completed" as const,
+        updatedBy,
+        updatedAt: Timestamp.now(),
+      }
+    : null;
+  const importPatch = shouldSyncImportMovement
+    ? {
+        importMovementStatus: "completed" as const,
+        importCompleted:
+          getImportIgmStatus(beforeRecord) === "posted" &&
+          getImportDoStatus(beforeRecord) === "eod",
+        ...(importEntry
+          ? { importWorkflowTimeline: arrayUnion(importEntry) }
+          : {}),
+      }
+    : {};
 
   await updateDoc(docRef, {
     status: nextStatus,
     updatedBy,
     updatedAt: serverTimestamp(),
     ...flags,
+    ...importPatch,
     statusTimeline: arrayUnion(newEntry),
   });
   invalidateFreightForwardListCache();
@@ -282,6 +467,17 @@ export async function updateWorkflowStatus(
     statusTimeline: timeline,
     updatedBy,
     ...flags,
+    ...(shouldSyncImportMovement
+      ? {
+          importMovementStatus: "completed" as const,
+          importCompleted:
+            getImportIgmStatus(beforeRecord) === "posted" &&
+            getImportDoStatus(beforeRecord) === "eod",
+          importWorkflowTimeline: importEntry
+            ? [...(beforeRecord.importWorkflowTimeline ?? []), importEntry]
+            : beforeRecord.importWorkflowTimeline,
+        }
+      : {}),
   };
   await syncFreightForwardCounts(beforeRecord, afterRecord);
 }
@@ -293,6 +489,218 @@ export async function getFreightForwardById(id: string) {
     id: snap.id,
     ...(snap.data() as FreightForward),
   };
+}
+
+export async function getImportLinerRecords() {
+  const records = await fetchAllImportLinerRecords();
+  return records.sort((a, b) => {
+    const etaCompare = normalizeEtaSort(a.eta).localeCompare(
+      normalizeEtaSort(b.eta)
+    );
+    return etaCompare || (a.jobNumber ?? "").localeCompare(b.jobNumber ?? "");
+  });
+}
+
+type ImportLinerStatus =
+  | ImportMovementStatus
+  | ImportIgmStatus
+  | ImportDoStatus;
+
+function isValidImportStatus(
+  section: ImportWorkflowSection,
+  status: ImportLinerStatus
+) {
+  if (section === "movement") {
+    return ["pending", "accepted", "completed"].includes(status);
+  }
+  if (section === "igm") {
+    return ["pending", "posted"].includes(status);
+  }
+  return ["pending", "received", "eod"].includes(status);
+}
+
+/**
+ * Updates an Import Liner stage on the shared Freight Forward document.
+ * Movement=completed also completes the FF Movement stage, preserving one source of truth.
+ */
+export async function updateImportLinerStage(
+  id: string,
+  section: ImportWorkflowSection,
+  status: ImportLinerStatus,
+  updatedBy: string
+) {
+  if (!isValidImportStatus(section, status)) {
+    throw new Error(`Invalid ${section} status: ${status}`);
+  }
+
+  const docRef = doc(db, "freightForward", id);
+  const result = await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(docRef);
+    if (!snap.exists()) throw new Error("Freight Forward job not found.");
+
+    const before = {
+      id: snap.id,
+      ...(snap.data() as Omit<FreightForward, "id">),
+    } as FreightForward;
+    if (!before.useForImport || before.isDeleted) {
+      throw new Error("This job is not active in Import Liner.");
+    }
+
+    const movementBefore = getImportMovementStatus(before);
+    const igmBefore = getImportIgmStatus(before);
+    const doBefore = getImportDoStatus(before);
+    const currentStatus =
+      section === "movement"
+        ? movementBefore
+        : section === "igm"
+          ? igmBefore
+          : doBefore;
+
+    if (currentStatus === status) {
+      return { before, after: before };
+    }
+
+    if (section === "igm" && !canUpdateImportIgm(before)) {
+      throw new Error("Complete Movement before updating IGM.");
+    }
+    if (section === "do" && !canUpdateImportDo(before)) {
+      throw new Error("Post IGM before updating DO.");
+    }
+
+    const now = Timestamp.now();
+    const importEntry =
+      section === "movement"
+        ? {
+            section: "movement" as const,
+            status: status as ImportMovementStatus,
+            updatedBy,
+            updatedAt: now,
+          }
+        : section === "igm"
+          ? {
+              section: "igm" as const,
+              status: status as ImportIgmStatus,
+              updatedBy,
+              updatedAt: now,
+            }
+          : {
+              section: "do" as const,
+              status: status as ImportDoStatus,
+              updatedBy,
+              updatedAt: now,
+            };
+    const nextMovement =
+      section === "movement" ? (status as ImportMovementStatus) : movementBefore;
+    let nextIgm =
+      section === "igm" ? (status as ImportIgmStatus) : igmBefore;
+    let nextDo = section === "do" ? (status as ImportDoStatus) : doBefore;
+    const importEntries: ImportWorkflowTimelineEntry[] = [importEntry];
+
+    if (section === "movement" && nextMovement !== "completed") {
+      if (nextIgm !== "pending") {
+        nextIgm = "pending";
+        importEntries.push({
+          section: "igm",
+          status: "pending",
+          updatedBy,
+          updatedAt: now,
+        });
+      }
+      if (nextDo !== "pending") {
+        nextDo = "pending";
+        importEntries.push({
+          section: "do",
+          status: "pending",
+          updatedBy,
+          updatedAt: now,
+        });
+      }
+    } else if (section === "igm" && nextIgm !== "posted" && nextDo !== "pending") {
+      nextDo = "pending";
+      importEntries.push({
+        section: "do",
+        status: "pending",
+        updatedBy,
+        updatedAt: now,
+      });
+    }
+
+    const importCompleted =
+      nextMovement === "completed" &&
+      nextIgm === "posted" &&
+      nextDo === "eod";
+
+    const patch: Record<string, unknown> = {
+      importMovementStatus: nextMovement,
+      importIgmStatus: nextIgm,
+      importDoStatus: nextDo,
+      importCompleted,
+      importWorkflowTimeline: [
+        ...(before.importWorkflowTimeline ?? []),
+        ...importEntries,
+      ],
+      updatedBy,
+      updatedAt: serverTimestamp(),
+    };
+
+    let nextTimeline = before.statusTimeline ?? [];
+    if (section === "movement") {
+      if (
+        status === "completed" &&
+        !nextTimeline.some((entry) => entry.status === "momentum")
+      ) {
+        nextTimeline = [
+          ...nextTimeline,
+          {
+            status: "momentum" as const,
+            updatedBy,
+            updatedAt: now,
+          },
+        ];
+      } else if (status !== "completed") {
+        nextTimeline = nextTimeline.filter((entry) => entry.status !== "momentum");
+      }
+
+      const latestFreightStatus =
+        nextTimeline.length > 0
+          ? (nextTimeline[nextTimeline.length - 1].status as FreightForwardStatus)
+          : ("in_process" as const);
+      Object.assign(patch, computePipelineFlags(nextTimeline), {
+        status:
+          status === "completed" && before.status === "in_process"
+            ? "momentum"
+            : status !== "completed" && before.status === "momentum"
+              ? latestFreightStatus
+              : before.status,
+        statusTimeline: nextTimeline,
+      });
+    }
+
+    transaction.update(docRef, patch);
+
+    const after: FreightForward = {
+      ...before,
+      importMovementStatus: nextMovement,
+      importIgmStatus: nextIgm,
+      importDoStatus: nextDo,
+      importCompleted,
+      importWorkflowTimeline: [
+        ...(before.importWorkflowTimeline ?? []),
+        ...importEntries,
+      ],
+      updatedBy,
+      status: (patch.status as FreightForwardStatus | undefined) ?? before.status,
+      statusTimeline: nextTimeline,
+      ...computePipelineFlags(nextTimeline),
+    };
+    return { before, after };
+  });
+
+  invalidateFreightForwardListCache();
+  if (result.before !== result.after) {
+    await syncFreightForwardCounts(result.before, result.after);
+  }
+  return result.after;
 }
 
 export async function getFreightForwardForExport(etaFrom: string, etaTo: string) {
@@ -314,15 +722,8 @@ export async function findFreightByVesselName(vesselName: string) {
   const needle = vesselName.trim().toLowerCase();
   if (!needle) return [] as FreightForward[];
 
-  const snap = await getDocs(query(REF(), limit(5000)));
-  return snap.docs
-    .map(
-      (d) =>
-        ({
-          id: d.id,
-          ...(d.data() as Omit<FreightForward, "id">),
-        }) as FreightForward
-    )
+  const records = await fetchAllFreightForwardRecords();
+  return records
     .filter(
       (item) =>
         !item.isDeleted &&
@@ -445,6 +846,11 @@ export async function getTrashedFreightForwards(): Promise<FreightForward[]> {
         return timeB - timeA;
       });
   }
+}
+
+export async function getTrashedImportLinerRecords(): Promise<FreightForward[]> {
+  const trashed = await getTrashedFreightForwards();
+  return trashed.filter((item) => item.useForImport);
 }
 
 /** Permanently delete docs and attached Storage files. */

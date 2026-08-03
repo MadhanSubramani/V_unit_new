@@ -22,11 +22,17 @@ import {
 } from "@/lib/freightForward/statusBalance";
 import { FreightSortDir, FreightSortKey, requiresClientNaturalSort, sortFreightRecords } from "@/lib/freightForward/sortRecords";
 import { matchesFreightSearch } from "@/lib/freightForward/searchFields";
+import {
+  fetchAllFreightForwardRecords,
+  invalidateImportLinerCache,
+} from "@/lib/freightForward/chunkedFetch";
+import { buildFreightSearchIndex } from "@/lib/freightForward/searchIndex";
 
 const REF = () => collection(db, "freightForward");
 
-const CLIENT_FETCH_MAX = 5000;
-const CLIENT_CACHE_TTL_MS = 30_000;
+const CLIENT_CACHE_TTL_MS = 120_000;
+/** When soft-deleted rows shrink a server page, over-fetch up to this multiple. */
+const SERVER_PAGE_FETCH_MULTIPLIER = 3;
 
 export interface FreightListRequest {
   activeCard?: BalanceCardFilter | null;
@@ -58,6 +64,7 @@ let clientFetchPromise: Promise<FreightForward[]> | null = null;
 export function invalidateFreightForwardListCache() {
   clientRecordsCache = null;
   clientFetchPromise = null;
+  invalidateImportLinerCache();
 }
 
 function docToRecord(docSnap: DocumentSnapshot): FreightForward {
@@ -215,23 +222,12 @@ async function fetchAllRecordsForClient(): Promise<FreightForward[]> {
   }
 
   clientFetchPromise = (async () => {
-    const ref = REF();
     try {
-      const snap = await getDocs(query(ref, limit(CLIENT_FETCH_MAX)));
-      const records = sortFreightRecords(
-        snap.docs.map(docToRecord),
-        "createdAt",
-        "desc"
+      // Chunked full scan — no silent 5000 ceiling; preserves search/sort UX.
+      // Hydrate missing search* fields in memory (legacy docs) for faster filters.
+      const records = (await fetchAllFreightForwardRecords()).map((item) =>
+        item.searchText ? item : { ...item, ...buildFreightSearchIndex(item) }
       );
-      clientRecordsCache = {
-        records,
-        expires: Date.now() + CLIENT_CACHE_TTL_MS,
-      };
-      return records;
-    } catch (error) {
-      if (!isFirestoreIndexError(error)) throw error;
-      const snap = await getDocs(query(ref, limit(CLIENT_FETCH_MAX)));
-      const records = snap.docs.map(docToRecord);
       clientRecordsCache = {
         records,
         expires: Date.now() + CLIENT_CACHE_TTL_MS,
@@ -281,19 +277,44 @@ async function fetchServerListPage(
   const countSnap = await getCountFromServer(query(ref, ...filterConstraints));
   const total = countSnap.data().count;
 
-  const paginationConstraints: QueryConstraint[] = [
-    ...orderConstraints,
-    ...(request.cursor ? [startAfter(request.cursor)] : []),
-    limit(request.pageSize),
-  ];
+  // Soft-deleted docs are still in server totals until indexes include isDeleted.
+  // Over-fetch and skip deleted so pages stay full without changing UI.
+  const activeItems: FreightForward[] = [];
+  let lastDoc: DocumentSnapshot | null = request.cursor ?? null;
+  let guard = 0;
+  const maxFetches = SERVER_PAGE_FETCH_MULTIPLIER;
 
-  const snap = await getDocs(
-    query(ref, ...filterConstraints, ...paginationConstraints)
-  );
+  while (activeItems.length < request.pageSize && guard < maxFetches) {
+    guard += 1;
+    const fetchSize = Math.max(
+      request.pageSize,
+      (request.pageSize - activeItems.length) * 2
+    );
+    const paginationConstraints: QueryConstraint[] = [
+      ...orderConstraints,
+      ...(lastDoc ? [startAfter(lastDoc)] : []),
+      limit(fetchSize),
+    ];
+
+    const snap = await getDocs(
+      query(ref, ...filterConstraints, ...paginationConstraints)
+    );
+    if (snap.empty) break;
+
+    for (const docSnap of snap.docs) {
+      lastDoc = docSnap;
+      const record = docToRecord(docSnap);
+      if (record.isDeleted) continue;
+      activeItems.push(record);
+      if (activeItems.length >= request.pageSize) break;
+    }
+
+    if (snap.docs.length < fetchSize) break;
+  }
 
   return {
-    items: snap.docs.map(docToRecord).filter((item) => !item.isDeleted),
-    lastDoc: snap.docs[snap.docs.length - 1] ?? null,
+    items: activeItems.slice(0, request.pageSize),
+    lastDoc,
     total,
     mode: "server",
   };
@@ -326,7 +347,9 @@ async function resolveListPage(
 export async function getFreightForwardPaginated(
   request: FreightListRequest
 ): Promise<FreightListPage> {
-  // FF No / EZ No must use client natural-number sort (VO1, VO2… VO10; FF01, FF02…).
+  // Search + FF/EZ natural sort stay on the chunked client path so legacy docs
+  // without search* fields remain findable. New writes store search indexes for
+  // faster in-memory matching via searchText.
   if (request.searchValue?.trim() || requiresClientNaturalSort(request.sortKey)) {
     return fetchClientListPage(request);
   }

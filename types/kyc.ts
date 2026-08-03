@@ -26,8 +26,14 @@ export interface Kyc {
   loiDate: string;
   loiDocument?: KycDocument;
 
+  /** Primary email (first of emails). Kept for backward compatibility. */
   email: string;
+  /** Primary phone (first of phones). Kept for backward compatibility. */
   phone: string;
+  /** All emails; when missing, treat [email] as the list. */
+  emails?: string[];
+  /** All phones; when missing, treat [phone] as the list. */
+  phones?: string[];
 
   directorAadhar?: KycDocument[];
   directorPan?: KycDocument[];

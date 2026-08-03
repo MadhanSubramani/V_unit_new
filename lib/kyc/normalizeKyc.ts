@@ -6,12 +6,28 @@ export function normalizeDocArray(value: unknown): KycDocument[] {
   return [value as KycDocument];
 }
 
+function normalizeContactList(
+  listValue: unknown,
+  primaryValue: unknown
+): string[] {
+  if (Array.isArray(listValue)) {
+    return (listValue as unknown[])
+      .map((item) => String(item).trim())
+      .filter(Boolean);
+  }
+  const primary = String(primaryValue ?? "").trim();
+  return primary ? [primary] : [];
+}
+
 export function normalizeKyc(raw: Record<string, unknown> & { id?: string }): Kyc {
   const branchAddresses = Array.isArray(raw.branchAddresses)
     ? (raw.branchAddresses as string[])
     : raw.deliveryAddress
       ? [String(raw.deliveryAddress)]
       : [];
+
+  const emails = normalizeContactList(raw.emails, raw.email);
+  const phones = normalizeContactList(raw.phones, raw.phone);
 
   return {
     id: raw.id,
@@ -33,8 +49,10 @@ export function normalizeKyc(raw: Record<string, unknown> & { id?: string }): Ky
     loiDocument:
       (raw.loiDocument as KycDocument | undefined) ??
       (raw.loi as KycDocument | undefined),
-    email: (raw.email as string) ?? "",
-    phone: (raw.phone as string) ?? "",
+    emails,
+    phones,
+    email: emails[0] ?? "",
+    phone: phones[0] ?? "",
     directorAadhar: normalizeDocArray(raw.directorAadhar),
     directorPan: normalizeDocArray(raw.directorPan),
     supportingDocuments: normalizeDocArray(raw.supportingDocuments),

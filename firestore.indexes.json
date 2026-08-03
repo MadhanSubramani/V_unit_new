@@ -12,6 +12,56 @@
       "collectionGroup": "freightForward",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "useForImport", "order": "ASCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "searchJobNumber", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "searchMbl", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "searchHbl", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "searchEzRef", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "searchVessel", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "searchConsignee", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "freightForward",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "etaSort", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
