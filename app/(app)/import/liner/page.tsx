@@ -8,26 +8,29 @@ import {
   ChevronRight,
   LoaderCircle,
   LockKeyhole,
-  Plus,
 } from "lucide-react";
 import ModuleHeader from "@/components/ModuleHeader";
-import ImportLinerDrawer from "@/components/import/ImportLinerDrawer";
+import ImportJobEditDrawer from "@/components/import/ImportJobEditDrawer";
 import ActionMenu from "@/components/shared/ActionMenu";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import {
   getImportLinerRecords,
   softDeleteFreightForward,
+  updateImportLinerRemark,
   updateImportLinerStage,
 } from "@/lib/freightForward/freightForward";
 import {
   canUpdateImportDo,
   canUpdateImportIgm,
   computeImportLinerCounts,
+  getImportCompletionCount,
   getImportDoStatus,
   getImportIgmStatus,
   getImportMovementStatus,
+  getImportStageRemark,
   ImportLinerCard,
   isImportLinerCompleted,
+  isImportStagePending,
   matchesImportLinerCard,
 } from "@/lib/import/linerWorkflow";
 import { formatContainersDisplay } from "@/lib/freightForward/containers";
@@ -128,11 +131,11 @@ export default function ImportLinerPage() {
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [activeCard, setActiveCard] = useState<ImportLinerCard | null>(null);
+  const [activeCard, setActiveCard] = useState<ImportLinerCard | null>("do");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [error, setError] = useState("");
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editItem, setEditItem] = useState<FreightForward | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const [panelWidth, setPanelWidth] = useState(0);
@@ -185,7 +188,7 @@ export default function ImportLinerPage() {
     { key: "inProcess", label: "In Process", value: counts.inProcess },
     { key: "next7Days", label: "Next 7 Days", value: counts.next7Days },
     { key: "movement", label: "Movement", value: counts.movement },
-    { key: "do", label: "DO", value: counts.do },
+    { key: "do", label: "DO incomplete", value: counts.do },
     {
       key: "completed",
       label: "Completed / Incomplete",
@@ -269,22 +272,41 @@ export default function ImportLinerPage() {
     }
   };
 
+  const saveRemark = async (
+    item: FreightForward,
+    section: ImportWorkflowSection,
+    remark: string
+  ) => {
+    if (!item.id) return;
+    setUpdatingId(item.id);
+    setError("");
+    try {
+      const updated = await updateImportLinerRemark(
+        item.id,
+        section,
+        remark,
+        user?.username ?? "Unknown"
+      );
+      setRecords((current) =>
+        current.map((record) => (record.id === updated.id ? updated : record))
+      );
+    } catch (updateError) {
+      setError(
+        updateError instanceof Error
+          ? updateError.message
+          : "Unable to save remark."
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <ModuleHeader
-          title="Import — Liner"
-          description="Import jobs (IMP*) and Freight Forward jobs marked for Import."
-        />
-        <button
-          type="button"
-          onClick={() => setDrawerOpen(true)}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-zinc-900 px-3 py-2 text-xs font-medium text-white"
-        >
-          <Plus size={14} />
-          Add
-        </button>
-      </div>
+      <ModuleHeader
+        title="Import — Liner"
+        description="Ops workflow for Import jobs. Defaults to DO-incomplete; update Movement, IGM, and DO with remarks when pending."
+      />
 
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
         {cards.map((card) => {
@@ -354,6 +376,7 @@ export default function ImportLinerPage() {
               <th className="px-3 py-3 font-semibold">MBL</th>
               <th className="px-3 py-3 font-semibold">HBL</th>
               <th className="px-3 py-3 font-semibold">Containers</th>
+              <th className="px-3 py-3 font-semibold">Done</th>
               <th className="px-3 py-3 font-semibold">Import Status</th>
               <th className="px-3 py-3 font-semibold">Actions</th>
             </tr>
@@ -361,15 +384,15 @@ export default function ImportLinerPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={15} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={16} className="px-4 py-10 text-center text-zinc-400">
                   Loading Import Liner jobs...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={15} className="px-4 py-10 text-center text-zinc-400">
-                  No jobs found. Use Add, or enable “Use this job for Import” in
-                  Freight Forward.
+                <td colSpan={16} className="px-4 py-10 text-center text-zinc-400">
+                  No jobs found for this filter. Add jobs from Import Worklist,
+                  or enable “Use this job for Import” in Freight Forward.
                 </td>
               </tr>
             ) : (
@@ -388,6 +411,8 @@ export default function ImportLinerPage() {
                       )
                     }
                     onUpdate={updateStage}
+                    onRemark={saveRemark}
+                    onEdit={() => setEditItem(item)}
                     onDelete={() => setDeleteId(item.id ?? null)}
                     panelWidth={panelWidth}
                   />
@@ -422,10 +447,18 @@ export default function ImportLinerPage() {
         </button>
       </div>
 
-      {drawerOpen ? (
-        <ImportLinerDrawer
-          onClose={() => setDrawerOpen(false)}
-          onSaved={() => void reload()}
+      {editItem ? (
+        <ImportJobEditDrawer
+          item={editItem}
+          onClose={() => setEditItem(null)}
+          onSaved={(updated) => {
+            setRecords((current) =>
+              current.map((record) =>
+                record.id === updated.id ? updated : record
+              )
+            );
+            setEditItem(null);
+          }}
           username={user?.username ?? "Unknown"}
         />
       ) : null}
@@ -449,6 +482,8 @@ function Row({
   isAdmin,
   onToggle,
   onUpdate,
+  onRemark,
+  onEdit,
   onDelete,
   panelWidth,
 }: {
@@ -462,17 +497,19 @@ function Row({
     section: ImportWorkflowSection,
     status: ImportMovementStatus | ImportIgmStatus | ImportDoStatus
   ) => Promise<void>;
+  onRemark: (
+    item: FreightForward,
+    section: ImportWorkflowSection,
+    remark: string
+  ) => Promise<void>;
+  onEdit: () => void;
   onDelete: () => void;
   panelWidth: number;
 }) {
   const movementStatus = getImportMovementStatus(item);
   const igmStatus = getImportIgmStatus(item);
   const doStatus = getImportDoStatus(item);
-  const completedStages = [
-    movementStatus === "completed",
-    igmStatus === "posted",
-    doStatus === "eod",
-  ].filter(Boolean).length;
+  const completedStages = getImportCompletionCount(item);
 
   return (
     <>
@@ -495,6 +532,9 @@ function Row({
         <TableCell value={item.mbl} width={130} />
         <TableCell value={item.hbl} width={130} />
         <TableCell value={formatContainersDisplay(item)} width={170} />
+        <td className="px-3 py-3 font-medium text-zinc-800">
+          {completedStages} / 3
+        </td>
         <td className="px-3 py-3">
           {busy ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2 py-1 text-[10px] font-semibold text-zinc-600">
@@ -520,14 +560,14 @@ function Row({
           <ActionMenu
             showView={false}
             showDelete={isAdmin}
-            onEdit={onToggle}
+            onEdit={onEdit}
             onDelete={onDelete}
           />
         </td>
       </tr>
       {expanded && (
         <tr className="border-t border-zinc-100 bg-zinc-100/70">
-          <td colSpan={15} className="p-0">
+          <td colSpan={16} className="p-0">
             <div
               className="sticky left-0 min-w-0 p-3"
               style={panelWidth ? { width: panelWidth } : undefined}
@@ -571,6 +611,7 @@ function Row({
                     item={item}
                     busy={busy}
                     onUpdate={onUpdate}
+                    onRemark={onRemark}
                   />
                   <StageCard
                     title="IGM"
@@ -585,6 +626,7 @@ function Row({
                     item={item}
                     busy={busy}
                     onUpdate={onUpdate}
+                    onRemark={onRemark}
                   />
                   <StageCard
                     title="DO"
@@ -600,6 +642,7 @@ function Row({
                     item={item}
                     busy={busy}
                     onUpdate={onUpdate}
+                    onRemark={onRemark}
                   />
                 </div>
 
@@ -676,6 +719,7 @@ function StageCard({
   item,
   busy,
   onUpdate,
+  onRemark,
 }: {
   title: string;
   section: ImportWorkflowSection;
@@ -690,6 +734,11 @@ function StageCard({
     section: ImportWorkflowSection,
     status: ImportMovementStatus | ImportIgmStatus | ImportDoStatus
   ) => Promise<void>;
+  onRemark: (
+    item: FreightForward,
+    section: ImportWorkflowSection,
+    remark: string
+  ) => Promise<void>;
 }) {
   const audit = latestAudit(item, section);
   const stepNumber = section === "movement" ? 1 : section === "igm" ? 2 : 3;
@@ -697,6 +746,14 @@ function StageCard({
     (section === "movement" && value === "completed") ||
     (section === "igm" && value === "posted") ||
     (section === "do" && value === "eod");
+  const pending = isImportStagePending(item, section);
+  const [remarkDraft, setRemarkDraft] = useState(
+    getImportStageRemark(item, section)
+  );
+
+  useEffect(() => {
+    setRemarkDraft(getImportStageRemark(item, section));
+  }, [item, section]);
 
   return (
     <section
@@ -762,6 +819,37 @@ function StageCard({
           ))}
         </select>
       </div>
+
+      {pending && (
+        <div
+          className="mt-3 space-y-2"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Remark
+          </label>
+          <textarea
+            value={remarkDraft}
+            disabled={busy}
+            rows={2}
+            placeholder={`Add ${title} remark...`}
+            onChange={(event) => setRemarkDraft(event.target.value)}
+            className="w-full resize-none rounded-lg border border-zinc-200 px-2.5 py-2 text-[11px] outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 disabled:bg-zinc-100"
+          />
+          <button
+            type="button"
+            disabled={
+              busy ||
+              remarkDraft.trim() === getImportStageRemark(item, section).trim()
+            }
+            onClick={() => void onRemark(item, section, remarkDraft)}
+            className="rounded-lg bg-zinc-900 px-2.5 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
+          >
+            Save remark
+          </button>
+        </div>
+      )}
+
       <div className="mt-4 border-t border-zinc-200/70 pt-3 text-[11px] text-zinc-500">
         {locked ? (
           <p className="flex items-center gap-1.5 font-medium text-zinc-500">

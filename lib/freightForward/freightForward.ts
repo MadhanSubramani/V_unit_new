@@ -18,6 +18,7 @@ import {
 } from "firebase/firestore";
 import {
   FreightForward,
+  FreightForwardDocument,
   FreightForwardFormData,
   FreightForwardStatus,
   ImportDoStatus,
@@ -58,6 +59,7 @@ import {
   getImportIgmStatus,
   getImportMovementStatus,
   isImportLinerCompleted,
+  isImportWorklistJob,
 } from "@/lib/import/linerWorkflow";
 
 const REF = () => collection(db, "freightForward");
@@ -701,6 +703,112 @@ export async function updateImportLinerStage(
     await syncFreightForwardCounts(result.before, result.after);
   }
   return result.after;
+}
+
+export async function updateImportLinerRemark(
+  id: string,
+  section: ImportWorkflowSection,
+  remark: string,
+  updatedBy: string
+) {
+  const docRef = doc(db, "freightForward", id);
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) throw new Error("Freight Forward job not found.");
+
+  const before = {
+    id: snap.id,
+    ...(snap.data() as Omit<FreightForward, "id">),
+  } as FreightForward;
+  if (!before.useForImport || before.isDeleted) {
+    throw new Error("This job is not active in Import Liner.");
+  }
+
+  const field =
+    section === "movement"
+      ? "importMovementRemark"
+      : section === "igm"
+        ? "importIgmRemark"
+        : "importDoRemark";
+
+  await updateDoc(docRef, {
+    [field]: remark.trim(),
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+
+  return {
+    ...before,
+    [field]: remark.trim(),
+    updatedBy,
+  } as FreightForward;
+}
+
+export async function appendImportOtherDocuments(
+  id: string,
+  documents: FreightForwardDocument[],
+  updatedBy: string
+) {
+  if (!documents.length) {
+    const existing = await getFreightForwardById(id);
+    if (!existing) throw new Error("Freight Forward job not found.");
+    return existing;
+  }
+
+  const docRef = doc(db, "freightForward", id);
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) throw new Error("Freight Forward job not found.");
+
+  const before = {
+    id: snap.id,
+    ...(snap.data() as Omit<FreightForward, "id">),
+  } as FreightForward;
+  if (before.isDeleted) throw new Error("This job is in trash.");
+
+  const otherDocuments = [...(before.otherDocuments ?? []), ...documents];
+  await updateDoc(docRef, {
+    otherDocuments,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+
+  return { ...before, otherDocuments, updatedBy };
+}
+
+/** Import worklist / ETA scope: IMP* or useForImport jobs. */
+export async function findImportJobsByVesselName(vesselName: string) {
+  const needle = vesselName.trim().toLowerCase();
+  if (!needle) return [] as FreightForward[];
+
+  const records = await fetchAllFreightForwardRecords();
+  return records
+    .filter(
+      (item) =>
+        isImportWorklistJob(item) &&
+        (item.vesselName ?? "").trim().toLowerCase() === needle
+    )
+    .sort((a, b) => (a.jobNumber ?? "").localeCompare(b.jobNumber ?? ""));
+}
+
+export async function updateImportEtaByVesselName(
+  vesselName: string,
+  eta: string,
+  updatedBy: string
+) {
+  const matches = await findImportJobsByVesselName(vesselName);
+  if (!matches.length) return { updated: 0 };
+
+  const etaValue = eta.trim().slice(0, 10);
+  for (const item of matches) {
+    if (!item.id) continue;
+    await updateFreightForward(
+      item.id,
+      { eta: etaValue } as Partial<FreightForwardFormData>,
+      updatedBy
+    );
+  }
+  return { updated: matches.length };
 }
 
 export async function getFreightForwardForExport(etaFrom: string, etaTo: string) {

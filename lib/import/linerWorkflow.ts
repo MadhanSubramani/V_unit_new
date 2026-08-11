@@ -3,8 +3,10 @@ import {
   ImportDoStatus,
   ImportIgmStatus,
   ImportMovementStatus,
+  ImportWorkflowSection,
 } from "@/types/freightForward";
 import { isEtaInNext7Days } from "@/lib/freightForward/statusBalance";
+import { IMPORT_JOB_NUMBER_PREFIX } from "@/lib/freightForward/generateJobNumber";
 
 export type ImportLinerCard =
   | "inProcess"
@@ -13,6 +15,40 @@ export type ImportLinerCard =
   | "igm"
   | "do"
   | "completed";
+
+/** IMP* jobs or any job flagged for Import. */
+export function isImportWorklistJob(item: FreightForward) {
+  if (item.isDeleted) return false;
+  if (item.useForImport) return true;
+  return (item.jobNumber ?? "").startsWith(IMPORT_JOB_NUMBER_PREFIX);
+}
+
+export function getImportStageRemark(
+  item: FreightForward,
+  section: ImportWorkflowSection
+) {
+  if (section === "movement") return item.importMovementRemark ?? "";
+  if (section === "igm") return item.importIgmRemark ?? "";
+  return item.importDoRemark ?? "";
+}
+
+export function isImportStagePending(
+  item: FreightForward,
+  section: ImportWorkflowSection
+) {
+  if (section === "movement") return getImportMovementStatus(item) === "pending";
+  if (section === "igm") return getImportIgmStatus(item) === "pending";
+  return getImportDoStatus(item) === "pending";
+}
+
+/** Stages completed out of Movement / IGM / DO (0–3). */
+export function getImportCompletionCount(item: FreightForward) {
+  return [
+    getImportMovementStatus(item) === "completed",
+    getImportIgmStatus(item) === "posted",
+    getImportDoStatus(item) === "eod",
+  ].filter(Boolean).length;
+}
 
 /** FF statusTimeline.momentum is the authoritative Movement completed signal. */
 export function getImportMovementStatus(

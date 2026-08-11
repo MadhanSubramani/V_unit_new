@@ -130,6 +130,10 @@ export interface FreightForward {
   /** True only when Movement=Completed, IGM=Posted, and DO=EOD. */
   importCompleted?: boolean;
   importWorkflowTimeline?: ImportWorkflowTimelineEntry[];
+  /** Remarks shown when a liner stage is still pending. */
+  importMovementRemark?: string;
+  importIgmRemark?: string;
+  importDoRemark?: string;
   /** Extra named documents captured from Import Add / documents section. */
   otherDocuments?: FreightForwardDocument[];
   /** Lowercase search helpers for scalable filtering/prefix queries. */

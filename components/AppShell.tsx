@@ -35,7 +35,9 @@ const FREIGHT_FORWARD_SUB = [
 ] as const;
 
 const IMPORT_SUB = [
+  { href: "/import/worklist", label: "Worklist", icon: ClipboardList, enabled: true },
   { href: "/import/liner", label: "Liner", icon: Ship, enabled: true },
+  { href: "/import/eta-updater", label: "ETA Updater", icon: CalendarClock, enabled: true },
   { href: "/import/boe-in", label: "BOE In", icon: ClipboardList, enabled: false },
   { href: "/import/transport", label: "Transport", icon: Warehouse, enabled: false },
   { href: "/import/boe-out", label: "BOE Out", icon: ClipboardList, enabled: false },
@@ -266,7 +268,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <button
             onClick={() => {
               if (collapsed) {
-                router.push("/import/liner");
+                router.push("/import/worklist");
                 return;
               }
               setImportOpen((value) => !value);
