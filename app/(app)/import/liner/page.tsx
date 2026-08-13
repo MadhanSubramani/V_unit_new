@@ -391,7 +391,7 @@ export default function ImportLinerPage() {
             ) : visibleRows.length === 0 ? (
               <tr>
                 <td colSpan={16} className="px-4 py-10 text-center text-zinc-400">
-                  No jobs found for this filter. Add jobs from Import Worklist,
+                  No jobs found for this filter. Add jobs from Import Job List,
                   or enable “Use this job for Import” in Freight Forward.
                 </td>
               </tr>
@@ -635,7 +635,6 @@ function Row({
                     options={[
                       ["pending", "Pending"],
                       ["received", "Received"],
-                      ["eod", "EOD"],
                     ]}
                     locked={!canUpdateImportDo(item)}
                     lockHint="Post IGM first"
@@ -745,7 +744,7 @@ function StageCard({
   const complete =
     (section === "movement" && value === "completed") ||
     (section === "igm" && value === "posted") ||
-    (section === "do" && value === "eod");
+    (section === "do" && (value === "received" || value === "eod"));
   const pending = isImportStagePending(item, section);
   const [remarkDraft, setRemarkDraft] = useState(
     getImportStageRemark(item, section)

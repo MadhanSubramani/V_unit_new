@@ -27,6 +27,7 @@ import {
 } from "firebase/firestore";
 import { balanceCountsToStatsDoc } from "../lib/freightForward/balanceCountsMapping";
 import { computeBalanceCounts } from "../lib/freightForward/statusBalance";
+import { IMPORT_JOB_NUMBER_PREFIX } from "../lib/freightForward/generateJobNumber";
 import type { FreightForward } from "../types/freightForward";
 
 const firebaseConfig = {
@@ -80,7 +81,11 @@ async function fetchAllFreightForwardRecords(): Promise<FreightForward[]> {
     if (snap.size < 500) break;
   }
 
-  return records.filter((item) => !item.isDeleted);
+  return records.filter(
+    (item) =>
+      !item.isDeleted &&
+      !(item.jobNumber ?? "").startsWith(IMPORT_JOB_NUMBER_PREFIX)
+  );
 }
 
 async function main() {

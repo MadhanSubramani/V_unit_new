@@ -6,7 +6,7 @@ import {
   ImportWorkflowSection,
 } from "@/types/freightForward";
 import { isEtaInNext7Days } from "@/lib/freightForward/statusBalance";
-import { IMPORT_JOB_NUMBER_PREFIX } from "@/lib/freightForward/generateJobNumber";
+import { isImportJobNumber } from "@/lib/freightForward/generateJobNumber";
 
 export type ImportLinerCard =
   | "inProcess"
@@ -20,7 +20,7 @@ export type ImportLinerCard =
 export function isImportWorklistJob(item: FreightForward) {
   if (item.isDeleted) return false;
   if (item.useForImport) return true;
-  return (item.jobNumber ?? "").startsWith(IMPORT_JOB_NUMBER_PREFIX);
+  return isImportJobNumber(item.jobNumber);
 }
 
 export function getImportStageRemark(
@@ -41,12 +41,17 @@ export function isImportStagePending(
   return getImportDoStatus(item) === "pending";
 }
 
+export function isImportDoCompleted(item: FreightForward) {
+  const status = item.importDoStatus;
+  return status === "received" || status === "eod";
+}
+
 /** Stages completed out of Movement / IGM / DO (0–3). */
 export function getImportCompletionCount(item: FreightForward) {
   return [
     getImportMovementStatus(item) === "completed",
     getImportIgmStatus(item) === "posted",
-    getImportDoStatus(item) === "eod",
+    isImportDoCompleted(item),
   ].filter(Boolean).length;
 }
 
@@ -67,6 +72,7 @@ export function getImportIgmStatus(item: FreightForward): ImportIgmStatus {
 }
 
 export function getImportDoStatus(item: FreightForward): ImportDoStatus {
+  if (item.importDoStatus === "eod") return "received";
   return item.importDoStatus ?? "pending";
 }
 
@@ -74,7 +80,7 @@ export function isImportLinerCompleted(item: FreightForward) {
   return (
     getImportMovementStatus(item) === "completed" &&
     getImportIgmStatus(item) === "posted" &&
-    getImportDoStatus(item) === "eod"
+    isImportDoCompleted(item)
   );
 }
 
@@ -101,7 +107,7 @@ export function matchesImportLinerCard(
     case "igm":
       return getImportIgmStatus(item) !== "posted";
     case "do":
-      return getImportDoStatus(item) !== "eod";
+      return !isImportDoCompleted(item);
     case "completed":
       return completed;
   }

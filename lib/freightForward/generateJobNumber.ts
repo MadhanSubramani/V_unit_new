@@ -82,3 +82,8 @@ export function formatFreightJobNumber(seq: number): string {
 export function formatImportJobNumber(seq: number): string {
   return `${IMPORT_JOB_NUMBER_PREFIX}${String(seq).padStart(3, "0")}`;
 }
+
+/** Import-sequence jobs (IMP001…) — Import module only, never FF job list / tiles. */
+export function isImportJobNumber(jobNumber?: string) {
+  return (jobNumber ?? "").startsWith(IMPORT_JOB_NUMBER_PREFIX);
+}

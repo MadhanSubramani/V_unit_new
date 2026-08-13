@@ -43,6 +43,7 @@ export interface FreightContainer {
 
 export type ImportMovementStatus = "pending" | "accepted" | "completed";
 export type ImportIgmStatus = "pending" | "posted";
+/** `eod` is legacy; DO is complete at `received`. */
 export type ImportDoStatus = "pending" | "received" | "eod";
 export type ImportWorkflowSection = "movement" | "igm" | "do";
 

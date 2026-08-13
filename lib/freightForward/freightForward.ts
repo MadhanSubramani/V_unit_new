@@ -34,6 +34,7 @@ import {
   formatImportJobNumber,
   FREIGHT_COUNTER_DOC,
   IMPORT_COUNTER_DOC,
+  isImportJobNumber,
 } from "./generateJobNumber";
 import { computePipelineFlags } from "./pipelineFlags";
 import { normalizeEtaSort } from "./etaSort";
@@ -43,8 +44,6 @@ import {
   invalidateFreightForwardListCache,
 } from "./paginatedList";
 import {
-  getFreightForwardCardCountsFromCounters,
-  isFreightForwardCounterDashboardEnabled,
   seedFreightForwardCountsDoc,
   syncFreightForwardCounts,
 } from "./freightForwardCounts";
@@ -58,6 +57,7 @@ import {
   getImportDoStatus,
   getImportIgmStatus,
   getImportMovementStatus,
+  isImportDoCompleted,
   isImportLinerCompleted,
   isImportWorklistJob,
 } from "@/lib/import/linerWorkflow";
@@ -106,20 +106,8 @@ export {
 
 // ── Card counts (server-side count queries or stats doc) ─────────────────
 export async function getFreightForwardCardCounts() {
-  if (isFreightForwardCounterDashboardEnabled()) {
-    try {
-      const fromCounters = await getFreightForwardCardCountsFromCounters();
-      if (fromCounters) return fromCounters;
-    } catch (error) {
-      console.warn(
-        "[freightForwardCounts] Counter read failed; falling back to scan.",
-        error
-      );
-    }
-  }
-
   const counted = await getFreightForwardCardCountsFromServer();
-  // Auto-seed once so later loads stay O(1). Never block the UI on seed failure.
+  // Keep stats doc aligned with FF-only jobs (IMP* never counted).
   void seedFreightForwardCountsDoc(counted).catch((error) => {
     console.warn("[freightForwardCounts] Auto-seed failed:", error);
   });
@@ -243,7 +231,7 @@ export async function createFreightForward(
 
 /**
  * Creates an Import-originated job on the shared freightForward collection
- * with IMP001-style numbering. Appears in Import Liner and FF job list.
+ * with IMP001-style numbering. Listed only in the Import module.
  */
 export async function createImportLinerJob(
   data: FreightForwardFormData,
@@ -446,7 +434,7 @@ export async function updateWorkflowStatus(
         importMovementStatus: "completed" as const,
         importCompleted:
           getImportIgmStatus(beforeRecord) === "posted" &&
-          getImportDoStatus(beforeRecord) === "eod",
+          isImportDoCompleted(beforeRecord),
         ...(importEntry
           ? { importWorkflowTimeline: arrayUnion(importEntry) }
           : {}),
@@ -474,7 +462,7 @@ export async function updateWorkflowStatus(
           importMovementStatus: "completed" as const,
           importCompleted:
             getImportIgmStatus(beforeRecord) === "posted" &&
-            getImportDoStatus(beforeRecord) === "eod",
+            isImportDoCompleted(beforeRecord),
           importWorkflowTimeline: importEntry
             ? [...(beforeRecord.importWorkflowTimeline ?? []), importEntry]
             : beforeRecord.importWorkflowTimeline,
@@ -487,10 +475,25 @@ export async function updateWorkflowStatus(
 export async function getFreightForwardById(id: string) {
   const snap = await getDoc(doc(db, "freightForward", id));
   if (!snap.exists()) return null;
-  return {
+  const item = {
     id: snap.id,
-    ...(snap.data() as FreightForward),
-  };
+    ...(snap.data() as Omit<FreightForward, "id">),
+  } as FreightForward;
+  const flags = computePipelineFlags(item.statusTimeline);
+  const drifted =
+    item.pendingMomentum !== flags.pendingMomentum ||
+    item.pendingSplitManifest !== flags.pendingSplitManifest ||
+    item.pendingBilling !== flags.pendingBilling ||
+    item.pendingReceivable !== flags.pendingReceivable ||
+    item.pendingPayable !== flags.pendingPayable ||
+    item.workflowCompleted !== flags.workflowCompleted;
+
+  if (drifted) {
+    await updateDoc(doc(db, "freightForward", id), flags);
+    invalidateFreightForwardListCache();
+  }
+
+  return { ...item, ...flags };
 }
 
 export async function getImportLinerRecords() {
@@ -630,7 +633,7 @@ export async function updateImportLinerStage(
     const importCompleted =
       nextMovement === "completed" &&
       nextIgm === "posted" &&
-      nextDo === "eod";
+      (nextDo === "received" || nextDo === "eod");
 
     const patch: Record<string, unknown> = {
       importMovementStatus: nextMovement,
@@ -822,7 +825,7 @@ export async function getFreightForwardForExport(etaFrom: string, etaTo: string)
       id: d.id,
       ...(d.data() as Omit<FreightForward, "id">),
     }))
-    .filter((item) => !item.isDeleted);
+    .filter((item) => !item.isDeleted && !isImportJobNumber(item.jobNumber));
 }
 
 /** Active (non-deleted) jobs whose vessel name matches (case-insensitive, exact trim). */
@@ -835,6 +838,7 @@ export async function findFreightByVesselName(vesselName: string) {
     .filter(
       (item) =>
         !item.isDeleted &&
+        !isImportJobNumber(item.jobNumber) &&
         (item.vesselName ?? "").trim().toLowerCase() === needle
     )
     .sort((a, b) => (a.jobNumber ?? "").localeCompare(b.jobNumber ?? ""));
@@ -956,9 +960,16 @@ export async function getTrashedFreightForwards(): Promise<FreightForward[]> {
   }
 }
 
+export async function getTrashedFreightForwardJobs(): Promise<FreightForward[]> {
+  const trashed = await getTrashedFreightForwards();
+  return trashed.filter((item) => !isImportJobNumber(item.jobNumber));
+}
+
 export async function getTrashedImportLinerRecords(): Promise<FreightForward[]> {
   const trashed = await getTrashedFreightForwards();
-  return trashed.filter((item) => item.useForImport);
+  return trashed.filter(
+    (item) => item.useForImport || isImportJobNumber(item.jobNumber)
+  );
 }
 
 /** Permanently delete docs and attached Storage files. */

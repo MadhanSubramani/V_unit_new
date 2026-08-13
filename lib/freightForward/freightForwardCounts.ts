@@ -1,9 +1,6 @@
 import {
-  collection,
   doc,
-  getCountFromServer,
   getDocFromServer,
-  query,
   runTransaction,
   serverTimestamp,
   setDoc,
@@ -25,6 +22,8 @@ import {
   balanceCountsToStatsDoc,
   statsDocToBalanceCounts,
 } from "@/lib/freightForward/balanceCountsMapping";
+import { isImportJobNumber } from "@/lib/freightForward/generateJobNumber";
+import { fetchFreightForwardChunks } from "@/lib/freightForward/chunkedFetch";
 
 export { balanceCountsToStatsDoc, statsDocToBalanceCounts } from "@/lib/freightForward/balanceCountsMapping";
 
@@ -68,7 +67,7 @@ function zeroContributions(): Record<FreightForwardCountsKey, number> {
 export function freightForwardRecordContributions(
   item: FreightForward
 ): Record<FreightForwardCountsKey, number> {
-  if (item.isDeleted) {
+  if (item.isDeleted || isImportJobNumber(item.jobNumber)) {
     return zeroContributions();
   }
 
@@ -157,16 +156,14 @@ export function syncFreightForwardCounts(
 export async function countNext7DaysFromServer(): Promise<number | null> {
   try {
     const { from, to } = getNext7DayEtaRange();
-    const ref = collection(db, "freightForward");
-    const snap = await getCountFromServer(
-      query(
-        ref,
-        where("workflowCompleted", "==", false),
-        where("etaSort", ">=", from),
-        where("etaSort", "<=", to)
-      )
-    );
-    return snap.data().count;
+    const records = await fetchFreightForwardChunks([
+      where("workflowCompleted", "==", false),
+      where("etaSort", ">=", from),
+      where("etaSort", "<=", to),
+    ]);
+    return records.filter(
+      (item) => !item.isDeleted && !isImportJobNumber(item.jobNumber)
+    ).length;
   } catch (error) {
     console.warn("[freightForwardCounts] Live next7Days count failed:", error);
     return null;

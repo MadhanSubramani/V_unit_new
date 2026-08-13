@@ -27,6 +27,8 @@ import {
   invalidateImportLinerCache,
 } from "@/lib/freightForward/chunkedFetch";
 import { buildFreightSearchIndex } from "@/lib/freightForward/searchIndex";
+import { isImportJobNumber } from "@/lib/freightForward/generateJobNumber";
+import { computePipelineFlags } from "@/lib/freightForward/pipelineFlags";
 
 const REF = () => collection(db, "freightForward");
 
@@ -68,9 +70,19 @@ export function invalidateFreightForwardListCache() {
 }
 
 function docToRecord(docSnap: DocumentSnapshot): FreightForward {
-  return {
+  const item = {
     id: docSnap.id,
     ...(docSnap.data() as Omit<FreightForward, "id">),
+  } as FreightForward;
+  return hydrateFreightRecord(item);
+}
+
+/** Timeline is the source of truth; pending* flags can drift after manual DB edits. */
+function hydrateFreightRecord(item: FreightForward): FreightForward {
+  return {
+    ...item,
+    ...(item.searchText ? {} : buildFreightSearchIndex(item)),
+    ...computePipelineFlags(item.statusTimeline),
   };
 }
 
@@ -184,7 +196,9 @@ function filterRecordsForRequest(
   records: FreightForward[],
   request: FreightListRequest
 ): FreightForward[] {
-  let filtered = records.filter((item) => !item.isDeleted);
+  let filtered = records.filter(
+    (item) => !item.isDeleted && !isImportJobNumber(item.jobNumber)
+  );
 
   if (request.activeStatus) {
     filtered = filtered.filter((item) =>
@@ -225,8 +239,8 @@ async function fetchAllRecordsForClient(): Promise<FreightForward[]> {
     try {
       // Chunked full scan — no silent 5000 ceiling; preserves search/sort UX.
       // Hydrate missing search* fields in memory (legacy docs) for faster filters.
-      const records = (await fetchAllFreightForwardRecords()).map((item) =>
-        item.searchText ? item : { ...item, ...buildFreightSearchIndex(item) }
+      const records = (await fetchAllFreightForwardRecords()).map(
+        hydrateFreightRecord
       );
       clientRecordsCache = {
         records,
@@ -304,7 +318,7 @@ async function fetchServerListPage(
     for (const docSnap of snap.docs) {
       lastDoc = docSnap;
       const record = docToRecord(docSnap);
-      if (record.isDeleted) continue;
+      if (record.isDeleted || isImportJobNumber(record.jobNumber)) continue;
       activeItems.push(record);
       if (activeItems.length >= request.pageSize) break;
     }
@@ -347,23 +361,10 @@ async function resolveListPage(
 export async function getFreightForwardPaginated(
   request: FreightListRequest
 ): Promise<FreightListPage> {
-  // Search + FF/EZ natural sort stay on the chunked client path so legacy docs
-  // without search* fields remain findable. New writes store search indexes for
-  // faster in-memory matching via searchText.
-  if (request.searchValue?.trim() || requiresClientNaturalSort(request.sortKey)) {
-    return fetchClientListPage(request);
-  }
-
-  try {
-    return await resolveListPage(request);
-  } catch (error) {
-    if (!isFirestoreIndexError(error)) throw error;
-    console.warn(
-      "Freight list falling back to client mode (index missing or building).",
-      error
-    );
-    return fetchClientListPage(request);
-  }
+  // Always use the same active-FF filter as the tiles (exclude trash + IMP*).
+  // Server collection counts include those docs, which made list total
+  // (e.g. 55) disagree with completed + incomplete (e.g. 26 + 27 = 53).
+  return fetchClientListPage(request);
 }
 
 export async function getFreightForwardCardCountsFromServer() {
@@ -371,7 +372,7 @@ export async function getFreightForwardCardCountsFromServer() {
   // timeline rules as the list filters. Server count queries alone can include
   // trashed jobs and miss legacy docs without pending*/workflowCompleted flags.
   const records = (await fetchAllRecordsForClient()).filter(
-    (item) => !item.isDeleted
+    (item) => !item.isDeleted && !isImportJobNumber(item.jobNumber)
   );
   return computeBalanceCounts(records);
 }

@@ -6,7 +6,7 @@ import { RotateCcw, Trash2 } from "lucide-react";
 import ModuleHeader from "@/components/ModuleHeader";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import {
-  getTrashedFreightForwards,
+  getTrashedFreightForwardJobs,
   permanentlyDeleteFreightForwards,
   restoreFreightForwards,
 } from "@/lib/freightForward/freightForward";
@@ -40,7 +40,7 @@ export default function FreightForwardTrashPage() {
   const loadTrash = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getTrashedFreightForwards();
+      const data = await getTrashedFreightForwardJobs();
       setRows(data);
       setSelectedIds(new Set());
     } finally {

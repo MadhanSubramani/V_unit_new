@@ -50,7 +50,7 @@ export default function ImportWorklistPage() {
       setRecords(await getImportLinerRecords());
       setError("");
     } catch {
-      setError("Unable to load Import worklist.");
+      setError("Unable to load Import job list.");
     } finally {
       setLoading(false);
     }
@@ -91,7 +91,7 @@ export default function ImportWorklistPage() {
     <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <ModuleHeader
-          title="Import — Worklist"
+          title="Import — Job List"
           description="All IMP sequence jobs and Freight Forward jobs enabled for Import."
         />
         <button
@@ -145,7 +145,7 @@ export default function ImportWorklistPage() {
             {loading ? (
               <tr>
                 <td colSpan={13} className="px-4 py-10 text-center text-zinc-400">
-                  Loading worklist...
+                  Loading job list...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
