@@ -55,6 +55,7 @@ import {
   getOceanFreightPerContainer,
   getTotalOceanFreight,
 } from "@/lib/freightForward/containers";
+import { getInwardBoeNoDisplay } from "@/lib/import/linerWorkflow";
 import { canUpdateToStatus, getFreightListStatusLabel } from "@/lib/freightForward/workflowStatus";
 import { computePipelineFlags } from "@/lib/freightForward/pipelineFlags";
 import { uploadDocument } from "@/lib/kyc/uploadDocument";
@@ -1171,6 +1172,7 @@ const handleStatusUpdate = async (
     { label: "Location" },
     { label: "Consignee" },
     { label: "Client" },
+    { label: "Inward BOE No" },
     { label: "MBL" },
     { label: "HBL" },
     { label: "Cont No" },
@@ -2456,9 +2458,9 @@ const handleStatusUpdate = async (
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={15} className="py-10 text-center text-zinc-500">Loading...</td></tr>
+                  <tr><td colSpan={16} className="py-10 text-center text-zinc-500">Loading...</td></tr>
                 ) : rows.length === 0 ? (
-                  <tr><td colSpan={15} className="py-10 text-center text-zinc-400">No freight forward records found.</td></tr>
+                  <tr><td colSpan={16} className="py-10 text-center text-zinc-400">No freight forward records found.</td></tr>
                 ) : (
                   rows.map((item) => (
                     <tr
@@ -2479,6 +2481,7 @@ const handleStatusUpdate = async (
                       </td>
                       <td className="px-4 py-3 font-medium text-zinc-800">{item.consignmentName}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.clientName || "—"}</td>
+                      <td className="px-4 py-3 text-zinc-600">{getInwardBoeNoDisplay(item)}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.mbl}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.hbl}</td>
                       <td className="px-4 py-3 text-zinc-600">{formatContainersDisplay(item)}</td>

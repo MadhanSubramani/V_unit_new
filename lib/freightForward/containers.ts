@@ -1,4 +1,4 @@
-import { FreightContainer, FreightForward } from "@/types/freightForward";
+import { FreightContainer, FreightForward, CONTAINER_NUMBER_FORMAT_MESSAGE, CONTAINER_NUMBER_REGEX } from "@/types/freightForward";
 
 function toNumber(value: unknown): number | undefined {
   if (value === undefined || value === null || value === "") return undefined;
@@ -51,6 +51,61 @@ export function formatContainersDisplay(
   const first = containers[0].containerNumber;
   if (containers.length === 1) return first;
   return `${first} +${containers.length - 1}`;
+}
+
+export function normalizeContainerNumber(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+}
+
+export function containerNumberError(value: unknown): string | undefined {
+  const number = normalizeContainerNumber(value);
+  if (!number) return "Container Number is required.";
+  if (!CONTAINER_NUMBER_REGEX.test(number)) {
+    return CONTAINER_NUMBER_FORMAT_MESSAGE;
+  }
+  return undefined;
+}
+
+/** Same rules as Freight Forward add/edit. */
+export function validateFreightContainers(
+  containers: FreightContainer[]
+): Record<string, string> {
+  const next: Record<string, string> = {};
+  const items = containers.length ? containers : [emptyContainer()];
+  let hasValidContainer = false;
+  const seen = new Set<string>();
+
+  items.forEach((item, index) => {
+    const number = normalizeContainerNumber(item.containerNumber);
+    if (!number) {
+      if (items.length === 1 || index === 0) {
+        next[`containers.${index}.containerNumber`] =
+          "Container Number is required.";
+      }
+      return;
+    }
+    const formatError = containerNumberError(number);
+    if (formatError) {
+      next[`containers.${index}.containerNumber`] = formatError;
+      return;
+    }
+    if (seen.has(number)) {
+      next[`containers.${index}.containerNumber`] =
+        "Duplicate container number.";
+      return;
+    }
+    seen.add(number);
+    hasValidContainer = true;
+  });
+
+  if (!hasValidContainer && !next["containers.0.containerNumber"]) {
+    next["containers.0.containerNumber"] = "At least one container is required.";
+  }
+
+  return next;
 }
 
 export function getOceanFreightPerContainer(

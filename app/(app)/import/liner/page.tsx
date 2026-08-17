@@ -28,6 +28,7 @@ import {
   getImportIgmStatus,
   getImportMovementStatus,
   getImportStageRemark,
+  getInwardBoeNoDisplay,
   ImportLinerCard,
   isImportLinerCompleted,
   isImportStagePending,
@@ -206,6 +207,7 @@ export default function ImportLinerPage() {
         item.ezRefNumber,
         item.consignmentName,
         item.clientName,
+        item.inwardBoeNo,
         item.mbl,
         item.hbl,
         item.vesselName,
@@ -373,6 +375,7 @@ export default function ImportLinerPage() {
               <th className="px-3 py-3 font-semibold">Location</th>
               <th className="px-3 py-3 font-semibold">Consignee</th>
               <th className="px-3 py-3 font-semibold">Client</th>
+              <th className="px-3 py-3 font-semibold">Inward BOE No</th>
               <th className="px-3 py-3 font-semibold">MBL</th>
               <th className="px-3 py-3 font-semibold">HBL</th>
               <th className="px-3 py-3 font-semibold">Containers</th>
@@ -384,13 +387,13 @@ export default function ImportLinerPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={16} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={17} className="px-4 py-10 text-center text-zinc-400">
                   Loading Import Liner jobs...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={16} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={17} className="px-4 py-10 text-center text-zinc-400">
                   No jobs found for this filter. Add jobs from Import Job List,
                   or enable “Use this job for Import” in Freight Forward.
                 </td>
@@ -529,6 +532,7 @@ function Row({
         <TableCell value={locationLabel(item)} />
         <TableCell value={item.consignmentName} />
         <TableCell value={item.clientName} />
+        <TableCell value={getInwardBoeNoDisplay(item)} width={120} />
         <TableCell value={item.mbl} width={130} />
         <TableCell value={item.hbl} width={130} />
         <TableCell value={formatContainersDisplay(item)} width={170} />
@@ -567,7 +571,7 @@ function Row({
       </tr>
       {expanded && (
         <tr className="border-t border-zinc-100 bg-zinc-100/70">
-          <td colSpan={16} className="p-0">
+          <td colSpan={17} className="p-0">
             <div
               className="sticky left-0 min-w-0 p-3"
               style={panelWidth ? { width: panelWidth } : undefined}

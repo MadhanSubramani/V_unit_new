@@ -113,6 +113,11 @@ export function matchesImportLinerCard(
   }
 }
 
+export function getInwardBoeNoDisplay(item: FreightForward) {
+  const value = item.inwardBoeNo?.trim();
+  return value || "—";
+}
+
 export function computeImportLinerCounts(records: FreightForward[]) {
   const completed = records.filter(isImportLinerCompleted).length;
   return {

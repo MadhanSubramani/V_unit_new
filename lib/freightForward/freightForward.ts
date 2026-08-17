@@ -21,11 +21,16 @@ import {
   FreightForwardDocument,
   FreightForwardFormData,
   FreightForwardStatus,
+  ImportAuditStamp,
+  ImportBoeChecklist,
+  ImportBoeClearanceStatus,
+  ImportBoeFilingStatus,
   ImportDoStatus,
   ImportIgmStatus,
   ImportMovementStatus,
   ImportWorkflowSection,
   ImportWorkflowTimelineEntry,
+  INWARD_BOE_NO_REGEX,
 } from "@/types/freightForward";
 import {
   ensureFreightForwardCounterSeeded,
@@ -61,6 +66,10 @@ import {
   isImportLinerCompleted,
   isImportWorklistJob,
 } from "@/lib/import/linerWorkflow";
+import {
+  isBoeChecklistComplete,
+  isImportBoeInCompleted,
+} from "@/lib/import/boeInWorkflow";
 
 const REF = () => collection(db, "freightForward");
 
@@ -743,6 +752,203 @@ export async function updateImportLinerRemark(
   return {
     ...before,
     [field]: remark.trim(),
+    updatedBy,
+  } as FreightForward;
+}
+
+async function loadActiveImportJob(id: string) {
+  const docRef = doc(db, "freightForward", id);
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) throw new Error("Freight Forward job not found.");
+  const before = {
+    id: snap.id,
+    ...(snap.data() as Omit<FreightForward, "id">),
+  } as FreightForward;
+  if (!before.useForImport || before.isDeleted) {
+    throw new Error("This job is not active in Import.");
+  }
+  return { docRef, before };
+}
+
+function stamp(updatedBy: string): ImportAuditStamp {
+  return { updatedBy, updatedAt: Timestamp.now() };
+}
+
+export async function updateImportBoeChecklist(
+  id: string,
+  checklist: ImportBoeChecklist,
+  updatedBy: string
+) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  if (!isImportLinerCompleted(before)) {
+    throw new Error("Complete Liner before updating BOE In.");
+  }
+
+  const next: ImportBoeChecklist = {
+    docReceived: !!checklist.docReceived,
+    checklist: !!checklist.checklist,
+    clientConfirmation: !!checklist.clientConfirmation,
+  };
+  const complete = isBoeChecklistComplete({
+    ...before,
+    importBoeChecklist: next,
+  });
+  const audit = complete ? stamp(updatedBy) : before.importBoeChecklistAudit;
+
+  await updateDoc(docRef, {
+    importBoeChecklist: next,
+    ...(audit ? { importBoeChecklistAudit: audit } : {}),
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+
+  return {
+    ...before,
+    importBoeChecklist: next,
+    importBoeChecklistAudit: audit,
+    updatedBy,
+  } as FreightForward;
+}
+
+export async function updateImportBoeFiling(
+  id: string,
+  filingStatus: ImportBoeFilingStatus,
+  updatedBy: string
+) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  if (!isImportLinerCompleted(before)) {
+    throw new Error("Complete Liner before updating BOE In.");
+  }
+  if (!isBoeChecklistComplete(before)) {
+    throw new Error("Complete the checklist before updating BOE status.");
+  }
+
+  const audit = stamp(updatedBy);
+  const patch: Record<string, unknown> = {
+    importBoeFilingStatus: filingStatus,
+    importBoeFilingAudit: audit,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  };
+  if (filingStatus !== "filed") {
+    patch.importBoeInCompleted = false;
+  }
+
+  await updateDoc(docRef, patch);
+  invalidateFreightForwardListCache();
+
+  return {
+    ...before,
+    importBoeFilingStatus: filingStatus,
+    importBoeFilingAudit: audit,
+    importBoeInCompleted:
+      filingStatus === "filed" ? before.importBoeInCompleted : false,
+    updatedBy,
+  } as FreightForward;
+}
+
+export async function completeImportBoeIn(
+  id: string,
+  data: {
+    inwardBoeNo: string;
+    inwardBoeDate: string;
+    importBoeClearanceStatus: ImportBoeClearanceStatus;
+  },
+  updatedBy: string
+) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  if (!isImportLinerCompleted(before)) {
+    throw new Error("Complete Liner before completing BOE In.");
+  }
+  if (!isBoeChecklistComplete(before)) {
+    throw new Error("Complete the checklist before completing BOE In.");
+  }
+  if (before.importBoeFilingStatus !== "filed") {
+    throw new Error("Mark BOE as Filed before completing BOE In.");
+  }
+
+  const inwardBoeNo = data.inwardBoeNo.trim();
+  if (!INWARD_BOE_NO_REGEX.test(inwardBoeNo)) {
+    throw new Error("Inward No must be 7 digits.");
+  }
+  const inwardBoeDate = data.inwardBoeDate.trim().slice(0, 10);
+  if (!inwardBoeDate) throw new Error("Date is required.");
+  if (!["rms", "open"].includes(data.importBoeClearanceStatus)) {
+    throw new Error("Select RMS or Open.");
+  }
+
+  const audit = stamp(updatedBy);
+  const search = buildFreightSearchIndex({
+    ...before,
+    inwardBoeNo,
+  });
+  await updateDoc(docRef, {
+    inwardBoeNo,
+    inwardBoeDate,
+    importBoeClearanceStatus: data.importBoeClearanceStatus,
+    importBoeInCompleted: true,
+    importBoeInCompleteAudit: audit,
+    ...search,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+
+  return {
+    ...before,
+    inwardBoeNo,
+    inwardBoeDate,
+    importBoeClearanceStatus: data.importBoeClearanceStatus,
+    importBoeInCompleted: true,
+    importBoeInCompleteAudit: audit,
+    updatedBy,
+  } as FreightForward;
+}
+
+export async function completeImportTransport(
+  id: string,
+  data: {
+    importTruckStash: boolean;
+    importVehicleNo: string;
+    importDriverName: string;
+    importDriverPhone: string;
+  },
+  updatedBy: string
+) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  if (!isImportBoeInCompleted(before)) {
+    throw new Error("Complete BOE In before updating Transport.");
+  }
+
+  const importVehicleNo = data.importVehicleNo.trim();
+  const importDriverName = data.importDriverName.trim();
+  const importDriverPhone = data.importDriverPhone.trim();
+  if (!importVehicleNo) throw new Error("Vehicle No is required.");
+  if (!importDriverName) throw new Error("Driver name is required.");
+  if (!importDriverPhone) throw new Error("Phone number is required.");
+
+  const audit = stamp(updatedBy);
+  await updateDoc(docRef, {
+    importTruckStash: data.importTruckStash,
+    importVehicleNo,
+    importDriverName,
+    importDriverPhone,
+    importTransportCompleted: true,
+    importTransportCompleteAudit: audit,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+
+  return {
+    ...before,
+    importTruckStash: data.importTruckStash,
+    importVehicleNo,
+    importDriverName,
+    importDriverPhone,
+    importTransportCompleted: true,
+    importTransportCompleteAudit: audit,
     updatedBy,
   } as FreightForward;
 }

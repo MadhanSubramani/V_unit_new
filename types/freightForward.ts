@@ -47,6 +47,20 @@ export type ImportIgmStatus = "pending" | "posted";
 export type ImportDoStatus = "pending" | "received" | "eod";
 export type ImportWorkflowSection = "movement" | "igm" | "do";
 
+export type ImportBoeFilingStatus = "unfiled" | "filed";
+export type ImportBoeClearanceStatus = "rms" | "open";
+
+export interface ImportAuditStamp {
+  updatedBy: string;
+  updatedAt?: Timestamp | Date | unknown;
+}
+
+export interface ImportBoeChecklist {
+  docReceived?: boolean;
+  checklist?: boolean;
+  clientConfirmation?: boolean;
+}
+
 export type ImportWorkflowTimelineEntry =
   | {
       section: "movement";
@@ -137,6 +151,23 @@ export interface FreightForward {
   importDoRemark?: string;
   /** Extra named documents captured from Import Add / documents section. */
   otherDocuments?: FreightForwardDocument[];
+  /** BOE In — captured after Liner completion. */
+  importBoeChecklist?: ImportBoeChecklist;
+  importBoeChecklistAudit?: ImportAuditStamp;
+  importBoeFilingStatus?: ImportBoeFilingStatus;
+  importBoeFilingAudit?: ImportAuditStamp;
+  inwardBoeNo?: string;
+  inwardBoeDate?: string;
+  importBoeClearanceStatus?: ImportBoeClearanceStatus;
+  importBoeInCompleted?: boolean;
+  importBoeInCompleteAudit?: ImportAuditStamp;
+  /** Transport — captured after BOE In completion. */
+  importTruckStash?: boolean;
+  importVehicleNo?: string;
+  importDriverName?: string;
+  importDriverPhone?: string;
+  importTransportCompleted?: boolean;
+  importTransportCompleteAudit?: ImportAuditStamp;
   /** Lowercase search helpers for scalable filtering/prefix queries. */
   searchText?: string;
   searchJobNumber?: string;
@@ -160,6 +191,9 @@ export interface FreightForward {
 }
 
 export const CONTAINER_NUMBER_REGEX = /^[A-Z]{4}\d{7}$/;
+export const CONTAINER_NUMBER_FORMAT_MESSAGE =
+  "Format must be 4 uppercase letters followed by 7 digits (e.g. ABCD1234567).";
+export const INWARD_BOE_NO_REGEX = /^\d{7}$/;
 
 export type FreightForwardFormData = Omit<
   FreightForward,

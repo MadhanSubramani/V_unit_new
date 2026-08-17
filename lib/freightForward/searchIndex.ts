@@ -68,6 +68,7 @@ export function buildFreightSearchIndex(
     searchMbl,
     searchHbl,
     searchContainer,
+    norm(item.inwardBoeNo),
     norm(item.liner),
     norm(item.pol),
     norm(item.pod),

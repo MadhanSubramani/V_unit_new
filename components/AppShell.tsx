@@ -4,11 +4,11 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  ArrowDownToLine,
   ArrowUpFromLine,
   CalendarClock,
   ChevronDown,
   ClipboardList,
+  FileText,
   LogOut,
   Menu,
   Settings,
@@ -38,8 +38,8 @@ const IMPORT_SUB = [
   { href: "/import/eta-updater", label: "ETA Updater", icon: CalendarClock, enabled: true },
   { href: "/import/worklist", label: "Job List", icon: ClipboardList, enabled: true },
   { href: "/import/liner", label: "Liner", icon: Ship, enabled: true },
-  { href: "/import/boe-in", label: "BOE In", icon: ClipboardList, enabled: false },
-  { href: "/import/transport", label: "Transport", icon: Warehouse, enabled: false },
+  { href: "/import/boe-in", label: "BOE In", icon: FileText, enabled: true },
+  { href: "/import/transport", label: "Transport", icon: Warehouse, enabled: true },
   { href: "/import/boe-out", label: "BOE Out", icon: ClipboardList, enabled: false },
   { href: "/import/accounts", label: "Accounts", icon: Settings, enabled: false },
   { href: "/import/trash", label: "Trash", icon: Trash2, enabled: true },
@@ -275,7 +275,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             }}
             className={groupParentClass(isImportActive)}
           >
-            <ArrowDownToLine
+            <FileText
               size={collapsed ? 16 : 15}
               strokeWidth={isImportActive ? 2.25 : 2}
             />

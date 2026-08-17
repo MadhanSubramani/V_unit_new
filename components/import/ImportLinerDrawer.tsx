@@ -2,10 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
+import FileInputWithClip from "@/components/import/FileInputWithClip";
 import { createImportLinerJob } from "@/lib/freightForward/freightForward";
 import {
   emptyContainer,
   getContainersFromRecord,
+  normalizeContainerNumber,
+  validateFreightContainers,
 } from "@/lib/freightForward/containers";
 import { getCfsList } from "@/lib/cfs/cfs";
 import { getSezList } from "@/lib/sez/sez";
@@ -15,7 +18,6 @@ import { uploadDocument } from "@/lib/kyc/uploadDocument";
 import { Cfs } from "@/types/cfs";
 import { ConfigItem } from "@/types/configuration";
 import {
-  CONTAINER_NUMBER_REGEX,
   FreightContainer,
   FreightForwardDocument,
   FreightForwardFormData,
@@ -119,10 +121,33 @@ export default function ImportLinerDrawer({
     });
   };
 
-  const containers = getContainersFromRecord({
-    containers: form.containers,
-    containerNumber: form.containerNumber ?? "",
-  });
+  const containers = (() => {
+    const items = getContainersFromRecord({
+      containers: form.containers,
+      containerNumber: form.containerNumber ?? "",
+    });
+    return items.length ? items : [emptyContainer()];
+  })();
+
+  const setContainerError = (index: number, value: string) => {
+    const key = `containers.${index}.containerNumber`;
+    const number = normalizeContainerNumber(value);
+    setErrors((current) => {
+      const next = { ...current };
+      if (!number) {
+        delete next[key];
+        return next;
+      }
+      const fromList = validateFreightContainers(
+        containers.map((item, i) =>
+          i === index ? { ...item, containerNumber: number } : item
+        )
+      )[key];
+      if (fromList) next[key] = fromList;
+      else delete next[key];
+      return next;
+    });
+  };
 
   const updateContainer = (
     index: number,
@@ -132,7 +157,10 @@ export default function ImportLinerDrawer({
     const items = [...containers];
     items[index] = {
       ...items[index],
-      [field]: field === "containerNumber" ? value.toUpperCase() : value,
+      [field]:
+        field === "containerNumber"
+          ? normalizeContainerNumber(value).slice(0, 11)
+          : value,
     };
     setForm({
       ...form,
@@ -141,7 +169,7 @@ export default function ImportLinerDrawer({
       containerSize: items[0]?.containerSize ?? "",
       containerType: items[0]?.containerType ?? "",
     });
-    clearError(`containers.${index}.containerNumber`);
+    if (field === "containerNumber") setContainerError(index, value);
   };
 
   const validate = () => {
@@ -160,15 +188,7 @@ export default function ImportLinerDrawer({
     if (form.locationType === "sez" && !form.sez?.trim()) {
       next.location = "SEZ is required.";
     }
-    containers.forEach((item, index) => {
-      if (!item.containerNumber?.trim()) {
-        next[`containers.${index}.containerNumber`] =
-          "Container number is required.";
-      } else if (!CONTAINER_NUMBER_REGEX.test(item.containerNumber.trim())) {
-        next[`containers.${index}.containerNumber`] =
-          "Invalid container number.";
-      }
-    });
+    Object.assign(next, validateFreightContainers(containers));
     otherDocs.forEach((doc, index) => {
       if (doc.file && !doc.name.trim()) {
         next[`otherDocs.${index}`] = "Document name is required.";
@@ -208,8 +228,13 @@ export default function ImportLinerDrawer({
         consignmentName: form.consignmentName!.trim(),
         mbl: form.mbl!.trim(),
         hbl: form.hbl!.trim(),
-        containerNumber: containers[0]?.containerNumber ?? "",
-        containers,
+        containerNumber: normalizeContainerNumber(
+          containers[0]?.containerNumber
+        ),
+        containers: containers.map((item) => ({
+          ...item,
+          containerNumber: normalizeContainerNumber(item.containerNumber),
+        })),
         mblUrl,
         hblUrl,
         otherDocuments,
@@ -439,20 +464,13 @@ export default function ImportLinerDrawer({
             </label>
             <label className="block space-y-1.5 text-xs">
               <span className="font-medium text-zinc-700">Client</span>
-              <select
+              <input
                 value={form.clientName ?? ""}
                 onChange={(e) =>
                   setForm({ ...form, clientName: e.target.value })
                 }
                 className={fieldClass("clientName")}
-              >
-                <option value="">Select</option>
-                {kycList.map((item) => (
-                  <option key={item.id} value={item.companyName}>
-                    {item.companyName}
-                  </option>
-                ))}
-              </select>
+              />
             </label>
           </div>
 
@@ -469,13 +487,11 @@ export default function ImportLinerDrawer({
                 }}
                 className={fieldClass("mbl")}
               />
-              <input
-                type="file"
-                onChange={(e) => {
-                  setMblFile(e.target.files?.[0] ?? null);
+              <FileInputWithClip
+                onChange={(file) => {
+                  setMblFile(file);
                   clearError("mblFile");
                 }}
-                className="text-[11px]"
               />
               {(errors.mbl || errors.mblFile) && (
                 <span className="text-[11px] text-red-500">
@@ -495,13 +511,11 @@ export default function ImportLinerDrawer({
                 }}
                 className={fieldClass("hbl")}
               />
-              <input
-                type="file"
-                onChange={(e) => {
-                  setHblFile(e.target.files?.[0] ?? null);
+              <FileInputWithClip
+                onChange={(file) => {
+                  setHblFile(file);
                   clearError("hblFile");
                 }}
-                className="text-[11px]"
               />
               {(errors.hbl || errors.hblFile) && (
                 <span className="text-[11px] text-red-500">
@@ -513,7 +527,9 @@ export default function ImportLinerDrawer({
 
           <div className="space-y-2 rounded-xl border border-zinc-200 p-3">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-medium text-zinc-700">Containers</p>
+              <p className="text-xs font-medium text-zinc-700">
+                Containers <span className="text-red-500">*</span>
+              </p>
               <button
                 type="button"
                 onClick={() =>
@@ -529,43 +545,54 @@ export default function ImportLinerDrawer({
               </button>
             </div>
             {containers.map((item, index) => (
-              <div key={index} className="grid grid-cols-3 gap-2">
-                <input
-                  value={item.containerNumber}
-                  placeholder="Container No"
-                  onChange={(e) =>
-                    updateContainer(index, "containerNumber", e.target.value)
-                  }
-                  className={fieldClass(`containers.${index}.containerNumber`)}
-                />
-                <select
-                  value={item.containerSize ?? ""}
-                  onChange={(e) =>
-                    updateContainer(index, "containerSize", e.target.value)
-                  }
-                  className={fieldClass("containerSize")}
-                >
-                  <option value="">Size</option>
-                  {containerSizes.map((size) => (
-                    <option key={size.id} value={size.value}>
-                      {size.value}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={item.containerType ?? ""}
-                  onChange={(e) =>
-                    updateContainer(index, "containerType", e.target.value)
-                  }
-                  className={fieldClass("containerType")}
-                >
-                  <option value="">Type</option>
-                  {containerTypes.map((type) => (
-                    <option key={type.id} value={type.value}>
-                      {type.value}
-                    </option>
-                  ))}
-                </select>
+              <div key={index} className="space-y-1">
+                <div className="grid grid-cols-3 gap-2">
+                  <input
+                    value={item.containerNumber}
+                    placeholder="ABCD1234567"
+                    maxLength={11}
+                    onChange={(e) =>
+                      updateContainer(index, "containerNumber", e.target.value)
+                    }
+                    onBlur={() =>
+                      setContainerError(index, item.containerNumber)
+                    }
+                    className={fieldClass(`containers.${index}.containerNumber`)}
+                  />
+                  <select
+                    value={item.containerSize ?? ""}
+                    onChange={(e) =>
+                      updateContainer(index, "containerSize", e.target.value)
+                    }
+                    className={fieldClass("containerSize")}
+                  >
+                    <option value="">Size</option>
+                    {containerSizes.map((size) => (
+                      <option key={size.id} value={size.value}>
+                        {size.value}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={item.containerType ?? ""}
+                    onChange={(e) =>
+                      updateContainer(index, "containerType", e.target.value)
+                    }
+                    className={fieldClass("containerType")}
+                  >
+                    <option value="">Type</option>
+                    {containerTypes.map((type) => (
+                      <option key={type.id} value={type.value}>
+                        {type.value}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {errors[`containers.${index}.containerNumber`] && (
+                  <p className="text-[11px] text-red-500">
+                    {errors[`containers.${index}.containerNumber`]}
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -610,18 +637,16 @@ export default function ImportLinerDrawer({
                     </button>
                   )}
                 </div>
-                <input
-                  type="file"
-                  onChange={(e) => {
+                <FileInputWithClip
+                  onChange={(file) => {
                     const next = [...otherDocs];
                     next[index] = {
                       ...next[index],
-                      file: e.target.files?.[0] ?? null,
+                      file,
                     };
                     setOtherDocs(next);
                     clearError(`otherDocs.${index}`);
                   }}
-                  className="text-[11px]"
                 />
                 {errors[`otherDocs.${index}`] && (
                   <span className="text-[11px] text-red-500">

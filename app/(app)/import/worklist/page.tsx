@@ -12,6 +12,7 @@ import {
 import { formatContainersDisplay } from "@/lib/freightForward/containers";
 import {
   getImportCompletionCount,
+  getInwardBoeNoDisplay,
   isImportLinerCompleted,
 } from "@/lib/import/linerWorkflow";
 import { FreightForward } from "@/types/freightForward";
@@ -69,6 +70,7 @@ export default function ImportWorklistPage() {
         item.ezRefNumber,
         item.consignmentName,
         item.clientName,
+        item.inwardBoeNo,
         item.mbl,
         item.hbl,
         item.vesselName,
@@ -133,6 +135,7 @@ export default function ImportWorklistPage() {
               <th className="px-3 py-3 font-semibold">Location</th>
               <th className="px-3 py-3 font-semibold">Consignee</th>
               <th className="px-3 py-3 font-semibold">Client</th>
+              <th className="px-3 py-3 font-semibold">Inward BOE No</th>
               <th className="px-3 py-3 font-semibold">MBL</th>
               <th className="px-3 py-3 font-semibold">HBL</th>
               <th className="px-3 py-3 font-semibold">Containers</th>
@@ -144,13 +147,13 @@ export default function ImportWorklistPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={13} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={14} className="px-4 py-10 text-center text-zinc-400">
                   Loading job list...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={13} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={14} className="px-4 py-10 text-center text-zinc-400">
                   No jobs found. Use Add, or enable “Use this job for Import” in
                   Freight Forward.
                 </td>
@@ -178,6 +181,9 @@ export default function ImportWorklistPage() {
                     </td>
                     <td className="px-3 py-3 text-zinc-700">
                       {item.clientName || "—"}
+                    </td>
+                    <td className="px-3 py-3 text-zinc-700">
+                      {getInwardBoeNoDisplay(item)}
                     </td>
                     <td className="px-3 py-3 text-zinc-700">{item.mbl || "—"}</td>
                     <td className="px-3 py-3 text-zinc-700">{item.hbl || "—"}</td>
