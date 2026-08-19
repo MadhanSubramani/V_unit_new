@@ -93,6 +93,10 @@ export interface FreightForward {
   blType?: string;
   mblUrl?: FreightForwardDocument;
   hblUrl?: FreightForwardDocument;
+  /** Multiple MBL documents (new); legacy single `mblUrl` kept for older records. */
+  mblDocs?: FreightForwardDocument[];
+  /** Multiple HBL documents (new); legacy single `hblUrl` kept for older records. */
+  hblDocs?: FreightForwardDocument[];
   containerNumber: string;
   containerSize?: string;
   containerType?: string;

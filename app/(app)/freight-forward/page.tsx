@@ -55,7 +55,6 @@ import {
   getOceanFreightPerContainer,
   getTotalOceanFreight,
 } from "@/lib/freightForward/containers";
-import { getInwardBoeNoDisplay } from "@/lib/import/linerWorkflow";
 import { canUpdateToStatus, getFreightListStatusLabel } from "@/lib/freightForward/workflowStatus";
 import { computePipelineFlags } from "@/lib/freightForward/pipelineFlags";
 import { uploadDocument } from "@/lib/kyc/uploadDocument";
@@ -413,14 +412,14 @@ export default function FreightForwardPage() {
   const [submitError, setSubmitError] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const [mblFile, setMblFile] = useState<File | null>(null);
-  const [hblFile, setHblFile] = useState<File | null>(null);
+  const [mblFiles, setMblFiles] = useState<File[]>([]);
+  const [hblFiles, setHblFiles] = useState<File[]>([]);
   const [billedAmountFile, setBilledAmountFile] = useState<File | null>(null);
   const [creditNoteFile, setCreditNoteFile] = useState<File | null>(null);
   const [paymentDateFile, setPaymentDateFile] = useState<File | null>(null);
   const [debitFiles, setDebitFiles] = useState<File[]>([]);
-  const [existingMblDoc, setExistingMblDoc] = useState<FreightForwardDocument | undefined>();
-  const [existingHblDoc, setExistingHblDoc] = useState<FreightForwardDocument | undefined>();
+  const [existingMblDocs, setExistingMblDocs] = useState<FreightForwardDocument[]>([]);
+  const [existingHblDocs, setExistingHblDocs] = useState<FreightForwardDocument[]>([]);
   const [existingBilledAmountDoc, setExistingBilledAmountDoc] = useState<FreightForwardDocument | undefined>();
   const [existingCreditNoteDoc, setExistingCreditNoteDoc] = useState<FreightForwardDocument | undefined>();
   const [existingPaymentDateDoc, setExistingPaymentDateDoc] = useState<FreightForwardDocument | undefined>();
@@ -761,14 +760,14 @@ const handleStatusUpdate = async (
   };
 
   const resetDocumentFiles = () => {
-    setMblFile(null);
-    setHblFile(null);
+    setMblFiles([]);
+    setHblFiles([]);
     setBilledAmountFile(null);
     setCreditNoteFile(null);
     setPaymentDateFile(null);
     setDebitFiles([]);
-    setExistingMblDoc(undefined);
-    setExistingHblDoc(undefined);
+    setExistingMblDocs([]);
+    setExistingHblDocs([]);
     setExistingBilledAmountDoc(undefined);
     setExistingCreditNoteDoc(undefined);
     setExistingPaymentDateDoc(undefined);
@@ -776,14 +775,24 @@ const handleStatusUpdate = async (
   };
 
   const loadDocumentFiles = (item: FreightForward) => {
-    setMblFile(null);
-    setHblFile(null);
+    setMblFiles([]);
+    setHblFiles([]);
     setBilledAmountFile(null);
     setCreditNoteFile(null);
     setPaymentDateFile(null);
     setDebitFiles([]);
-    setExistingMblDoc(item.mblUrl);
-    setExistingHblDoc(item.hblUrl);
+    const mblExisting: FreightForwardDocument[] = item.mblDocs?.length
+      ? item.mblDocs
+      : item.mblUrl
+        ? [item.mblUrl]
+        : [];
+    const hblExisting: FreightForwardDocument[] = item.hblDocs?.length
+      ? item.hblDocs
+      : item.hblUrl
+        ? [item.hblUrl]
+        : [];
+    setExistingMblDocs(mblExisting);
+    setExistingHblDocs(hblExisting);
     setExistingBilledAmountDoc(item.billedAmountUrl);
     setExistingCreditNoteDoc(item.creditNoteUrl);
     setExistingPaymentDateDoc(item.paymentDateUrl);
@@ -1014,9 +1023,16 @@ const handleStatusUpdate = async (
         return uploadDocument(file, folder);
       };
 
-      const [mblUrl, hblUrl, billedAmountUrl, creditNoteUrl, paymentDateUrl] = await Promise.all([
-        uploadIfNeeded(mblFile, "freight-forward/mbl", existingMblDoc),
-        uploadIfNeeded(hblFile, "freight-forward/hbl", existingHblDoc),
+      const newMblDocs = await Promise.all(
+        mblFiles.map((file) => uploadDocument(file, "freight-forward/mbl"))
+      );
+      const newHblDocs = await Promise.all(
+        hblFiles.map((file) => uploadDocument(file, "freight-forward/hbl"))
+      );
+      const mblDocs = [...existingMblDocs, ...newMblDocs];
+      const hblDocs = [...existingHblDocs, ...newHblDocs];
+
+      const [billedAmountUrl, creditNoteUrl, paymentDateUrl] = await Promise.all([
         uploadIfNeeded(billedAmountFile, "freight-forward/billed-amount", existingBilledAmountDoc),
         uploadIfNeeded(creditNoteFile, "freight-forward/credit-note", existingCreditNoteDoc),
         uploadIfNeeded(paymentDateFile, "freight-forward/payment-date", existingPaymentDateDoc),
@@ -1028,8 +1044,10 @@ const handleStatusUpdate = async (
 
       const payload = removeUndefined({
         ...buildPayload(form),
-        mblUrl,
-        hblUrl,
+        mblUrl: mblDocs[0],
+        hblUrl: hblDocs[0],
+        mblDocs,
+        hblDocs,
         billedAmountUrl,
         creditNoteUrl,
         paymentDateUrl,
@@ -1172,7 +1190,6 @@ const handleStatusUpdate = async (
     { label: "Location" },
     { label: "Consignee" },
     { label: "Client" },
-    { label: "Inward BOE No" },
     { label: "MBL" },
     { label: "HBL" },
     { label: "Cont No" },
@@ -1318,44 +1335,50 @@ const handleStatusUpdate = async (
         <FormSection title="Bill of Lading" description="MBL, HBL and BL type details.">
           <div className="grid gap-3 sm:grid-cols-2">
             <div data-field="mbl">
-              <FieldWithUpload
-                label="MBL"
-                required
+              <label className="mb-1 block text-[11px] font-medium text-zinc-600">
+                MBL <span className="text-red-500">*</span>
+              </label>
+              <input
                 value={form.mbl}
-                onChange={(v) => {
-                  setForm({ ...form, mbl: v });
+                onChange={(e) => {
+                  setForm({ ...form, mbl: e.target.value });
                   clearError("mbl");
                 }}
-                file={mblFile}
-                existingFile={existingMblDoc}
-                onFileChange={(f) => {
-                  setMblFile(f);
-                  if (f) setExistingMblDoc(undefined);
-                }}
-                onRemoveExisting={() => setExistingMblDoc(undefined)}
-                error={errors.mbl}
-                fieldClass={fieldClass("mbl")}
+                className={fieldClass("mbl")}
               />
+              {errors.mbl && <p className="mt-1 text-[11px] text-red-500">{errors.mbl}</p>}
+              <div className="mt-2">
+                <MultiDocumentFileUpload
+                  files={mblFiles}
+                  existingFiles={existingMblDocs}
+                  onFilesAdd={(f) => setMblFiles((prev) => [...prev, ...f])}
+                  onFileRemove={(i) => setMblFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                  onExistingRemove={(i) => setExistingMblDocs((prev) => prev.filter((_, idx) => idx !== i))}
+                />
+              </div>
             </div>
             <div data-field="hbl">
-              <FieldWithUpload
-                label="HBL"
-                required
+              <label className="mb-1 block text-[11px] font-medium text-zinc-600">
+                HBL <span className="text-red-500">*</span>
+              </label>
+              <input
                 value={form.hbl}
-                onChange={(v) => {
-                  setForm({ ...form, hbl: v });
+                onChange={(e) => {
+                  setForm({ ...form, hbl: e.target.value });
                   clearError("hbl");
                 }}
-                file={hblFile}
-                existingFile={existingHblDoc}
-                onFileChange={(f) => {
-                  setHblFile(f);
-                  if (f) setExistingHblDoc(undefined);
-                }}
-                onRemoveExisting={() => setExistingHblDoc(undefined)}
-                error={errors.hbl}
-                fieldClass={fieldClass("hbl")}
+                className={fieldClass("hbl")}
               />
+              {errors.hbl && <p className="mt-1 text-[11px] text-red-500">{errors.hbl}</p>}
+              <div className="mt-2">
+                <MultiDocumentFileUpload
+                  files={hblFiles}
+                  existingFiles={existingHblDocs}
+                  onFilesAdd={(f) => setHblFiles((prev) => [...prev, ...f])}
+                  onFileRemove={(i) => setHblFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                  onExistingRemove={(i) => setExistingHblDocs((prev) => prev.filter((_, idx) => idx !== i))}
+                />
+              </div>
             </div>
           </div>
 
@@ -1997,8 +2020,8 @@ const handleStatusUpdate = async (
               <Info label="MBL" value={selected.mbl} />
               <Info label="HBL" value={selected.hbl} />
               <Info label="BL Type" value={selected.blType} />
-              <DocInfo label="MBL Document" doc={selected.mblUrl} />
-              <DocInfo label="HBL Document" doc={selected.hblUrl} />
+              <MultiDocInfo label="MBL Documents" docs={selected.mblDocs?.length ? selected.mblDocs : selected.mblUrl ? [selected.mblUrl] : []} />
+              <MultiDocInfo label="HBL Documents" docs={selected.hblDocs?.length ? selected.hblDocs : selected.hblUrl ? [selected.hblUrl] : []} />
             </div>
           </section>
 
@@ -2458,9 +2481,9 @@ const handleStatusUpdate = async (
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={16} className="py-10 text-center text-zinc-500">Loading...</td></tr>
+                  <tr><td colSpan={15} className="py-10 text-center text-zinc-500">Loading...</td></tr>
                 ) : rows.length === 0 ? (
-                  <tr><td colSpan={16} className="py-10 text-center text-zinc-400">No freight forward records found.</td></tr>
+                  <tr><td colSpan={15} className="py-10 text-center text-zinc-400">No freight forward records found.</td></tr>
                 ) : (
                   rows.map((item) => (
                     <tr
@@ -2481,7 +2504,6 @@ const handleStatusUpdate = async (
                       </td>
                       <td className="px-4 py-3 font-medium text-zinc-800">{item.consignmentName}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.clientName || "—"}</td>
-                      <td className="px-4 py-3 text-zinc-600">{getInwardBoeNoDisplay(item)}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.mbl}</td>
                       <td className="px-4 py-3 text-zinc-600">{item.hbl}</td>
                       <td className="px-4 py-3 text-zinc-600">{formatContainersDisplay(item)}</td>
@@ -2819,6 +2841,33 @@ function DocInfo({
             name={doc.name}
             onDownload={() => window.open(doc.url, "_blank")}
           />
+        ) : (
+          <span className="text-sm text-zinc-500">—</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MultiDocInfo({
+  label,
+  docs,
+}: {
+  label: string;
+  docs: FreightForwardDocument[];
+}) {
+  return (
+    <div>
+      <div className="text-[11px] uppercase tracking-wider text-zinc-500">{label}</div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {docs.length > 0 ? (
+          docs.map((doc, i) => (
+            <DocumentFileChip
+              key={`${doc.url}-${i}`}
+              name={doc.name}
+              onDownload={() => window.open(doc.url, "_blank")}
+            />
+          ))
         ) : (
           <span className="text-sm text-zinc-500">—</span>
         )}
