@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import ModuleHeader from "@/components/ModuleHeader";
 import ImportAuditLine from "@/components/import/ImportAuditLine";
+import ImportDoStatusPanel from "@/components/import/ImportDoStatusPanel";
 import {
   ImportTableCell,
   importLocationLabel,
@@ -20,7 +21,9 @@ import {
 import { formatContainersDisplay } from "@/lib/freightForward/containers";
 import { getInwardBoeNoDisplay } from "@/lib/import/linerWorkflow";
 import {
+  canTakeTransportAction,
   computeImportTransportCounts,
+  excludeTransportBoeUnfiledFromList,
   getImportTransportRecords,
   ImportTransportCard,
   isImportTransportCompleted,
@@ -92,11 +95,16 @@ export default function ImportTransportPage() {
   }[] = [
     { key: "incomplete", label: "Incomplete", value: counts.incomplete },
     { key: "completed", label: "Completed", value: counts.completed },
+    { key: "boeFiled", label: "BOE Filed", value: counts.boeFiled },
+    { key: "boeUnfiled", label: "BOE Unfiled", value: counts.boeUnfiled },
   ];
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return records.filter((item) => {
+      if (excludeTransportBoeUnfiledFromList(item, activeCard)) {
+        return false;
+      }
       if (activeCard && !matchesImportTransportCard(item, activeCard)) {
         return false;
       }
@@ -122,10 +130,10 @@ export default function ImportTransportPage() {
     <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
       <ModuleHeader
         title="Import — Transport"
-        description="BOE In completed jobs. Capture truck details to complete transport."
+        description="Liner-completed jobs. Capture truck details after BOE In is completed."
       />
 
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:max-w-md">
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {cards.map((card) => {
           const selected = activeCard === card.key;
           return (
@@ -207,7 +215,7 @@ export default function ImportTransportPage() {
             ) : visibleRows.length === 0 ? (
               <tr>
                 <td colSpan={15} className="px-4 py-10 text-center text-zinc-400">
-                  No BOE In completed jobs found.
+                  No liner-completed jobs found.
                 </td>
               </tr>
             ) : (
@@ -289,6 +297,7 @@ function TransportRow({
   onUpdated: (item: FreightForward) => void;
 }) {
   const completed = isImportTransportCompleted(item);
+  const actionable = canTakeTransportAction(item);
 
   return (
     <>
@@ -343,6 +352,7 @@ function TransportRow({
                 busy={busy}
                 username={username}
                 completed={completed}
+                actionable={actionable}
                 onBusy={onBusy}
                 onError={onError}
                 onUpdated={onUpdated}
@@ -360,6 +370,7 @@ function TruckDetailCard({
   busy,
   username,
   completed,
+  actionable,
   onBusy,
   onError,
   onUpdated,
@@ -368,6 +379,7 @@ function TruckDetailCard({
   busy: boolean;
   username: string;
   completed: boolean;
+  actionable: boolean;
   onBusy: (id: string | null) => void;
   onError: (message: string) => void;
   onUpdated: (item: FreightForward) => void;
@@ -430,6 +442,12 @@ function TruckDetailCard({
         className="max-w-xl p-4"
         onClick={(event) => event.stopPropagation()}
       >
+        {!actionable && !completed && (
+          <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+            BOE must be filed and BOE In completed before transport actions are
+            available.
+          </p>
+        )}
         <div className="flex items-center gap-2">
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-zinc-900 text-[11px] font-bold text-white">
             {completed ? <Check size={14} strokeWidth={3} /> : "1"}
@@ -442,7 +460,7 @@ function TruckDetailCard({
               type="radio"
               name={`stash-${item.id}`}
               checked={stash === true}
-              disabled={busy || completed}
+              disabled={busy || completed || !actionable}
               onChange={() => setStash(true)}
             />
             Yes
@@ -452,7 +470,7 @@ function TruckDetailCard({
               type="radio"
               name={`stash-${item.id}`}
               checked={stash === false}
-              disabled={busy || completed}
+              disabled={busy || completed || !actionable}
               onChange={() => setStash(false)}
             />
             No
@@ -463,7 +481,7 @@ function TruckDetailCard({
             <span className="font-medium text-zinc-700">Vehicle No</span>
             <input
               value={vehicleNo}
-              disabled={busy || completed}
+              disabled={busy || completed || !actionable}
               onChange={(event) => setVehicleNo(event.target.value.toUpperCase())}
               className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
             />
@@ -472,7 +490,7 @@ function TruckDetailCard({
             <span className="font-medium text-zinc-700">Driver name</span>
             <input
               value={driverName}
-              disabled={busy || completed}
+              disabled={busy || completed || !actionable}
               onChange={(event) => setDriverName(event.target.value)}
               className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
             />
@@ -481,7 +499,7 @@ function TruckDetailCard({
             <span className="font-medium text-zinc-700">Ph no</span>
             <input
               value={phone}
-              disabled={busy || completed}
+              disabled={busy || completed || !actionable}
               onChange={(event) =>
                 setPhone(event.target.value.replace(/\D/g, "").slice(0, 10))
               }
@@ -490,7 +508,7 @@ function TruckDetailCard({
             />
           </label>
         </div>
-        {!completed && (
+        {!completed && actionable && (
           <button
             type="button"
             disabled={
@@ -508,6 +526,7 @@ function TruckDetailCard({
         )}
         <ImportAuditLine audit={item.importTransportCompleteAudit} />
       </section>
+      <ImportDoStatusPanel item={item} />
     </div>
   );
 }

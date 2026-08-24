@@ -92,6 +92,11 @@ export function canUpdateImportDo(item: FreightForward) {
   return getImportIgmStatus(item) === "posted";
 }
 
+export function formatImportDoDate(value?: string) {
+  const trimmed = value?.trim();
+  return trimmed || "—";
+}
+
 export function matchesImportLinerCard(
   item: FreightForward,
   card: ImportLinerCard

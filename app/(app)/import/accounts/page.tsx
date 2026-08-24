@@ -10,46 +10,42 @@ import {
 } from "lucide-react";
 import ModuleHeader from "@/components/ModuleHeader";
 import ImportAuditLine from "@/components/import/ImportAuditLine";
-import ImportDoStatusPanel from "@/components/import/ImportDoStatusPanel";
 import {
   ImportTableCell,
   importLocationLabel,
 } from "@/components/import/ImportJobTableCells";
 import {
-  completeImportBoeIn,
+  completeImportAccounts,
   getImportLinerRecords,
-  updateImportBoeChecklist,
-  updateImportBoeFiling,
+  updateImportAccountsBilling,
+  updateImportAccountsPayment,
 } from "@/lib/freightForward/freightForward";
 import { formatContainersDisplay } from "@/lib/freightForward/containers";
 import {
-  BOE_CHECKLIST_ITEMS,
-  computeImportBoeInCounts,
-  getBoeFilingStatus,
-  getImportBoeInRecords,
-  ImportBoeInCard,
-  isBoeChecklistComplete,
-  isImportBoeInCompleted,
-  matchesImportBoeInCard,
-} from "@/lib/import/boeInWorkflow";
+  computeImportAccountsCounts,
+  getImportAccountsBillingStatus,
+  getImportAccountsPaymentStatus,
+  getImportAccountsRecords,
+  ImportAccountsCard,
+  isImportAccountsCompleted,
+  matchesImportAccountsCard,
+} from "@/lib/import/accountsWorkflow";
 import { getInwardBoeNoDisplay } from "@/lib/import/linerWorkflow";
 import {
   FreightForward,
-  ImportBoeChecklist,
-  ImportBoeClearanceStatus,
-  ImportBoeFilingStatus,
-  INWARD_BOE_NO_REGEX,
+  ImportAccountsBillingStatus,
+  ImportAccountsPaymentStatus,
 } from "@/types/freightForward";
 
 const PAGE_SIZE = 10;
 
-export default function ImportBoeInPage() {
+export default function ImportAccountsPage() {
   const [records, setRecords] = useState<FreightForward[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [activeCard, setActiveCard] = useState<ImportBoeInCard | null>(
-    "pendingChecklist"
+  const [activeCard, setActiveCard] = useState<ImportAccountsCard | null>(
+    "billingPending"
   );
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
@@ -71,10 +67,10 @@ export default function ImportBoeInPage() {
     let active = true;
     getImportLinerRecords()
       .then((items) => {
-        if (active) setRecords(getImportBoeInRecords(items));
+        if (active) setRecords(getImportAccountsRecords(items));
       })
       .catch(() => {
-        if (active) setError("Unable to load BOE In jobs.");
+        if (active) setError("Unable to load Accounts jobs.");
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -94,31 +90,32 @@ export default function ImportBoeInPage() {
     return () => observer.disconnect();
   }, []);
 
-  const counts = useMemo(() => computeImportBoeInCounts(records), [records]);
+  const counts = useMemo(() => computeImportAccountsCounts(records), [records]);
   const cards: {
-    key: ImportBoeInCard;
+    key: ImportAccountsCard;
     label: string;
-    value: string | number;
+    value: number;
   }[] = [
     { key: "inProcess", label: "In Process", value: counts.inProcess },
     {
-      key: "pendingChecklist",
-      label: "Pending Checklist",
-      value: counts.pendingChecklist,
+      key: "billingPending",
+      label: "Billing Pending",
+      value: counts.billingPending,
     },
-    { key: "unfiledBoe", label: "Unfiled BOE", value: counts.unfiledBoe },
-    { key: "filedBoe", label: "Filed BOE", value: counts.filedBoe },
     {
-      key: "completed",
-      label: "Completed / Incomplete",
-      value: `${counts.completed} / ${counts.incomplete}`,
+      key: "paymentPending",
+      label: "Payment Pending",
+      value: counts.paymentPending,
     },
+    { key: "completed", label: "Completed", value: counts.completed },
   ];
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return records.filter((item) => {
-      if (activeCard && !matchesImportBoeInCard(item, activeCard)) return false;
+      if (activeCard && !matchesImportAccountsCard(item, activeCard)) {
+        return false;
+      }
       if (!needle) return true;
       return [
         item.jobNumber,
@@ -127,7 +124,6 @@ export default function ImportBoeInPage() {
         item.clientName,
         item.mbl,
         item.hbl,
-        item.vesselName,
         item.inwardBoeNo,
         formatContainersDisplay(item),
       ].some((value) => String(value ?? "").toLowerCase().includes(needle));
@@ -146,11 +142,11 @@ export default function ImportBoeInPage() {
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
       <ModuleHeader
-        title="Import — BOE In"
-        description="Import jobs run in parallel with Liner. Complete checklist, file BOE, then capture inward details."
+        title="Import — Accounts"
+        description="Transport-completed jobs. Track billing, payment, and job completion."
       />
 
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {cards.map((card) => {
           const selected = activeCard === card.key;
           return (
@@ -187,7 +183,7 @@ export default function ImportBoeInPage() {
             setPage(0);
             setSearch(event.target.value);
           }}
-          placeholder="Search job no, consignee, MBL, HBL, inward BOE no..."
+          placeholder="Search job no, consignee, inward BOE no, MBL, HBL..."
           className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
         />
       </div>
@@ -226,18 +222,18 @@ export default function ImportBoeInPage() {
             {loading ? (
               <tr>
                 <td colSpan={15} className="px-4 py-10 text-center text-zinc-400">
-                  Loading BOE In jobs...
+                  Loading Accounts jobs...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
                 <td colSpan={15} className="px-4 py-10 text-center text-zinc-400">
-                  No import jobs found.
+                  No transport-completed jobs found.
                 </td>
               </tr>
             ) : (
               visibleRows.map((item) => (
-                <BoeRow
+                <AccountsRow
                   key={item.id}
                   item={item}
                   expanded={expandedId === item.id}
@@ -286,7 +282,7 @@ export default function ImportBoeInPage() {
   );
 }
 
-function BoeRow({
+function AccountsRow({
   item,
   expanded,
   busy,
@@ -307,9 +303,7 @@ function BoeRow({
   onError: (message: string) => void;
   onUpdated: (item: FreightForward) => void;
 }) {
-  const completed = isImportBoeInCompleted(item);
-  const checklistDone = isBoeChecklistComplete(item);
-  const filed = getBoeFilingStatus(item) === "filed";
+  const completed = isImportAccountsCompleted(item);
 
   return (
     <>
@@ -320,7 +314,11 @@ function BoeRow({
         <td className="px-2 py-3 text-zinc-400">
           {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
         </td>
-        <ImportTableCell value={item.jobNumber} width={105} className="font-medium text-zinc-900" />
+        <ImportTableCell
+          value={item.jobNumber}
+          width={105}
+          className="font-medium text-zinc-900"
+        />
         <ImportTableCell value={item.ezRefNumber} width={105} />
         <ImportTableCell value={item.blType} width={90} />
         <ImportTableCell value={item.tradeTerms} width={110} />
@@ -359,13 +357,10 @@ function BoeRow({
               className="sticky left-0 min-w-0 p-3"
               style={panelWidth ? { width: panelWidth } : undefined}
             >
-              <BoeExpansion
+              <AccountsExpansion
                 item={item}
                 busy={busy}
                 username={username}
-                checklistDone={checklistDone}
-                filed={filed}
-                completed={completed}
                 onBusy={onBusy}
                 onError={onError}
                 onUpdated={onUpdated}
@@ -378,13 +373,10 @@ function BoeRow({
   );
 }
 
-function BoeExpansion({
+function AccountsExpansion({
   item,
   busy,
   username,
-  checklistDone,
-  filed,
-  completed,
   onBusy,
   onError,
   onUpdated,
@@ -392,23 +384,26 @@ function BoeExpansion({
   item: FreightForward;
   busy: boolean;
   username: string;
-  checklistDone: boolean;
-  filed: boolean;
-  completed: boolean;
   onBusy: (id: string | null) => void;
   onError: (message: string) => void;
   onUpdated: (item: FreightForward) => void;
 }) {
-  const [inwardNo, setInwardNo] = useState(item.inwardBoeNo ?? "");
-  const [inwardDate, setInwardDate] = useState(item.inwardBoeDate ?? "");
-  const [clearance, setClearance] = useState<ImportBoeClearanceStatus>(
-    item.importBoeClearanceStatus ?? "rms"
+  const jobCompleted = isImportAccountsCompleted(item);
+  const billingStatus = getImportAccountsBillingStatus(item);
+  const billingDone = billingStatus === "completed";
+  const paymentStatus = getImportAccountsPaymentStatus(item);
+  const paymentReceived = paymentStatus === "received";
+
+  const [billingRemark, setBillingRemark] = useState(
+    item.importAccountsBillingRemark ?? ""
+  );
+  const [paymentRemark, setPaymentRemark] = useState(
+    item.importAccountsPaymentRemark ?? ""
   );
 
   useEffect(() => {
-    setInwardNo(item.inwardBoeNo ?? "");
-    setInwardDate(item.inwardBoeDate ?? "");
-    setClearance(item.importBoeClearanceStatus ?? "rms");
+    setBillingRemark(item.importAccountsBillingRemark ?? "");
+    setPaymentRemark(item.importAccountsPaymentRemark ?? "");
   }, [item]);
 
   const run = async (task: () => Promise<FreightForward>) => {
@@ -421,47 +416,37 @@ function BoeExpansion({
       onError(
         updateError instanceof Error
           ? updateError.message
-          : "Unable to update BOE In."
+          : "Unable to update Accounts."
       );
     } finally {
       onBusy(null);
     }
   };
 
-  const toggleCheck = (key: keyof ImportBoeChecklist, checked: boolean) => {
-    const next = {
-      ...(item.importBoeChecklist ?? {}),
-      [key]: checked,
-    };
-    void run(() => updateImportBoeChecklist(item.id!, next, username));
-  };
-
-  const setFiling = (status: ImportBoeFilingStatus) => {
-    void run(() => updateImportBoeFiling(item.id!, status, username));
-  };
-
-  const complete = () => {
+  const setBilling = (status: ImportAccountsBillingStatus) => {
     void run(() =>
-      completeImportBoeIn(
-        item.id!,
-        {
-          inwardBoeNo: inwardNo,
-          inwardBoeDate: inwardDate,
-          importBoeClearanceStatus: clearance,
-        },
-        username
-      )
+      updateImportAccountsBilling(item.id!, status, billingRemark, username)
     );
+  };
+
+  const setPayment = (status: ImportAccountsPaymentStatus) => {
+    void run(() =>
+      updateImportAccountsPayment(item.id!, status, paymentRemark, username)
+    );
+  };
+
+  const completeJob = () => {
+    void run(() => completeImportAccounts(item.id!, username));
   };
 
   return (
     <div className="min-w-0 overflow-hidden rounded-xl border border-zinc-200 bg-white">
       <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3">
         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-          BOE In workflow
+          Accounts workflow
         </p>
         <h3 className="mt-1 text-sm font-semibold text-zinc-900">
-          {item.jobNumber || "Import"} — checklist, filing, inward
+          {item.jobNumber || "Import"} — billing, payment, completion
         </h3>
       </div>
 
@@ -469,172 +454,196 @@ function BoeExpansion({
         <section className="rounded-xl border border-zinc-200 p-4">
           <div className="flex items-center gap-2">
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-zinc-900 text-[11px] font-bold text-white">
-              {checklistDone ? <Check size={14} strokeWidth={3} /> : "1"}
+              {billingDone ? <Check size={14} strokeWidth={3} /> : "1"}
             </span>
-            <h3 className="text-sm font-semibold text-zinc-900">Checklist</h3>
+            <h3 className="text-sm font-semibold text-zinc-900">
+              Billing status
+            </h3>
           </div>
           <div
-            className="mt-3 space-y-2"
+            className="mt-3 space-y-2 text-xs"
             onClick={(event) => event.stopPropagation()}
           >
-            {BOE_CHECKLIST_ITEMS.map((entry) => (
-              <label
-                key={entry.key}
-                className="flex items-center gap-2 text-xs text-zinc-700"
-              >
-                <input
-                  type="checkbox"
-                  checked={!!item.importBoeChecklist?.[entry.key]}
-                  disabled={busy || completed}
-                  onChange={(event) =>
-                    toggleCheck(entry.key, event.target.checked)
-                  }
-                />
-                {entry.label}
-              </label>
-            ))}
+            {(["pending", "completed"] as ImportAccountsBillingStatus[]).map(
+              (status) => (
+                <label key={status} className="flex items-center gap-2 capitalize">
+                  <input
+                    type="radio"
+                    name={`billing-${item.id}`}
+                    checked={billingStatus === status}
+                    disabled={busy || jobCompleted}
+                    onChange={() => {
+                      if (status === "completed" && !billingRemark.trim()) return;
+                      setBilling(status);
+                    }}
+                  />
+                  {status}
+                </label>
+              )
+            )}
+            <label className="mt-2 block text-xs">
+              <span className="font-medium text-zinc-700">
+                {billingDone ? "Completion remark" : "Remark"}
+              </span>
+              <textarea
+                value={billingRemark}
+                disabled={busy || jobCompleted}
+                rows={2}
+                placeholder={
+                  billingDone
+                    ? "Billing completion remark"
+                    : "Required when marking completed"
+                }
+                onChange={(event) => setBillingRemark(event.target.value)}
+                className="mt-1 w-full resize-none rounded-lg border border-zinc-200 px-2.5 py-2 text-[11px] outline-none focus:border-zinc-500"
+              />
+            </label>
+            {!jobCompleted &&
+              billingStatus === "pending" &&
+              billingRemark.trim() && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setBilling("completed")}
+                  className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
+                >
+                  Save billing completed
+                </button>
+              )}
           </div>
-          <ImportAuditLine audit={item.importBoeChecklistAudit} />
+          <ImportAuditLine audit={item.importAccountsBillingAudit} />
         </section>
 
         <section
           className={`rounded-xl border p-4 ${
-            checklistDone ? "border-zinc-200 bg-white" : "border-zinc-200 bg-zinc-50/80"
+            billingDone ? "border-zinc-200 bg-white" : "border-zinc-200 bg-zinc-50/80"
           }`}
         >
           <div className="flex items-center gap-2">
             <span
               className={`flex h-7 w-7 items-center justify-center rounded-lg text-[11px] font-bold ${
-                checklistDone ? "bg-zinc-900 text-white" : "bg-zinc-200 text-zinc-500"
+                billingDone ? "bg-zinc-900 text-white" : "bg-zinc-200 text-zinc-500"
               }`}
             >
-              {filed ? (
+              {paymentReceived ? (
                 <Check size={14} strokeWidth={3} />
-              ) : checklistDone ? (
+              ) : billingDone ? (
                 "2"
               ) : (
                 <LockKeyhole size={13} />
               )}
             </span>
-            <h3 className="text-sm font-semibold text-zinc-900">BOE status</h3>
+            <h3 className="text-sm font-semibold text-zinc-900">Payment</h3>
           </div>
-          {!checklistDone ? (
+          {!billingDone ? (
             <p className="mt-3 flex items-center gap-1.5 text-[11px] font-medium text-zinc-500">
               <LockKeyhole size={12} />
-              Complete checklist first
+              Complete billing first
             </p>
           ) : (
             <div
               className="mt-3 space-y-2 text-xs"
               onClick={(event) => event.stopPropagation()}
             >
-              {(["unfiled", "filed"] as ImportBoeFilingStatus[]).map(
+              {(["pending", "received"] as ImportAccountsPaymentStatus[]).map(
                 (status) => (
                   <label key={status} className="flex items-center gap-2 capitalize">
                     <input
                       type="radio"
-                      name={`boe-filing-${item.id}`}
-                      checked={getBoeFilingStatus(item) === status}
-                      disabled={busy || completed}
-                      onChange={() => setFiling(status)}
+                      name={`payment-${item.id}`}
+                      checked={paymentStatus === status}
+                      disabled={busy || jobCompleted}
+                      onChange={() => {
+                        if (!paymentRemark.trim()) return;
+                        setPayment(status);
+                      }}
                     />
                     {status}
                   </label>
                 )
               )}
+              <label className="mt-2 block text-xs">
+                <span className="font-medium text-zinc-700">Remark</span>
+                <textarea
+                  value={paymentRemark}
+                  disabled={busy || jobCompleted}
+                  rows={2}
+                  placeholder="Payment remark"
+                  onChange={(event) => setPaymentRemark(event.target.value)}
+                  className="mt-1 w-full resize-none rounded-lg border border-zinc-200 px-2.5 py-2 text-[11px] outline-none focus:border-zinc-500"
+                />
+              </label>
+              {!jobCompleted && paymentRemark.trim() && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setPayment(paymentStatus)}
+                  className="rounded-lg border border-zinc-200 px-3 py-1.5 text-[10px] font-semibold text-zinc-700 disabled:opacity-40"
+                >
+                  Save payment remark
+                </button>
+              )}
             </div>
           )}
-          <ImportAuditLine audit={item.importBoeFilingAudit} />
+          <ImportAuditLine audit={item.importAccountsPaymentAudit} />
         </section>
 
         <section
           className={`rounded-xl border p-4 ${
-            filed ? "border-zinc-200 bg-white" : "border-zinc-200 bg-zinc-50/80"
+            paymentReceived ? "border-zinc-200 bg-white" : "border-zinc-200 bg-zinc-50/80"
           }`}
         >
           <div className="flex items-center gap-2">
             <span
               className={`flex h-7 w-7 items-center justify-center rounded-lg text-[11px] font-bold ${
-                filed ? "bg-zinc-900 text-white" : "bg-zinc-200 text-zinc-500"
+                paymentReceived ? "bg-zinc-900 text-white" : "bg-zinc-200 text-zinc-500"
               }`}
             >
-              {completed ? (
+              {jobCompleted ? (
                 <Check size={14} strokeWidth={3} />
-              ) : filed ? (
+              ) : paymentReceived ? (
                 "3"
               ) : (
                 <LockKeyhole size={13} />
               )}
             </span>
-            <h3 className="text-sm font-semibold text-zinc-900">Inward BOE</h3>
+            <h3 className="text-sm font-semibold text-zinc-900">Job</h3>
           </div>
-          {!filed ? (
+          {!paymentReceived ? (
             <p className="mt-3 flex items-center gap-1.5 text-[11px] font-medium text-zinc-500">
               <LockKeyhole size={12} />
-              File BOE first
+              Mark payment as received first
             </p>
+          ) : jobCompleted ? (
+            <div className="mt-3 space-y-2 text-xs">
+              <div>
+                <span className="font-medium text-zinc-700">Billing remark: </span>
+                <span className="text-zinc-600">
+                  {item.importAccountsBillingRemark || "—"}
+                </span>
+              </div>
+              <div>
+                <span className="font-medium text-zinc-700">Payment remark: </span>
+                <span className="text-zinc-600">
+                  {item.importAccountsPaymentRemark || "—"}
+                </span>
+              </div>
+            </div>
           ) : (
-            <div
-              className="mt-3 space-y-2"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <label className="block text-xs">
-                <span className="font-medium text-zinc-700">Inward No</span>
-                <input
-                  value={inwardNo}
-                  maxLength={7}
-                  disabled={busy || completed}
-                  onChange={(event) =>
-                    setInwardNo(event.target.value.replace(/\D/g, "").slice(0, 7))
-                  }
-                  placeholder="7 digits"
-                  className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
-                />
-              </label>
-              <label className="block text-xs">
-                <span className="font-medium text-zinc-700">Date</span>
-                <input
-                  type="date"
-                  value={inwardDate}
-                  disabled={busy || completed}
-                  onChange={(event) => setInwardDate(event.target.value)}
-                  className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
-                />
-              </label>
-              <label className="block text-xs">
-                <span className="font-medium text-zinc-700">Status</span>
-                <select
-                  value={clearance}
-                  disabled={busy || completed}
-                  onChange={(event) =>
-                    setClearance(event.target.value as ImportBoeClearanceStatus)
-                  }
-                  className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
-                >
-                  <option value="rms">RMS</option>
-                  <option value="open">Open</option>
-                </select>
-              </label>
-              {!completed && (
-                <button
-                  type="button"
-                  disabled={
-                    busy ||
-                    !INWARD_BOE_NO_REGEX.test(inwardNo.trim()) ||
-                    !inwardDate
-                  }
-                  onClick={complete}
-                  className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
-                >
-                  Complete
-                </button>
-              )}
+            <div className="mt-3" onClick={(event) => event.stopPropagation()}>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={completeJob}
+                className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
+              >
+                Complete job
+              </button>
             </div>
           )}
-          <ImportAuditLine audit={item.importBoeInCompleteAudit} />
+          <ImportAuditLine audit={item.importAccountsCompleteAudit} />
         </section>
       </div>
-      <ImportDoStatusPanel item={item} />
     </div>
   );
 }

@@ -49,6 +49,8 @@ export type ImportWorkflowSection = "movement" | "igm" | "do";
 
 export type ImportBoeFilingStatus = "unfiled" | "filed";
 export type ImportBoeClearanceStatus = "rms" | "open";
+export type ImportAccountsBillingStatus = "pending" | "completed";
+export type ImportAccountsPaymentStatus = "pending" | "received";
 
 export interface ImportAuditStamp {
   updatedBy: string;
@@ -153,6 +155,9 @@ export interface FreightForward {
   importMovementRemark?: string;
   importIgmRemark?: string;
   importDoRemark?: string;
+  /** Required when DO status is set to received. */
+  importDoEmptyValidity?: string;
+  importDoPostValidity?: string;
   /** Extra named documents captured from Import Add / documents section. */
   otherDocuments?: FreightForwardDocument[];
   /** BOE In — captured after Liner completion. */
@@ -172,6 +177,15 @@ export interface FreightForward {
   importDriverPhone?: string;
   importTransportCompleted?: boolean;
   importTransportCompleteAudit?: ImportAuditStamp;
+  /** Accounts — captured after Transport completion. */
+  importAccountsBillingStatus?: ImportAccountsBillingStatus;
+  importAccountsBillingRemark?: string;
+  importAccountsBillingAudit?: ImportAuditStamp;
+  importAccountsPaymentStatus?: ImportAccountsPaymentStatus;
+  importAccountsPaymentRemark?: string;
+  importAccountsPaymentAudit?: ImportAuditStamp;
+  importAccountsCompleted?: boolean;
+  importAccountsCompleteAudit?: ImportAuditStamp;
   /** Lowercase search helpers for scalable filtering/prefix queries. */
   searchText?: string;
   searchJobNumber?: string;

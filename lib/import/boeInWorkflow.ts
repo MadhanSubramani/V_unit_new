@@ -3,7 +3,7 @@ import {
   ImportBoeChecklist,
   ImportBoeFilingStatus,
 } from "@/types/freightForward";
-import { isImportLinerCompleted } from "@/lib/import/linerWorkflow";
+import { isImportWorklistJob } from "@/lib/import/linerWorkflow";
 
 export type ImportBoeInCard =
   | "inProcess"
@@ -74,6 +74,7 @@ export function computeImportBoeInCounts(records: FreightForward[]) {
   };
 }
 
+/** All active import jobs — BOE In runs in parallel with Liner. */
 export function getImportBoeInRecords(records: FreightForward[]) {
-  return records.filter(isImportLinerCompleted);
+  return records.filter(isImportWorklistJob);
 }

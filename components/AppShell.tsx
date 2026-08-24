@@ -41,7 +41,7 @@ const IMPORT_SUB = [
   { href: "/import/boe-in", label: "BOE In", icon: FileText, enabled: true },
   { href: "/import/transport", label: "Transport", icon: Warehouse, enabled: true },
   { href: "/import/boe-out", label: "BOE Out", icon: ClipboardList, enabled: false },
-  { href: "/import/accounts", label: "Accounts", icon: Settings, enabled: false },
+  { href: "/import/accounts", label: "Accounts", icon: Settings, enabled: true },
   { href: "/import/trash", label: "Trash", icon: Trash2, enabled: true },
 ] as const;
 

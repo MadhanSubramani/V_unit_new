@@ -248,7 +248,8 @@ export default function ImportLinerPage() {
   const updateStage = async (
     item: FreightForward,
     section: ImportWorkflowSection,
-    status: ImportMovementStatus | ImportIgmStatus | ImportDoStatus
+    status: ImportMovementStatus | ImportIgmStatus | ImportDoStatus,
+    doDates?: { importDoEmptyValidity: string; importDoPostValidity: string }
   ) => {
     if (!item.id) return;
     setUpdatingId(item.id);
@@ -258,7 +259,8 @@ export default function ImportLinerPage() {
         item.id,
         section,
         status,
-        user?.username ?? "Unknown"
+        user?.username ?? "Unknown",
+        doDates
       );
       setRecords((current) =>
         current.map((record) => (record.id === updated.id ? updated : record))
@@ -498,7 +500,8 @@ function Row({
   onUpdate: (
     item: FreightForward,
     section: ImportWorkflowSection,
-    status: ImportMovementStatus | ImportIgmStatus | ImportDoStatus
+    status: ImportMovementStatus | ImportIgmStatus | ImportDoStatus,
+    doDates?: { importDoEmptyValidity: string; importDoPostValidity: string }
   ) => Promise<void>;
   onRemark: (
     item: FreightForward,
@@ -735,7 +738,8 @@ function StageCard({
   onUpdate: (
     item: FreightForward,
     section: ImportWorkflowSection,
-    status: ImportMovementStatus | ImportIgmStatus | ImportDoStatus
+    status: ImportMovementStatus | ImportIgmStatus | ImportDoStatus,
+    doDates?: { importDoEmptyValidity: string; importDoPostValidity: string }
   ) => Promise<void>;
   onRemark: (
     item: FreightForward,
@@ -753,10 +757,51 @@ function StageCard({
   const [remarkDraft, setRemarkDraft] = useState(
     getImportStageRemark(item, section)
   );
+  const [emptyValidity, setEmptyValidity] = useState(
+    item.importDoEmptyValidity ?? ""
+  );
+  const [postValidity, setPostValidity] = useState(
+    item.importDoPostValidity ?? ""
+  );
+  const [doDateError, setDoDateError] = useState("");
 
   useEffect(() => {
     setRemarkDraft(getImportStageRemark(item, section));
   }, [item, section]);
+
+  useEffect(() => {
+    if (section === "do") {
+      setEmptyValidity(item.importDoEmptyValidity ?? "");
+      setPostValidity(item.importDoPostValidity ?? "");
+    }
+  }, [item, section]);
+
+  const handleStatusChange = (nextStatus: string) => {
+    if (section === "do" && nextStatus === "received") {
+      const empty = emptyValidity.trim();
+      const post = postValidity.trim();
+      if (!empty || !post) {
+        setDoDateError("Enter Empty validity and Post validity before Received.");
+        return;
+      }
+      setDoDateError("");
+      void onUpdate(item, section, nextStatus as ImportDoStatus, {
+        importDoEmptyValidity: empty,
+        importDoPostValidity: post,
+      });
+      return;
+    }
+    setDoDateError("");
+    void onUpdate(
+      item,
+      section,
+      nextStatus as ImportMovementStatus | ImportIgmStatus | ImportDoStatus
+    );
+  };
+
+  const canSelectReceived =
+    section !== "do" ||
+    (emptyValidity.trim().length > 0 && postValidity.trim().length > 0);
 
   return (
     <section
@@ -803,25 +848,79 @@ function StageCard({
           value={value}
           disabled={busy || locked}
           onClick={(event) => event.stopPropagation()}
-          onChange={(event) =>
-            void onUpdate(
-              item,
-              section,
-              event.target.value as
-                | ImportMovementStatus
-                | ImportIgmStatus
-                | ImportDoStatus
-            )
-          }
+          onChange={(event) => handleStatusChange(event.target.value)}
           className="max-w-32 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-zinc-700 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400"
         >
           {options.map(([optionValue, label]) => (
-            <option key={optionValue} value={optionValue}>
+            <option
+              key={optionValue}
+              value={optionValue}
+              disabled={
+                section === "do" &&
+                optionValue === "received" &&
+                !canSelectReceived &&
+                value !== "received"
+              }
+            >
               {label}
             </option>
           ))}
         </select>
       </div>
+
+      {section === "do" && !locked && (
+        <div
+          className="mt-3 grid gap-2 sm:grid-cols-2"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <label className="block text-xs">
+            <span className="font-medium text-zinc-700">Empty validity</span>
+            <input
+              type="date"
+              value={emptyValidity}
+              disabled={busy || complete}
+              onChange={(event) => {
+                setEmptyValidity(event.target.value);
+                setDoDateError("");
+              }}
+              className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
+            />
+          </label>
+          <label className="block text-xs">
+            <span className="font-medium text-zinc-700">Post validity</span>
+            <input
+              type="date"
+              value={postValidity}
+              disabled={busy || complete}
+              onChange={(event) => {
+                setPostValidity(event.target.value);
+                setDoDateError("");
+              }}
+              className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
+            />
+          </label>
+          {doDateError && (
+            <p className="sm:col-span-2 text-[11px] text-red-500">{doDateError}</p>
+          )}
+        </div>
+      )}
+
+      {section === "do" && complete && (
+        <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+          <div>
+            <span className="text-zinc-500">Empty validity: </span>
+            <span className="font-medium text-zinc-800">
+              {item.importDoEmptyValidity || "—"}
+            </span>
+          </div>
+          <div>
+            <span className="text-zinc-500">Post validity: </span>
+            <span className="font-medium text-zinc-800">
+              {item.importDoPostValidity || "—"}
+            </span>
+          </div>
+        </div>
+      )}
 
       {pending && (
         <div

@@ -22,6 +22,8 @@ import {
   FreightForwardFormData,
   FreightForwardStatus,
   ImportAuditStamp,
+  ImportAccountsBillingStatus,
+  ImportAccountsPaymentStatus,
   ImportBoeChecklist,
   ImportBoeClearanceStatus,
   ImportBoeFilingStatus,
@@ -70,6 +72,7 @@ import {
   isBoeChecklistComplete,
   isImportBoeInCompleted,
 } from "@/lib/import/boeInWorkflow";
+import { isImportTransportCompleted } from "@/lib/import/transportWorkflow";
 
 const REF = () => collection(db, "freightForward");
 
@@ -541,7 +544,8 @@ export async function updateImportLinerStage(
   id: string,
   section: ImportWorkflowSection,
   status: ImportLinerStatus,
-  updatedBy: string
+  updatedBy: string,
+  doDates?: { importDoEmptyValidity: string; importDoPostValidity: string }
 ) {
   if (!isValidImportStatus(section, status)) {
     throw new Error(`Invalid ${section} status: ${status}`);
@@ -579,6 +583,14 @@ export async function updateImportLinerStage(
     }
     if (section === "do" && !canUpdateImportDo(before)) {
       throw new Error("Post IGM before updating DO.");
+    }
+
+    if (section === "do" && status === "received") {
+      const emptyValidity = doDates?.importDoEmptyValidity?.trim().slice(0, 10);
+      const postValidity = doDates?.importDoPostValidity?.trim().slice(0, 10);
+      if (!emptyValidity || !postValidity) {
+        throw new Error("Empty validity and Post validity dates are required.");
+      }
     }
 
     const now = Timestamp.now();
@@ -657,6 +669,26 @@ export async function updateImportLinerStage(
       updatedAt: serverTimestamp(),
     };
 
+    if (section === "do" && status === "received") {
+      patch.importDoEmptyValidity = doDates!.importDoEmptyValidity
+        .trim()
+        .slice(0, 10);
+      patch.importDoPostValidity = doDates!.importDoPostValidity
+        .trim()
+        .slice(0, 10);
+    } else if (section === "do" && status === "pending") {
+      patch.importDoEmptyValidity = deleteField();
+      patch.importDoPostValidity = deleteField();
+    } else if (
+      (section === "movement" && nextMovement !== "completed") ||
+      (section === "igm" && nextIgm !== "posted")
+    ) {
+      if (nextDo === "pending") {
+        patch.importDoEmptyValidity = deleteField();
+        patch.importDoPostValidity = deleteField();
+      }
+    }
+
     let nextTimeline = before.statusTimeline ?? [];
     if (section === "movement") {
       if (
@@ -707,6 +739,17 @@ export async function updateImportLinerStage(
       statusTimeline: nextTimeline,
       ...computePipelineFlags(nextTimeline),
     };
+    if (section === "do" && status === "received") {
+      after.importDoEmptyValidity = doDates!.importDoEmptyValidity
+        .trim()
+        .slice(0, 10);
+      after.importDoPostValidity = doDates!.importDoPostValidity
+        .trim()
+        .slice(0, 10);
+    } else if (nextDo === "pending") {
+      after.importDoEmptyValidity = undefined;
+      after.importDoPostValidity = undefined;
+    }
     return { before, after };
   });
 
@@ -780,9 +823,6 @@ export async function updateImportBoeChecklist(
   updatedBy: string
 ) {
   const { docRef, before } = await loadActiveImportJob(id);
-  if (!isImportLinerCompleted(before)) {
-    throw new Error("Complete Liner before updating BOE In.");
-  }
 
   const next: ImportBoeChecklist = {
     docReceived: !!checklist.docReceived,
@@ -817,9 +857,6 @@ export async function updateImportBoeFiling(
   updatedBy: string
 ) {
   const { docRef, before } = await loadActiveImportJob(id);
-  if (!isImportLinerCompleted(before)) {
-    throw new Error("Complete Liner before updating BOE In.");
-  }
   if (!isBoeChecklistComplete(before)) {
     throw new Error("Complete the checklist before updating BOE status.");
   }
@@ -858,9 +895,6 @@ export async function completeImportBoeIn(
   updatedBy: string
 ) {
   const { docRef, before } = await loadActiveImportJob(id);
-  if (!isImportLinerCompleted(before)) {
-    throw new Error("Complete Liner before completing BOE In.");
-  }
   if (!isBoeChecklistComplete(before)) {
     throw new Error("Complete the checklist before completing BOE In.");
   }
@@ -949,6 +983,118 @@ export async function completeImportTransport(
     importDriverPhone,
     importTransportCompleted: true,
     importTransportCompleteAudit: audit,
+    updatedBy,
+  } as FreightForward;
+}
+
+export async function updateImportAccountsBilling(
+  id: string,
+  status: ImportAccountsBillingStatus,
+  remark: string,
+  updatedBy: string
+) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  if (!isImportTransportCompleted(before)) {
+    throw new Error("Complete Transport before updating Accounts.");
+  }
+  if (before.importAccountsCompleted) {
+    throw new Error("Accounts job is already completed.");
+  }
+  if (!["pending", "completed"].includes(status)) {
+    throw new Error("Invalid billing status.");
+  }
+  const importAccountsBillingRemark = remark.trim();
+  if (status === "completed" && !importAccountsBillingRemark) {
+    throw new Error("Completion remark is required.");
+  }
+
+  const audit = stamp(updatedBy);
+  await updateDoc(docRef, {
+    importAccountsBillingStatus: status,
+    importAccountsBillingRemark,
+    importAccountsBillingAudit: audit,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+
+  return {
+    ...before,
+    importAccountsBillingStatus: status,
+    importAccountsBillingRemark,
+    importAccountsBillingAudit: audit,
+    updatedBy,
+  } as FreightForward;
+}
+
+export async function updateImportAccountsPayment(
+  id: string,
+  status: ImportAccountsPaymentStatus,
+  remark: string,
+  updatedBy: string
+) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  if (!isImportTransportCompleted(before)) {
+    throw new Error("Complete Transport before updating Accounts.");
+  }
+  if (before.importAccountsCompleted) {
+    throw new Error("Accounts job is already completed.");
+  }
+  if (before.importAccountsBillingStatus !== "completed") {
+    throw new Error("Complete billing before updating payment.");
+  }
+  if (!["pending", "received"].includes(status)) {
+    throw new Error("Invalid payment status.");
+  }
+  const importAccountsPaymentRemark = remark.trim();
+  if (!importAccountsPaymentRemark) {
+    throw new Error("Payment remark is required.");
+  }
+
+  const audit = stamp(updatedBy);
+  await updateDoc(docRef, {
+    importAccountsPaymentStatus: status,
+    importAccountsPaymentRemark,
+    importAccountsPaymentAudit: audit,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+
+  return {
+    ...before,
+    importAccountsPaymentStatus: status,
+    importAccountsPaymentRemark,
+    importAccountsPaymentAudit: audit,
+    updatedBy,
+  } as FreightForward;
+}
+
+export async function completeImportAccounts(id: string, updatedBy: string) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  if (!isImportTransportCompleted(before)) {
+    throw new Error("Complete Transport before completing Accounts.");
+  }
+  if (before.importAccountsBillingStatus !== "completed") {
+    throw new Error("Complete billing before completing the job.");
+  }
+  if (before.importAccountsPaymentStatus !== "received") {
+    throw new Error("Mark payment as received before completing the job.");
+  }
+
+  const audit = stamp(updatedBy);
+  await updateDoc(docRef, {
+    importAccountsCompleted: true,
+    importAccountsCompleteAudit: audit,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+
+  return {
+    ...before,
+    importAccountsCompleted: true,
+    importAccountsCompleteAudit: audit,
     updatedBy,
   } as FreightForward;
 }
