@@ -11,9 +11,11 @@ import {
 import ModuleHeader from "@/components/ModuleHeader";
 import ImportAuditLine from "@/components/import/ImportAuditLine";
 import {
-  ImportTableCell,
-  importLocationLabel,
-} from "@/components/import/ImportJobTableCells";
+  ImportDoTableCells,
+  ImportSearchDownloadBar,
+} from "@/components/import/ImportTableExtras";
+import { ImportLocationCell } from "@/components/import/ImportLocationCell";
+import { ImportTableCell } from "@/components/import/ImportJobTableCells";
 import {
   completeImportAccounts,
   getImportLinerRecords,
@@ -176,17 +178,15 @@ export default function ImportAccountsPage() {
         })}
       </div>
 
-      <div className="mt-5">
-        <input
-          value={search}
-          onChange={(event) => {
-            setPage(0);
-            setSearch(event.target.value);
-          }}
-          placeholder="Search job no, consignee, inward BOE no, MBL, HBL..."
-          className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-        />
-      </div>
+      <ImportSearchDownloadBar
+        search={search}
+        onSearchChange={(value) => {
+          setPage(0);
+          setSearch(value);
+        }}
+        records={filtered}
+        filePrefix="import-accounts"
+      />
 
       {error && (
         <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
@@ -211,6 +211,9 @@ export default function ImportAccountsPage() {
               <th className="px-3 py-3 font-semibold">Location</th>
               <th className="px-3 py-3 font-semibold">Consignee</th>
               <th className="px-3 py-3 font-semibold">Client</th>
+              <th className="px-3 py-3 font-semibold">DO Status</th>
+              <th className="px-3 py-3 font-semibold">Port</th>
+              <th className="px-3 py-3 font-semibold">Empty</th>
               <th className="px-3 py-3 font-semibold">Inward BOE No</th>
               <th className="px-3 py-3 font-semibold">MBL</th>
               <th className="px-3 py-3 font-semibold">HBL</th>
@@ -221,13 +224,13 @@ export default function ImportAccountsPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={15} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={18} className="px-4 py-10 text-center text-zinc-400">
                   Loading Accounts jobs...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={15} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={18} className="px-4 py-10 text-center text-zinc-400">
                   No transport-completed jobs found.
                 </td>
               </tr>
@@ -324,9 +327,10 @@ function AccountsRow({
         <ImportTableCell value={item.tradeTerms} width={110} />
         <ImportTableCell value={item.vesselName} />
         <ImportTableCell value={item.eta} width={100} />
-        <ImportTableCell value={importLocationLabel(item)} />
+        <ImportLocationCell item={item} />
         <ImportTableCell value={item.consignmentName} />
         <ImportTableCell value={item.clientName} />
+        <ImportDoTableCells item={item} />
         <ImportTableCell value={getInwardBoeNoDisplay(item)} width={120} />
         <ImportTableCell value={item.mbl} width={130} />
         <ImportTableCell value={item.hbl} width={130} />
@@ -352,7 +356,7 @@ function AccountsRow({
       </tr>
       {expanded && (
         <tr className="border-t border-zinc-100 bg-zinc-100/70">
-          <td colSpan={15} className="p-0">
+          <td colSpan={18} className="p-0">
             <div
               className="sticky left-0 min-w-0 p-3"
               style={panelWidth ? { width: panelWidth } : undefined}

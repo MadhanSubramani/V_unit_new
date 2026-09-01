@@ -27,12 +27,18 @@ import {
   ImportBoeChecklist,
   ImportBoeClearanceStatus,
   ImportBoeFilingStatus,
+  ImportBoeOutDutyStatus,
+  ImportBoeOutInwardOccStatus,
+  ImportCfsReachedStatus,
+  ImportDoRemarkCategory,
   ImportDoStatus,
   ImportIgmStatus,
   ImportMovementStatus,
+  ImportPortDirection,
   ImportWorkflowSection,
   ImportWorkflowTimelineEntry,
   INWARD_BOE_NO_REGEX,
+  IMPORT_DO_REMARK_OPTIONS,
 } from "@/types/freightForward";
 import {
   ensureFreightForwardCounterSeeded,
@@ -73,6 +79,15 @@ import {
   isImportBoeInCompleted,
 } from "@/lib/import/boeInWorkflow";
 import { isImportTransportCompleted } from "@/lib/import/transportWorkflow";
+import {
+  canUnlockImportDutySection,
+  canUnlockImportEwaySection,
+  canUnlockImportTTypeSection,
+  getImportBoeOutDutyStatus,
+  isImportBoeOutDispatched,
+  isImportBoeOutInwardOccDone,
+  isImportTTypeBoeSaved,
+} from "@/lib/import/boeOutWorkflow";
 
 const REF = () => collection(db, "freightForward");
 
@@ -784,9 +799,56 @@ export async function updateImportLinerRemark(
       : section === "igm"
         ? "importIgmRemark"
         : "importDoRemark";
+  const auditField =
+    section === "movement"
+      ? "importMovementRemarkAudit"
+      : section === "igm"
+        ? "importIgmRemarkAudit"
+        : null;
+
+  const trimmed = remark.trim();
+  const patch: Record<string, unknown> = {
+    [field]: trimmed,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  };
+  if (auditField) {
+    patch[auditField] = {
+      remark: trimmed,
+      updatedBy,
+      updatedAt: Timestamp.now(),
+    };
+  }
+
+  await updateDoc(docRef, patch);
+  invalidateFreightForwardListCache();
+
+  return {
+    ...before,
+    [field]: trimmed,
+    ...(auditField ? { [auditField]: patch[auditField] } : {}),
+    updatedBy,
+  } as FreightForward;
+}
+
+export async function addImportDoRemark(
+  id: string,
+  category: ImportDoRemarkCategory,
+  updatedBy: string
+) {
+  const option = IMPORT_DO_REMARK_OPTIONS.find((entry) => entry.value === category);
+  if (!option) throw new Error("Invalid DO remark type.");
+
+  const { docRef, before } = await loadActiveImportJob(id);
+  const entry = {
+    category,
+    label: option.label,
+    updatedBy,
+    updatedAt: Timestamp.now(),
+  };
 
   await updateDoc(docRef, {
-    [field]: remark.trim(),
+    importDoRemarks: arrayUnion(entry),
     updatedBy,
     updatedAt: serverTimestamp(),
   });
@@ -794,7 +856,7 @@ export async function updateImportLinerRemark(
 
   return {
     ...before,
-    [field]: remark.trim(),
+    importDoRemarks: [...(before.importDoRemarks ?? []), entry],
     updatedBy,
   } as FreightForward;
 }
@@ -885,21 +947,25 @@ export async function updateImportBoeFiling(
   } as FreightForward;
 }
 
-export async function completeImportBoeIn(
+export async function saveImportBoeInInward(
   id: string,
   data: {
     inwardBoeNo: string;
     inwardBoeDate: string;
     importBoeClearanceStatus: ImportBoeClearanceStatus;
   },
-  updatedBy: string
+  updatedBy: string,
+  options?: { allowCompletedEdit?: boolean }
 ) {
   const { docRef, before } = await loadActiveImportJob(id);
   if (!isBoeChecklistComplete(before)) {
-    throw new Error("Complete the checklist before completing BOE In.");
+    throw new Error("Complete the checklist before saving inward BOE.");
   }
   if (before.importBoeFilingStatus !== "filed") {
-    throw new Error("Mark BOE as Filed before completing BOE In.");
+    throw new Error("Mark BOE as Filed before saving inward BOE.");
+  }
+  if (before.importBoeInCompleted && !options?.allowCompletedEdit) {
+    throw new Error("BOE In is already completed.");
   }
 
   const inwardBoeNo = data.inwardBoeNo.trim();
@@ -912,21 +978,26 @@ export async function completeImportBoeIn(
     throw new Error("Select RMS or Open.");
   }
 
-  const audit = stamp(updatedBy);
-  const search = buildFreightSearchIndex({
-    ...before,
-    inwardBoeNo,
-  });
-  await updateDoc(docRef, {
+  const complete = data.importBoeClearanceStatus === "rms";
+  const audit = complete ? stamp(updatedBy) : before.importBoeInCompleteAudit;
+  const search = buildFreightSearchIndex({ ...before, inwardBoeNo });
+  const patch: Record<string, unknown> = {
     inwardBoeNo,
     inwardBoeDate,
     importBoeClearanceStatus: data.importBoeClearanceStatus,
-    importBoeInCompleted: true,
-    importBoeInCompleteAudit: audit,
+    importBoeInCompleted: complete,
     ...search,
     updatedBy,
     updatedAt: serverTimestamp(),
-  });
+  };
+  if (complete) {
+    patch.importBoeInCompleteAudit = audit;
+  } else if (before.importBoeInCompleted) {
+    patch.importBoeInCompleted = false;
+    patch.importBoeInCompleteAudit = deleteField();
+  }
+
+  await updateDoc(docRef, patch);
   invalidateFreightForwardListCache();
 
   return {
@@ -934,8 +1005,128 @@ export async function completeImportBoeIn(
     inwardBoeNo,
     inwardBoeDate,
     importBoeClearanceStatus: data.importBoeClearanceStatus,
-    importBoeInCompleted: true,
-    importBoeInCompleteAudit: audit,
+    importBoeInCompleted: complete,
+    importBoeInCompleteAudit: complete ? audit : undefined,
+    updatedBy,
+  } as FreightForward;
+}
+
+export async function completeImportBoeIn(
+  id: string,
+  data: {
+    inwardBoeNo: string;
+    inwardBoeDate: string;
+    importBoeClearanceStatus: ImportBoeClearanceStatus;
+  },
+  updatedBy: string,
+  options?: { allowCompletedEdit?: boolean }
+) {
+  if (data.importBoeClearanceStatus !== "rms") {
+    throw new Error("Use Save for Open status. Complete is only for RMS.");
+  }
+  return saveImportBoeInInward(id, data, updatedBy, options);
+}
+
+export async function revertImportBoeInAdmin(
+  id: string,
+  section: "checklist" | "filing" | "inward",
+  updatedBy: string,
+  isAdmin: boolean
+) {
+  if (!isAdmin) throw new Error("Admin access required.");
+
+  const { docRef, before } = await loadActiveImportJob(id);
+  const patch: Record<string, unknown> = {
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  };
+
+  if (section === "checklist") {
+    patch.importBoeChecklist = {
+      docReceived: false,
+      checklist: false,
+      clientConfirmation: false,
+    };
+    patch.importBoeChecklistAudit = deleteField();
+    patch.importBoeFilingStatus = "unfiled";
+    patch.importBoeFilingAudit = deleteField();
+    patch.inwardBoeNo = deleteField();
+    patch.inwardBoeDate = deleteField();
+    patch.importBoeClearanceStatus = deleteField();
+    patch.importBoeInCompleted = false;
+    patch.importBoeInCompleteAudit = deleteField();
+  } else if (section === "filing") {
+    patch.importBoeFilingStatus = "unfiled";
+    patch.importBoeFilingAudit = deleteField();
+    patch.inwardBoeNo = deleteField();
+    patch.inwardBoeDate = deleteField();
+    patch.importBoeClearanceStatus = deleteField();
+    patch.importBoeInCompleted = false;
+    patch.importBoeInCompleteAudit = deleteField();
+  } else {
+    patch.inwardBoeNo = deleteField();
+    patch.inwardBoeDate = deleteField();
+    patch.importBoeClearanceStatus = deleteField();
+    patch.importBoeInCompleted = false;
+    patch.importBoeInCompleteAudit = deleteField();
+  }
+
+  await updateDoc(docRef, patch);
+  invalidateFreightForwardListCache();
+
+  const refreshed = await getDoc(docRef);
+  return {
+    id: refreshed.id,
+    ...(refreshed.data() as Omit<FreightForward, "id">),
+  } as FreightForward;
+}
+
+export async function updateImportTransportPortDirection(
+  id: string,
+  direction: ImportPortDirection,
+  updatedBy: string
+) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  if (!isImportBoeInCompleted(before)) {
+    throw new Error("Complete BOE In before updating transport tracking.");
+  }
+  const audit = stamp(updatedBy);
+  await updateDoc(docRef, {
+    importPortDirection: direction,
+    importPortDirectionAudit: audit,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+  return {
+    ...before,
+    importPortDirection: direction,
+    importPortDirectionAudit: audit,
+    updatedBy,
+  } as FreightForward;
+}
+
+export async function updateImportTransportCfsReached(
+  id: string,
+  status: ImportCfsReachedStatus,
+  updatedBy: string
+) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  if (!isImportBoeInCompleted(before)) {
+    throw new Error("Complete BOE In before updating transport tracking.");
+  }
+  const audit = stamp(updatedBy);
+  await updateDoc(docRef, {
+    importCfsReached: status,
+    importCfsReachedAudit: audit,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+  return {
+    ...before,
+    importCfsReached: status,
+    importCfsReachedAudit: audit,
     updatedBy,
   } as FreightForward;
 }
@@ -943,6 +1134,7 @@ export async function completeImportBoeIn(
 export async function completeImportTransport(
   id: string,
   data: {
+    importTransporter?: string;
     importTruckStash: boolean;
     importVehicleNo: string;
     importDriverName: string;
@@ -958,12 +1150,15 @@ export async function completeImportTransport(
   const importVehicleNo = data.importVehicleNo.trim();
   const importDriverName = data.importDriverName.trim();
   const importDriverPhone = data.importDriverPhone.trim();
+  const importTransporter = data.importTransporter?.trim() ?? "";
+  if (!importTransporter) throw new Error("Transporter is required.");
   if (!importVehicleNo) throw new Error("Vehicle No is required.");
   if (!importDriverName) throw new Error("Driver name is required.");
   if (!importDriverPhone) throw new Error("Phone number is required.");
 
   const audit = stamp(updatedBy);
   await updateDoc(docRef, {
+    importTransporter,
     importTruckStash: data.importTruckStash,
     importVehicleNo,
     importDriverName,
@@ -977,12 +1172,271 @@ export async function completeImportTransport(
 
   return {
     ...before,
+    importTransporter,
     importTruckStash: data.importTruckStash,
     importVehicleNo,
     importDriverName,
     importDriverPhone,
     importTransportCompleted: true,
     importTransportCompleteAudit: audit,
+    updatedBy,
+  } as FreightForward;
+}
+
+function requireImportTransportCompleted(before: FreightForward) {
+  if (!isImportTransportCompleted(before)) {
+    throw new Error("Complete Transport before updating T type BE.");
+  }
+}
+
+export async function updateImportBoeOutInwardOcc(
+  id: string,
+  status: ImportBoeOutInwardOccStatus,
+  updatedBy: string
+) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  requireImportTransportCompleted(before);
+  if (isImportBoeOutDispatched(before)) {
+    throw new Error("T type BE job is already dispatched.");
+  }
+  if (!["pending", "occ"].includes(status)) {
+    throw new Error("Invalid inward OCC status.");
+  }
+
+  const audit = status === "occ" ? stamp(updatedBy) : undefined;
+  const patch: Record<string, unknown> = {
+    importBoeOutInwardOccStatus: status,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  };
+  if (audit) {
+    patch.importBoeOutInwardOccAudit = audit;
+  }
+
+  await updateDoc(docRef, patch);
+  invalidateFreightForwardListCache();
+
+  return {
+    ...before,
+    importBoeOutInwardOccStatus: status,
+    importBoeOutInwardOccAudit: audit ?? before.importBoeOutInwardOccAudit,
+    updatedBy,
+  } as FreightForward;
+}
+
+export async function saveImportTTypeBoe(
+  id: string,
+  data: {
+    importTTypeBoeNo: string;
+    importTTypeBoeDate: string;
+    importTTypeBoeClearanceStatus: ImportBoeClearanceStatus;
+  },
+  updatedBy: string
+) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  requireImportTransportCompleted(before);
+  if (isImportBoeOutDispatched(before)) {
+    throw new Error("T type BE job is already dispatched.");
+  }
+  if (!canUnlockImportTTypeSection(before)) {
+    throw new Error("Mark Inward OCC before saving T type BE.");
+  }
+
+  const importTTypeBoeNo = data.importTTypeBoeNo.trim();
+  if (!INWARD_BOE_NO_REGEX.test(importTTypeBoeNo)) {
+    throw new Error("T type No must be 7 digits.");
+  }
+  const importTTypeBoeDate = data.importTTypeBoeDate.trim().slice(0, 10);
+  if (!importTTypeBoeDate) throw new Error("Date is required.");
+  if (!["rms", "open"].includes(data.importTTypeBoeClearanceStatus)) {
+    throw new Error("Select RMS or Open.");
+  }
+
+  const audit = stamp(updatedBy);
+  await updateDoc(docRef, {
+    importTTypeBoeNo,
+    importTTypeBoeDate,
+    importTTypeBoeClearanceStatus: data.importTTypeBoeClearanceStatus,
+    importTTypeBoeSaved: true,
+    importTTypeBoeSaveAudit: audit,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+
+  return {
+    ...before,
+    importTTypeBoeNo,
+    importTTypeBoeDate,
+    importTTypeBoeClearanceStatus: data.importTTypeBoeClearanceStatus,
+    importTTypeBoeSaved: true,
+    importTTypeBoeSaveAudit: audit,
+    updatedBy,
+  } as FreightForward;
+}
+
+export async function updateImportBoeOutDuty(
+  id: string,
+  status: ImportBoeOutDutyStatus,
+  updatedBy: string
+) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  requireImportTransportCompleted(before);
+  if (isImportBoeOutDispatched(before)) {
+    throw new Error("T type BE job is already dispatched.");
+  }
+  if (!canUnlockImportDutySection(before)) {
+    throw new Error("Save T type BE before updating duty.");
+  }
+  if (!["pending", "paid", "final"].includes(status)) {
+    throw new Error("Invalid duty status.");
+  }
+
+  const audit = stamp(updatedBy);
+  await updateDoc(docRef, {
+    importBoeOutDutyStatus: status,
+    importBoeOutDutyAudit: audit,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+
+  return {
+    ...before,
+    importBoeOutDutyStatus: status,
+    importBoeOutDutyAudit: audit,
+    updatedBy,
+  } as FreightForward;
+}
+
+export async function changeImportBoeOutVehicle(id: string, updatedBy: string) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  requireImportTransportCompleted(before);
+  if (isImportBoeOutDispatched(before)) {
+    throw new Error("T type BE job is already dispatched.");
+  }
+  if (!canUnlockImportEwaySection(before)) {
+    throw new Error("Mark duty as Final before changing vehicle.");
+  }
+  if (before.importBoeOutVehicleChanged) {
+    throw new Error("Vehicle change is allowed only once.");
+  }
+  if (!before.importVehicleNo?.trim()) {
+    throw new Error("Transport vehicle details are missing.");
+  }
+
+  const audit = stamp(updatedBy);
+  await updateDoc(docRef, {
+    importBoeOutVehicleChanged: true,
+    importBoeOutVehicleChangeAudit: audit,
+    importBoeOutOldTransporter: before.importTransporter ?? "",
+    importBoeOutOldVehicleNo: before.importVehicleNo ?? "",
+    importBoeOutOldDriverName: before.importDriverName ?? "",
+    importBoeOutOldDriverPhone: before.importDriverPhone ?? "",
+    importBoeOutNewTransporter: "",
+    importBoeOutNewVehicleNo: "",
+    importBoeOutNewDriverName: "",
+    importBoeOutNewDriverPhone: "",
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+
+  const refreshed = await getDoc(docRef);
+  return {
+    id: refreshed.id,
+    ...(refreshed.data() as Omit<FreightForward, "id">),
+  } as FreightForward;
+}
+
+export async function updateImportBoeOutNewVehicle(
+  id: string,
+  data: {
+    importBoeOutNewTransporter: string;
+    importBoeOutNewVehicleNo: string;
+    importBoeOutNewDriverName: string;
+    importBoeOutNewDriverPhone: string;
+  },
+  updatedBy: string
+) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  requireImportTransportCompleted(before);
+  if (isImportBoeOutDispatched(before)) {
+    throw new Error("T type BE job is already dispatched.");
+  }
+  if (!before.importBoeOutVehicleChanged) {
+    throw new Error("Start vehicle change first.");
+  }
+
+  const importBoeOutNewTransporter = data.importBoeOutNewTransporter.trim();
+  const importBoeOutNewVehicleNo = data.importBoeOutNewVehicleNo.trim();
+  const importBoeOutNewDriverName = data.importBoeOutNewDriverName.trim();
+  const importBoeOutNewDriverPhone = data.importBoeOutNewDriverPhone.trim();
+  if (!importBoeOutNewTransporter) throw new Error("Transporter is required.");
+  if (!importBoeOutNewVehicleNo) throw new Error("Vehicle No is required.");
+  if (!importBoeOutNewDriverName) throw new Error("Driver name is required.");
+  if (!importBoeOutNewDriverPhone) throw new Error("Phone number is required.");
+
+  await updateDoc(docRef, {
+    importBoeOutNewTransporter,
+    importBoeOutNewVehicleNo,
+    importBoeOutNewDriverName,
+    importBoeOutNewDriverPhone,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+
+  return {
+    ...before,
+    importBoeOutNewTransporter,
+    importBoeOutNewVehicleNo,
+    importBoeOutNewDriverName,
+    importBoeOutNewDriverPhone,
+    updatedBy,
+  } as FreightForward;
+}
+
+export async function dispatchImportBoeOut(id: string, updatedBy: string) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  requireImportTransportCompleted(before);
+  if (isImportBoeOutDispatched(before)) {
+    throw new Error("T type BE job is already dispatched.");
+  }
+  if (!isImportBoeOutInwardOccDone(before)) {
+    throw new Error("Complete Inward OCC before dispatch.");
+  }
+  if (!isImportTTypeBoeSaved(before)) {
+    throw new Error("Save T type BE before dispatch.");
+  }
+  if (getImportBoeOutDutyStatus(before) !== "final") {
+    throw new Error("Mark duty as Final before dispatch.");
+  }
+  if (
+    before.importBoeOutVehicleChanged &&
+    (!before.importBoeOutNewVehicleNo?.trim() ||
+      !before.importBoeOutNewDriverName?.trim() ||
+      !before.importBoeOutNewDriverPhone?.trim() ||
+      !before.importBoeOutNewTransporter?.trim())
+  ) {
+    throw new Error("Complete new vehicle details before dispatch.");
+  }
+
+  const audit = stamp(updatedBy);
+  await updateDoc(docRef, {
+    importBoeOutDispatched: true,
+    importBoeOutCompleted: true,
+    importBoeOutDispatchAudit: audit,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+
+  return {
+    ...before,
+    importBoeOutDispatched: true,
+    importBoeOutCompleted: true,
+    importBoeOutDispatchAudit: audit,
     updatedBy,
   } as FreightForward;
 }

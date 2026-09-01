@@ -35,7 +35,7 @@ export default function ImportDoStatusPanel({ item }: { item: FreightForward }) 
               </span>
             </div>
             <div>
-              <span className="text-zinc-500">Post validity: </span>
+              <span className="text-zinc-500">Port validity: </span>
               <span className="font-medium text-zinc-800">
                 {formatImportDoDate(item.importDoPostValidity)}
               </span>

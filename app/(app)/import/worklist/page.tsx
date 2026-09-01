@@ -12,18 +12,17 @@ import {
 import { formatContainersDisplay } from "@/lib/freightForward/containers";
 import {
   getImportCompletionCount,
+  getImportDoEmptyDisplay,
+  getImportDoPortDisplay,
+  getImportDoStatusLabel,
   getInwardBoeNoDisplay,
   isImportLinerCompleted,
 } from "@/lib/import/linerWorkflow";
+import { ImportLocationCell } from "@/components/import/ImportLocationCell";
+import { ImportSearchDownloadBar } from "@/components/import/ImportTableExtras";
 import { FreightForward } from "@/types/freightForward";
 
 const PAGE_SIZE = 15;
-
-function locationLabel(item: FreightForward) {
-  return item.locationType === "sez"
-    ? item.sez || "—"
-    : item.cfs || item.sez || "—";
-}
 
 export default function ImportWorklistPage() {
   const [records, setRecords] = useState<FreightForward[]>([]);
@@ -106,17 +105,15 @@ export default function ImportWorklistPage() {
         </button>
       </div>
 
-      <div className="mt-5">
-        <input
-          value={search}
-          onChange={(event) => {
-            setPage(0);
-            setSearch(event.target.value);
-          }}
-          placeholder="Search job no, consignee, MBL, HBL, vessel, container..."
-          className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-        />
-      </div>
+      <ImportSearchDownloadBar
+        search={search}
+        onSearchChange={(value) => {
+          setPage(0);
+          setSearch(value);
+        }}
+        records={filtered}
+        filePrefix="import-job-list"
+      />
 
       {error && (
         <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
@@ -135,6 +132,9 @@ export default function ImportWorklistPage() {
               <th className="px-3 py-3 font-semibold">Location</th>
               <th className="px-3 py-3 font-semibold">Consignee</th>
               <th className="px-3 py-3 font-semibold">Client</th>
+              <th className="px-3 py-3 font-semibold">DO Status</th>
+              <th className="px-3 py-3 font-semibold">Port</th>
+              <th className="px-3 py-3 font-semibold">Empty</th>
               <th className="px-3 py-3 font-semibold">Inward BOE No</th>
               <th className="px-3 py-3 font-semibold">MBL</th>
               <th className="px-3 py-3 font-semibold">HBL</th>
@@ -147,13 +147,13 @@ export default function ImportWorklistPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={14} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={17} className="px-4 py-10 text-center text-zinc-400">
                   Loading job list...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={14} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={17} className="px-4 py-10 text-center text-zinc-400">
                   No jobs found. Use Add, or enable “Use this job for Import” in
                   Freight Forward.
                 </td>
@@ -173,14 +173,21 @@ export default function ImportWorklistPage() {
                       {item.vesselName || "—"}
                     </td>
                     <td className="px-3 py-3 text-zinc-700">{item.eta || "—"}</td>
-                    <td className="px-3 py-3 text-zinc-700">
-                      {locationLabel(item)}
-                    </td>
+                    <ImportLocationCell item={item} />
                     <td className="px-3 py-3 text-zinc-700">
                       {item.consignmentName || "—"}
                     </td>
                     <td className="px-3 py-3 text-zinc-700">
                       {item.clientName || "—"}
+                    </td>
+                    <td className="px-3 py-3 text-zinc-700">
+                      {getImportDoStatusLabel(item)}
+                    </td>
+                    <td className="px-3 py-3 text-zinc-700">
+                      {getImportDoPortDisplay(item)}
+                    </td>
+                    <td className="px-3 py-3 text-zinc-700">
+                      {getImportDoEmptyDisplay(item)}
                     </td>
                     <td className="px-3 py-3 text-zinc-700">
                       {getInwardBoeNoDisplay(item)}

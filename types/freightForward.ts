@@ -51,8 +51,38 @@ export type ImportBoeFilingStatus = "unfiled" | "filed";
 export type ImportBoeClearanceStatus = "rms" | "open";
 export type ImportAccountsBillingStatus = "pending" | "completed";
 export type ImportAccountsPaymentStatus = "pending" | "received";
+export type ImportDoRemarkCategory =
+  | "invoice_pending"
+  | "invoice_received"
+  | "payment_pending"
+  | "payment_done";
+export type ImportPortDirection = "port_in" | "port_out";
+export type ImportCfsReachedStatus = "reached" | "not_reached";
+export type ImportBoeOutInwardOccStatus = "pending" | "occ";
+export type ImportBoeOutDutyStatus = "pending" | "paid" | "final";
+
+export const IMPORT_DO_REMARK_OPTIONS: {
+  value: ImportDoRemarkCategory;
+  label: string;
+}[] = [
+  { value: "invoice_pending", label: "Invoice pending" },
+  { value: "invoice_received", label: "Invoice received" },
+  { value: "payment_pending", label: "Payment pending" },
+  { value: "payment_done", label: "Payment done" },
+];
 
 export interface ImportAuditStamp {
+  updatedBy: string;
+  updatedAt?: Timestamp | Date | unknown;
+}
+
+export interface ImportRemarkAudit extends ImportAuditStamp {
+  remark?: string;
+}
+
+export interface ImportDoRemarkEntry {
+  category: ImportDoRemarkCategory;
+  label: string;
   updatedBy: string;
   updatedAt?: Timestamp | Date | unknown;
 }
@@ -155,8 +185,12 @@ export interface FreightForward {
   importMovementRemark?: string;
   importIgmRemark?: string;
   importDoRemark?: string;
+  importMovementRemarkAudit?: ImportRemarkAudit;
+  importIgmRemarkAudit?: ImportRemarkAudit;
+  importDoRemarks?: ImportDoRemarkEntry[];
   /** Required when DO status is set to received. */
   importDoEmptyValidity?: string;
+  /** Port validity date (legacy field name: importDoPostValidity). */
   importDoPostValidity?: string;
   /** Extra named documents captured from Import Add / documents section. */
   otherDocuments?: FreightForwardDocument[];
@@ -171,12 +205,40 @@ export interface FreightForward {
   importBoeInCompleted?: boolean;
   importBoeInCompleteAudit?: ImportAuditStamp;
   /** Transport — captured after BOE In completion. */
+  importTransporter?: string;
   importTruckStash?: boolean;
   importVehicleNo?: string;
   importDriverName?: string;
   importDriverPhone?: string;
+  importPortDirection?: ImportPortDirection;
+  importPortDirectionAudit?: ImportAuditStamp;
+  importCfsReached?: ImportCfsReachedStatus;
+  importCfsReachedAudit?: ImportAuditStamp;
   importTransportCompleted?: boolean;
   importTransportCompleteAudit?: ImportAuditStamp;
+  /** T type BE (BOE Out) — captured after Transport completion. */
+  importBoeOutInwardOccStatus?: ImportBoeOutInwardOccStatus;
+  importBoeOutInwardOccAudit?: ImportAuditStamp;
+  importTTypeBoeNo?: string;
+  importTTypeBoeDate?: string;
+  importTTypeBoeClearanceStatus?: ImportBoeClearanceStatus;
+  importTTypeBoeSaved?: boolean;
+  importTTypeBoeSaveAudit?: ImportAuditStamp;
+  importBoeOutDutyStatus?: ImportBoeOutDutyStatus;
+  importBoeOutDutyAudit?: ImportAuditStamp;
+  importBoeOutVehicleChanged?: boolean;
+  importBoeOutVehicleChangeAudit?: ImportAuditStamp;
+  importBoeOutOldTransporter?: string;
+  importBoeOutOldVehicleNo?: string;
+  importBoeOutOldDriverName?: string;
+  importBoeOutOldDriverPhone?: string;
+  importBoeOutNewTransporter?: string;
+  importBoeOutNewVehicleNo?: string;
+  importBoeOutNewDriverName?: string;
+  importBoeOutNewDriverPhone?: string;
+  importBoeOutDispatched?: boolean;
+  importBoeOutCompleted?: boolean;
+  importBoeOutDispatchAudit?: ImportAuditStamp;
   /** Accounts — captured after Transport completion. */
   importAccountsBillingStatus?: ImportAccountsBillingStatus;
   importAccountsBillingRemark?: string;

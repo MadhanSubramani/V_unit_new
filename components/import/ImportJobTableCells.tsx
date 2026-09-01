@@ -4,10 +4,17 @@ import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FreightForward } from "@/types/freightForward";
 
-export function importLocationLabel(item: FreightForward) {
-  return item.locationType === "sez"
-    ? item.sez || "—"
-    : item.cfs || item.sez || "—";
+import { resolveImportLocationCode } from "@/lib/import/location";
+import { Cfs } from "@/types/cfs";
+import { Sez } from "@/types/sez";
+
+/** @deprecated Use ImportLocationCell or resolveImportLocationCode */
+export function importLocationLabel(
+  item: FreightForward,
+  cfsList: Cfs[] = [],
+  sezList: Sez[] = []
+) {
+  return resolveImportLocationCode(item, cfsList, sezList);
 }
 
 export function ImportTableCell({

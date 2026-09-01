@@ -123,6 +123,24 @@ export function getInwardBoeNoDisplay(item: FreightForward) {
   return value || "—";
 }
 
+export function getImportDoPortValidity(item: FreightForward) {
+  return item.importDoPostValidity?.trim() ?? "";
+}
+
+export function getImportDoStatusLabel(item: FreightForward) {
+  return isImportDoCompleted(item) ? "Received" : "Pending";
+}
+
+export function getImportDoPortDisplay(item: FreightForward) {
+  const value = getImportDoPortValidity(item);
+  return value || "—";
+}
+
+export function getImportDoEmptyDisplay(item: FreightForward) {
+  const value = item.importDoEmptyValidity?.trim();
+  return value || "—";
+}
+
 export function computeImportLinerCounts(records: FreightForward[]) {
   const completed = records.filter(isImportLinerCompleted).length;
   return {

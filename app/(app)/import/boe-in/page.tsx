@@ -12,12 +12,16 @@ import ModuleHeader from "@/components/ModuleHeader";
 import ImportAuditLine from "@/components/import/ImportAuditLine";
 import ImportDoStatusPanel from "@/components/import/ImportDoStatusPanel";
 import {
-  ImportTableCell,
-  importLocationLabel,
-} from "@/components/import/ImportJobTableCells";
+  ImportDoTableCells,
+  ImportSearchDownloadBar,
+} from "@/components/import/ImportTableExtras";
+import { ImportLocationCell } from "@/components/import/ImportLocationCell";
+import { ImportTableCell } from "@/components/import/ImportJobTableCells";
 import {
   completeImportBoeIn,
   getImportLinerRecords,
+  revertImportBoeInAdmin,
+  saveImportBoeInInward,
   updateImportBoeChecklist,
   updateImportBoeFiling,
 } from "@/lib/freightForward/freightForward";
@@ -56,7 +60,7 @@ export default function ImportBoeInPage() {
   const [error, setError] = useState("");
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const [panelWidth, setPanelWidth] = useState(0);
-  const [user] = useState<{ username?: string } | null>(() => {
+  const [user] = useState<{ username?: string; role?: string } | null>(() => {
     if (typeof window === "undefined") return null;
     const stored = sessionStorage.getItem("user");
     if (!stored) return null;
@@ -110,8 +114,8 @@ export default function ImportBoeInPage() {
     { key: "filedBoe", label: "Filed BOE", value: counts.filedBoe },
     {
       key: "completed",
-      label: "Completed / Incomplete",
-      value: `${counts.completed} / ${counts.incomplete}`,
+      label: "Completed",
+      value: counts.completed,
     },
   ];
 
@@ -146,7 +150,7 @@ export default function ImportBoeInPage() {
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
       <ModuleHeader
-        title="Import — BOE In"
+        title="Import — Z type BE"
         description="Import jobs run in parallel with Liner. Complete checklist, file BOE, then capture inward details."
       />
 
@@ -180,17 +184,15 @@ export default function ImportBoeInPage() {
         })}
       </div>
 
-      <div className="mt-5">
-        <input
-          value={search}
-          onChange={(event) => {
-            setPage(0);
-            setSearch(event.target.value);
-          }}
-          placeholder="Search job no, consignee, MBL, HBL, inward BOE no..."
-          className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-        />
-      </div>
+      <ImportSearchDownloadBar
+        search={search}
+        onSearchChange={(value) => {
+          setPage(0);
+          setSearch(value);
+        }}
+        records={filtered}
+        filePrefix="import-z-type-be"
+      />
 
       {error && (
         <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
@@ -215,6 +217,9 @@ export default function ImportBoeInPage() {
               <th className="px-3 py-3 font-semibold">Location</th>
               <th className="px-3 py-3 font-semibold">Consignee</th>
               <th className="px-3 py-3 font-semibold">Client</th>
+              <th className="px-3 py-3 font-semibold">DO Status</th>
+              <th className="px-3 py-3 font-semibold">Port</th>
+              <th className="px-3 py-3 font-semibold">Empty</th>
               <th className="px-3 py-3 font-semibold">Inward BOE No</th>
               <th className="px-3 py-3 font-semibold">MBL</th>
               <th className="px-3 py-3 font-semibold">HBL</th>
@@ -225,13 +230,13 @@ export default function ImportBoeInPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={15} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={18} className="px-4 py-10 text-center text-zinc-400">
                   Loading BOE In jobs...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={15} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={18} className="px-4 py-10 text-center text-zinc-400">
                   No import jobs found.
                 </td>
               </tr>
@@ -243,6 +248,7 @@ export default function ImportBoeInPage() {
                   expanded={expandedId === item.id}
                   busy={updatingId === item.id}
                   username={user?.username ?? "Unknown"}
+                  isAdmin={user?.role === "admin"}
                   panelWidth={panelWidth}
                   onToggle={() =>
                     setExpandedId((current) =>
@@ -291,6 +297,7 @@ function BoeRow({
   expanded,
   busy,
   username,
+  isAdmin,
   panelWidth,
   onToggle,
   onBusy,
@@ -301,6 +308,7 @@ function BoeRow({
   expanded: boolean;
   busy: boolean;
   username: string;
+  isAdmin: boolean;
   panelWidth: number;
   onToggle: () => void;
   onBusy: (id: string | null) => void;
@@ -326,9 +334,10 @@ function BoeRow({
         <ImportTableCell value={item.tradeTerms} width={110} />
         <ImportTableCell value={item.vesselName} />
         <ImportTableCell value={item.eta} width={100} />
-        <ImportTableCell value={importLocationLabel(item)} />
+        <ImportLocationCell item={item} />
         <ImportTableCell value={item.consignmentName} />
         <ImportTableCell value={item.clientName} />
+        <ImportDoTableCells item={item} />
         <ImportTableCell value={getInwardBoeNoDisplay(item)} width={120} />
         <ImportTableCell value={item.mbl} width={130} />
         <ImportTableCell value={item.hbl} width={130} />
@@ -354,7 +363,7 @@ function BoeRow({
       </tr>
       {expanded && (
         <tr className="border-t border-zinc-100 bg-zinc-100/70">
-          <td colSpan={15} className="p-0">
+          <td colSpan={18} className="p-0">
             <div
               className="sticky left-0 min-w-0 p-3"
               style={panelWidth ? { width: panelWidth } : undefined}
@@ -363,6 +372,7 @@ function BoeRow({
                 item={item}
                 busy={busy}
                 username={username}
+                isAdmin={isAdmin}
                 checklistDone={checklistDone}
                 filed={filed}
                 completed={completed}
@@ -382,6 +392,7 @@ function BoeExpansion({
   item,
   busy,
   username,
+  isAdmin,
   checklistDone,
   filed,
   completed,
@@ -392,6 +403,7 @@ function BoeExpansion({
   item: FreightForward;
   busy: boolean;
   username: string;
+  isAdmin: boolean;
   checklistDone: boolean;
   filed: boolean;
   completed: boolean;
@@ -399,6 +411,8 @@ function BoeExpansion({
   onError: (message: string) => void;
   onUpdated: (item: FreightForward) => void;
 }) {
+  const [adminEdit, setAdminEdit] = useState(false);
+  const locked = completed && !(isAdmin && adminEdit);
   const [inwardNo, setInwardNo] = useState(item.inwardBoeNo ?? "");
   const [inwardDate, setInwardDate] = useState(item.inwardBoeDate ?? "");
   const [clearance, setClearance] = useState<ImportBoeClearanceStatus>(
@@ -449,20 +463,56 @@ function BoeExpansion({
           inwardBoeDate: inwardDate,
           importBoeClearanceStatus: clearance,
         },
-        username
+        username,
+        { allowCompletedEdit: isAdmin && adminEdit }
       )
     );
+  };
+
+  const saveOpen = () => {
+    void run(() =>
+      saveImportBoeInInward(
+        item.id!,
+        {
+          inwardBoeNo: inwardNo,
+          inwardBoeDate: inwardDate,
+          importBoeClearanceStatus: clearance,
+        },
+        username,
+        { allowCompletedEdit: isAdmin && adminEdit }
+      )
+    );
+  };
+
+  const revertSection = (section: "checklist" | "filing" | "inward") => {
+    void run(() => revertImportBoeInAdmin(item.id!, section, username, isAdmin));
   };
 
   return (
     <div className="min-w-0 overflow-hidden rounded-xl border border-zinc-200 bg-white">
       <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-          BOE In workflow
-        </p>
-        <h3 className="mt-1 text-sm font-semibold text-zinc-900">
-          {item.jobNumber || "Import"} — checklist, filing, inward
-        </h3>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              Z type BE workflow
+            </p>
+            <h3 className="mt-1 text-sm font-semibold text-zinc-900">
+              {item.jobNumber || "Import"} — checklist, filing, inward
+            </h3>
+          </div>
+          {isAdmin && completed && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setAdminEdit((current) => !current);
+              }}
+              className="rounded-lg border border-zinc-200 px-2.5 py-1 text-[10px] font-semibold text-zinc-700"
+            >
+              {adminEdit ? "Lock" : "Edit"}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid min-w-0 gap-3 p-4 lg:grid-cols-3">
@@ -485,7 +535,7 @@ function BoeExpansion({
                 <input
                   type="checkbox"
                   checked={!!item.importBoeChecklist?.[entry.key]}
-                  disabled={busy || completed}
+                  disabled={busy || locked}
                   onChange={(event) =>
                     toggleCheck(entry.key, event.target.checked)
                   }
@@ -495,6 +545,16 @@ function BoeExpansion({
             ))}
           </div>
           <ImportAuditLine audit={item.importBoeChecklistAudit} />
+          {isAdmin && adminEdit && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => revertSection("checklist")}
+              className="mt-2 rounded-lg border border-red-200 px-2.5 py-1 text-[10px] font-semibold text-red-600"
+            >
+              Revert checklist
+            </button>
+          )}
         </section>
 
         <section
@@ -535,7 +595,7 @@ function BoeExpansion({
                       type="radio"
                       name={`boe-filing-${item.id}`}
                       checked={getBoeFilingStatus(item) === status}
-                      disabled={busy || completed}
+                      disabled={busy || locked}
                       onChange={() => setFiling(status)}
                     />
                     {status}
@@ -545,6 +605,16 @@ function BoeExpansion({
             </div>
           )}
           <ImportAuditLine audit={item.importBoeFilingAudit} />
+          {isAdmin && adminEdit && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => revertSection("filing")}
+              className="mt-2 rounded-lg border border-red-200 px-2.5 py-1 text-[10px] font-semibold text-red-600"
+            >
+              Revert filing
+            </button>
+          )}
         </section>
 
         <section
@@ -583,7 +653,7 @@ function BoeExpansion({
                 <input
                   value={inwardNo}
                   maxLength={7}
-                  disabled={busy || completed}
+                  disabled={busy || locked}
                   onChange={(event) =>
                     setInwardNo(event.target.value.replace(/\D/g, "").slice(0, 7))
                   }
@@ -596,7 +666,7 @@ function BoeExpansion({
                 <input
                   type="date"
                   value={inwardDate}
-                  disabled={busy || completed}
+                  disabled={busy || locked}
                   onChange={(event) => setInwardDate(event.target.value)}
                   className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
                 />
@@ -605,7 +675,7 @@ function BoeExpansion({
                 <span className="font-medium text-zinc-700">Status</span>
                 <select
                   value={clearance}
-                  disabled={busy || completed}
+                  disabled={busy || locked}
                   onChange={(event) =>
                     setClearance(event.target.value as ImportBoeClearanceStatus)
                   }
@@ -615,19 +685,46 @@ function BoeExpansion({
                   <option value="open">Open</option>
                 </select>
               </label>
-              {!completed && (
-                <button
-                  type="button"
-                  disabled={
-                    busy ||
-                    !INWARD_BOE_NO_REGEX.test(inwardNo.trim()) ||
-                    !inwardDate
-                  }
-                  onClick={complete}
-                  className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
-                >
-                  Complete
-                </button>
+              {(!locked || (isAdmin && adminEdit)) && (
+                <div className="flex flex-wrap gap-2">
+                  {clearance === "open" ? (
+                    <button
+                      type="button"
+                      disabled={
+                        busy ||
+                        !INWARD_BOE_NO_REGEX.test(inwardNo.trim()) ||
+                        !inwardDate
+                      }
+                      onClick={saveOpen}
+                      className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
+                    >
+                      Save
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={
+                        busy ||
+                        !INWARD_BOE_NO_REGEX.test(inwardNo.trim()) ||
+                        !inwardDate
+                      }
+                      onClick={complete}
+                      className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
+                    >
+                      Complete
+                    </button>
+                  )}
+                  {isAdmin && adminEdit && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => revertSection("inward")}
+                      className="rounded-lg border border-red-200 px-3 py-1.5 text-[10px] font-semibold text-red-600"
+                    >
+                      Clear inward
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           )}

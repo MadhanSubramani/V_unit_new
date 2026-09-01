@@ -38,9 +38,9 @@ const IMPORT_SUB = [
   { href: "/import/eta-updater", label: "ETA Updater", icon: CalendarClock, enabled: true },
   { href: "/import/worklist", label: "Job List", icon: ClipboardList, enabled: true },
   { href: "/import/liner", label: "Liner", icon: Ship, enabled: true },
-  { href: "/import/boe-in", label: "BOE In", icon: FileText, enabled: true },
+  { href: "/import/boe-in", label: "Z type BE", icon: FileText, enabled: true },
   { href: "/import/transport", label: "Transport", icon: Warehouse, enabled: true },
-  { href: "/import/boe-out", label: "BOE Out", icon: ClipboardList, enabled: false },
+  { href: "/import/boe-out", label: "T type BE", icon: ClipboardList, enabled: true },
   { href: "/import/accounts", label: "Accounts", icon: Settings, enabled: true },
   { href: "/import/trash", label: "Trash", icon: Trash2, enabled: true },
 ] as const;

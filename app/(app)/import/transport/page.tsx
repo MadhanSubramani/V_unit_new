@@ -10,13 +10,17 @@ import {
 import ModuleHeader from "@/components/ModuleHeader";
 import ImportAuditLine from "@/components/import/ImportAuditLine";
 import ImportDoStatusPanel from "@/components/import/ImportDoStatusPanel";
+import { ImportLocationCell } from "@/components/import/ImportLocationCell";
+import { ImportTableCell } from "@/components/import/ImportJobTableCells";
 import {
-  ImportTableCell,
-  importLocationLabel,
-} from "@/components/import/ImportJobTableCells";
+  ImportDoTableCells,
+  ImportSearchDownloadBar,
+} from "@/components/import/ImportTableExtras";
 import {
   completeImportTransport,
   getImportLinerRecords,
+  updateImportTransportCfsReached,
+  updateImportTransportPortDirection,
 } from "@/lib/freightForward/freightForward";
 import { formatContainersDisplay } from "@/lib/freightForward/containers";
 import { getInwardBoeNoDisplay } from "@/lib/import/linerWorkflow";
@@ -29,7 +33,7 @@ import {
   isImportTransportCompleted,
   matchesImportTransportCard,
 } from "@/lib/import/transportWorkflow";
-import { FreightForward } from "@/types/freightForward";
+import { FreightForward, ImportCfsReachedStatus, ImportPortDirection } from "@/types/freightForward";
 
 const PAGE_SIZE = 10;
 
@@ -163,17 +167,15 @@ export default function ImportTransportPage() {
         })}
       </div>
 
-      <div className="mt-5">
-        <input
-          value={search}
-          onChange={(event) => {
-            setPage(0);
-            setSearch(event.target.value);
-          }}
-          placeholder="Search job no, consignee, inward BOE no, vehicle..."
-          className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-        />
-      </div>
+      <ImportSearchDownloadBar
+        search={search}
+        onSearchChange={(value) => {
+          setPage(0);
+          setSearch(value);
+        }}
+        records={filtered}
+        filePrefix="import-transport"
+      />
 
       {error && (
         <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
@@ -198,6 +200,9 @@ export default function ImportTransportPage() {
               <th className="px-3 py-3 font-semibold">Location</th>
               <th className="px-3 py-3 font-semibold">Consignee</th>
               <th className="px-3 py-3 font-semibold">Client</th>
+              <th className="px-3 py-3 font-semibold">DO Status</th>
+              <th className="px-3 py-3 font-semibold">Port</th>
+              <th className="px-3 py-3 font-semibold">Empty</th>
               <th className="px-3 py-3 font-semibold">Inward BOE No</th>
               <th className="px-3 py-3 font-semibold">MBL</th>
               <th className="px-3 py-3 font-semibold">HBL</th>
@@ -208,13 +213,13 @@ export default function ImportTransportPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={15} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={18} className="px-4 py-10 text-center text-zinc-400">
                   Loading Transport jobs...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={15} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={18} className="px-4 py-10 text-center text-zinc-400">
                   No liner-completed jobs found.
                 </td>
               </tr>
@@ -314,9 +319,10 @@ function TransportRow({
         <ImportTableCell value={item.tradeTerms} width={110} />
         <ImportTableCell value={item.vesselName} />
         <ImportTableCell value={item.eta} width={100} />
-        <ImportTableCell value={importLocationLabel(item)} />
+        <ImportLocationCell item={item} />
         <ImportTableCell value={item.consignmentName} />
         <ImportTableCell value={item.clientName} />
+        <ImportDoTableCells item={item} />
         <ImportTableCell value={getInwardBoeNoDisplay(item)} width={120} />
         <ImportTableCell value={item.mbl} width={130} />
         <ImportTableCell value={item.hbl} width={130} />
@@ -342,7 +348,7 @@ function TransportRow({
       </tr>
       {expanded && (
         <tr className="border-t border-zinc-100 bg-zinc-100/70">
-          <td colSpan={15} className="p-0">
+          <td colSpan={18} className="p-0">
             <div
               className="sticky left-0 min-w-0 p-3"
               style={panelWidth ? { width: panelWidth } : undefined}
@@ -384,24 +390,26 @@ function TruckDetailCard({
   onError: (message: string) => void;
   onUpdated: (item: FreightForward) => void;
 }) {
-  const [stash, setStash] = useState<boolean | null>(
-    typeof item.importTruckStash === "boolean" ? item.importTruckStash : null
+  const [stash, setStash] = useState<boolean>(
+    typeof item.importTruckStash === "boolean" ? item.importTruckStash : false
   );
+  const [transporter, setTransporter] = useState(item.importTransporter ?? "");
   const [vehicleNo, setVehicleNo] = useState(item.importVehicleNo ?? "");
   const [driverName, setDriverName] = useState(item.importDriverName ?? "");
   const [phone, setPhone] = useState(item.importDriverPhone ?? "");
 
   useEffect(() => {
     setStash(
-      typeof item.importTruckStash === "boolean" ? item.importTruckStash : null
+      typeof item.importTruckStash === "boolean" ? item.importTruckStash : false
     );
+    setTransporter(item.importTransporter ?? "");
     setVehicleNo(item.importVehicleNo ?? "");
     setDriverName(item.importDriverName ?? "");
     setPhone(item.importDriverPhone ?? "");
   }, [item]);
 
   const complete = async () => {
-    if (!item.id || stash === null) return;
+    if (!item.id) return;
     onBusy(item.id);
     onError("");
     try {
@@ -409,6 +417,7 @@ function TruckDetailCard({
         await completeImportTransport(
           item.id,
           {
+            importTransporter: transporter,
             importTruckStash: stash,
             importVehicleNo: vehicleNo,
             importDriverName: driverName,
@@ -435,7 +444,7 @@ function TruckDetailCard({
           Transport workflow
         </p>
         <h3 className="mt-1 text-sm font-semibold text-zinc-900">
-          Truck detail
+          Truck detail & tracking
         </h3>
       </div>
       <section
@@ -452,7 +461,7 @@ function TruckDetailCard({
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-zinc-900 text-[11px] font-bold text-white">
             {completed ? <Check size={14} strokeWidth={3} /> : "1"}
           </span>
-          <h3 className="text-sm font-semibold text-zinc-900">Truck stash</h3>
+          <h3 className="text-sm font-semibold text-zinc-900">Truck status</h3>
         </div>
         <div className="mt-3 flex gap-4 text-xs">
           <label className="inline-flex items-center gap-1.5">
@@ -477,6 +486,15 @@ function TruckDetailCard({
           </label>
         </div>
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <label className="block text-xs sm:col-span-2">
+            <span className="font-medium text-zinc-700">Transporter</span>
+            <input
+              value={transporter}
+              disabled={busy || completed || !actionable}
+              onChange={(event) => setTransporter(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
+            />
+          </label>
           <label className="block text-xs">
             <span className="font-medium text-zinc-700">Vehicle No</span>
             <input
@@ -513,7 +531,7 @@ function TruckDetailCard({
             type="button"
             disabled={
               busy ||
-              stash === null ||
+              !transporter.trim() ||
               !vehicleNo.trim() ||
               !driverName.trim() ||
               !phone.trim()
@@ -526,7 +544,111 @@ function TruckDetailCard({
         )}
         <ImportAuditLine audit={item.importTransportCompleteAudit} />
       </section>
+      <TransportTrackingSection
+        item={item}
+        busy={busy}
+        actionable={actionable}
+        username={username}
+        onBusy={onBusy}
+        onError={onError}
+        onUpdated={onUpdated}
+      />
       <ImportDoStatusPanel item={item} />
     </div>
+  );
+}
+
+function TransportTrackingSection({
+  item,
+  busy,
+  actionable,
+  username,
+  onBusy,
+  onError,
+  onUpdated,
+}: {
+  item: FreightForward;
+  busy: boolean;
+  actionable: boolean;
+  username: string;
+  onBusy: (id: string | null) => void;
+  onError: (message: string) => void;
+  onUpdated: (item: FreightForward) => void;
+}) {
+  const run = async (task: () => Promise<FreightForward>) => {
+    if (!item.id) return;
+    onBusy(item.id);
+    onError("");
+    try {
+      onUpdated(await task());
+    } catch (updateError) {
+      onError(
+        updateError instanceof Error
+          ? updateError.message
+          : "Unable to update transport tracking."
+      );
+    } finally {
+      onBusy(null);
+    }
+  };
+
+  return (
+    <section
+      className="border-t border-zinc-200 p-4"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div className="flex items-center gap-2">
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-zinc-900 text-[11px] font-bold text-white">
+          2
+        </span>
+        <h3 className="text-sm font-semibold text-zinc-900">Port & CFS tracking</h3>
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <label className="block text-xs">
+          <span className="font-medium text-zinc-700">Port</span>
+          <select
+            value={item.importPortDirection ?? ""}
+            disabled={busy || !actionable}
+            onChange={(event) =>
+              void run(() =>
+                updateImportTransportPortDirection(
+                  item.id!,
+                  event.target.value as ImportPortDirection,
+                  username
+                )
+              )
+            }
+            className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
+          >
+            <option value="">Select</option>
+            <option value="port_in">Port in</option>
+            <option value="port_out">Port out</option>
+          </select>
+          <ImportAuditLine audit={item.importPortDirectionAudit} emptyLabel="" />
+        </label>
+        <label className="block text-xs">
+          <span className="font-medium text-zinc-700">CFS</span>
+          <select
+            value={item.importCfsReached ?? ""}
+            disabled={busy || !actionable}
+            onChange={(event) =>
+              void run(() =>
+                updateImportTransportCfsReached(
+                  item.id!,
+                  event.target.value as ImportCfsReachedStatus,
+                  username
+                )
+              )
+            }
+            className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
+          >
+            <option value="">Select</option>
+            <option value="reached">CFS reached</option>
+            <option value="not_reached">Not reached</option>
+          </select>
+          <ImportAuditLine audit={item.importCfsReachedAudit} emptyLabel="" />
+        </label>
+      </div>
+    </section>
   );
 }

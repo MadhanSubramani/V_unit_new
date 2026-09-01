@@ -11,10 +11,15 @@ import {
 } from "lucide-react";
 import ModuleHeader from "@/components/ModuleHeader";
 import ImportJobEditDrawer from "@/components/import/ImportJobEditDrawer";
+import { ImportLocationCell } from "@/components/import/ImportLocationCell";
+import { ImportSearchDownloadBar } from "@/components/import/ImportTableExtras";
+import { downloadMergedImportDocuments } from "@/lib/import/mergeDocuments";
+import { formatImportAuditDate } from "@/lib/import/auditDisplay";
 import ActionMenu from "@/components/shared/ActionMenu";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import {
   getImportLinerRecords,
+  addImportDoRemark,
   softDeleteFreightForward,
   updateImportLinerRemark,
   updateImportLinerStage,
@@ -23,6 +28,9 @@ import {
   canUpdateImportDo,
   canUpdateImportIgm,
   computeImportLinerCounts,
+  getImportDoEmptyDisplay,
+  getImportDoPortDisplay,
+  getImportDoStatusLabel,
   getImportCompletionCount,
   getImportDoStatus,
   getImportIgmStatus,
@@ -39,9 +47,11 @@ import {
   FreightForward,
   FreightForwardDocument,
   ImportDoStatus,
+  ImportDoRemarkCategory,
   ImportIgmStatus,
   ImportMovementStatus,
   ImportWorkflowSection,
+  IMPORT_DO_REMARK_OPTIONS,
 } from "@/types/freightForward";
 
 const PAGE_SIZE = 10;
@@ -64,12 +74,6 @@ function latestAudit(item: FreightForward, section: ImportWorkflowSection) {
   return [...(item.importWorkflowTimeline ?? [])]
     .reverse()
     .find((entry) => entry.section === section);
-}
-
-function locationLabel(item: FreightForward) {
-  return item.locationType === "sez"
-    ? item.sez || "—"
-    : item.cfs || item.sez || "—";
 }
 
 function TableCell({
@@ -192,8 +196,8 @@ export default function ImportLinerPage() {
     { key: "do", label: "DO incomplete", value: counts.do },
     {
       key: "completed",
-      label: "Completed / Incomplete",
-      value: `${counts.completed} / ${counts.incomplete}`,
+      label: "Completed",
+      value: counts.completed,
     },
   ];
 
@@ -305,6 +309,33 @@ export default function ImportLinerPage() {
     }
   };
 
+  const saveDoRemark = async (
+    item: FreightForward,
+    category: ImportDoRemarkCategory
+  ) => {
+    if (!item.id) return;
+    setUpdatingId(item.id);
+    setError("");
+    try {
+      const updated = await addImportDoRemark(
+        item.id,
+        category,
+        user?.username ?? "Unknown"
+      );
+      setRecords((current) =>
+        current.map((record) => (record.id === updated.id ? updated : record))
+      );
+    } catch (updateError) {
+      setError(
+        updateError instanceof Error
+          ? updateError.message
+          : "Unable to add DO remark."
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
       <ModuleHeader
@@ -342,17 +373,15 @@ export default function ImportLinerPage() {
         })}
       </div>
 
-      <div className="mt-5">
-        <input
-          value={search}
-          onChange={(event) => {
-            setPage(0);
-            setSearch(event.target.value);
-          }}
-          placeholder="Search FF No, consignee, MBL, HBL, vessel, liner, container..."
-          className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-        />
-      </div>
+      <ImportSearchDownloadBar
+        search={search}
+        onSearchChange={(value) => {
+          setPage(0);
+          setSearch(value);
+        }}
+        records={filtered}
+        filePrefix="import-liner"
+      />
 
       {error && (
         <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
@@ -377,6 +406,9 @@ export default function ImportLinerPage() {
               <th className="px-3 py-3 font-semibold">Location</th>
               <th className="px-3 py-3 font-semibold">Consignee</th>
               <th className="px-3 py-3 font-semibold">Client</th>
+              <th className="px-3 py-3 font-semibold">DO Status</th>
+              <th className="px-3 py-3 font-semibold">Port</th>
+              <th className="px-3 py-3 font-semibold">Empty</th>
               <th className="px-3 py-3 font-semibold">Inward BOE No</th>
               <th className="px-3 py-3 font-semibold">MBL</th>
               <th className="px-3 py-3 font-semibold">HBL</th>
@@ -389,13 +421,13 @@ export default function ImportLinerPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={17} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={20} className="px-4 py-10 text-center text-zinc-400">
                   Loading Import Liner jobs...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={17} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={20} className="px-4 py-10 text-center text-zinc-400">
                   No jobs found for this filter. Add jobs from Import Job List,
                   or enable “Use this job for Import” in Freight Forward.
                 </td>
@@ -417,6 +449,7 @@ export default function ImportLinerPage() {
                     }
                     onUpdate={updateStage}
                     onRemark={saveRemark}
+                    onDoRemark={saveDoRemark}
                     onEdit={() => setEditItem(item)}
                     onDelete={() => setDeleteId(item.id ?? null)}
                     panelWidth={panelWidth}
@@ -488,6 +521,7 @@ function Row({
   onToggle,
   onUpdate,
   onRemark,
+  onDoRemark,
   onEdit,
   onDelete,
   panelWidth,
@@ -507,6 +541,10 @@ function Row({
     item: FreightForward,
     section: ImportWorkflowSection,
     remark: string
+  ) => Promise<void>;
+  onDoRemark: (
+    item: FreightForward,
+    category: ImportDoRemarkCategory
   ) => Promise<void>;
   onEdit: () => void;
   onDelete: () => void;
@@ -532,9 +570,12 @@ function Row({
         <TableCell value={item.tradeTerms} width={110} />
         <TableCell value={item.vesselName} />
         <TableCell value={item.eta} width={100} />
-        <TableCell value={locationLabel(item)} />
+        <ImportLocationCell item={item} />
         <TableCell value={item.consignmentName} />
         <TableCell value={item.clientName} />
+        <TableCell value={getImportDoStatusLabel(item)} width={90} />
+        <TableCell value={getImportDoPortDisplay(item)} width={100} />
+        <TableCell value={getImportDoEmptyDisplay(item)} width={100} />
         <TableCell value={getInwardBoeNoDisplay(item)} width={120} />
         <TableCell value={item.mbl} width={130} />
         <TableCell value={item.hbl} width={130} />
@@ -574,7 +615,7 @@ function Row({
       </tr>
       {expanded && (
         <tr className="border-t border-zinc-100 bg-zinc-100/70">
-          <td colSpan={17} className="p-0">
+          <td colSpan={20} className="p-0">
             <div
               className="sticky left-0 min-w-0 p-3"
               style={panelWidth ? { width: panelWidth } : undefined}
@@ -649,13 +690,17 @@ function Row({
                     busy={busy}
                     onUpdate={onUpdate}
                     onRemark={onRemark}
+                    onDoRemark={onDoRemark}
                   />
                 </div>
 
                 <div className="border-t border-zinc-200 p-4">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
-                    Documents
-                  </p>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                      Documents
+                    </p>
+                    <DocumentsDownloadAll item={item} />
+                  </div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                     <DocumentLink label="MBL" doc={item.mblUrl} />
                     <DocumentLink label="HBL" doc={item.hblUrl} />
@@ -681,6 +726,42 @@ function Row({
         </tr>
       )}
     </>
+  );
+}
+
+function DocumentsDownloadAll({ item }: { item: FreightForward }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleDownload = async (event: React.MouseEvent) => {
+    event.stopPropagation();
+    setBusy(true);
+    setError("");
+    try {
+      await downloadMergedImportDocuments(item);
+    } catch (downloadError) {
+      setError(
+        downloadError instanceof Error
+          ? downloadError.message
+          : "Unable to download documents."
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="text-right" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={(event) => void handleDownload(event)}
+        className="rounded-lg border border-zinc-200 px-2.5 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+      >
+        {busy ? "Preparing..." : "Download all"}
+      </button>
+      {error && <p className="mt-1 text-[10px] text-red-500">{error}</p>}
+    </div>
   );
 }
 
@@ -726,6 +807,7 @@ function StageCard({
   busy,
   onUpdate,
   onRemark,
+  onDoRemark,
 }: {
   title: string;
   section: ImportWorkflowSection;
@@ -746,6 +828,10 @@ function StageCard({
     section: ImportWorkflowSection,
     remark: string
   ) => Promise<void>;
+  onDoRemark?: (
+    item: FreightForward,
+    category: ImportDoRemarkCategory
+  ) => Promise<void>;
 }) {
   const audit = latestAudit(item, section);
   const stepNumber = section === "movement" ? 1 : section === "igm" ? 2 : 3;
@@ -764,6 +850,8 @@ function StageCard({
     item.importDoPostValidity ?? ""
   );
   const [doDateError, setDoDateError] = useState("");
+  const [doRemarkCategory, setDoRemarkCategory] =
+    useState<ImportDoRemarkCategory>("invoice_pending");
 
   useEffect(() => {
     setRemarkDraft(getImportStageRemark(item, section));
@@ -781,7 +869,7 @@ function StageCard({
       const empty = emptyValidity.trim();
       const post = postValidity.trim();
       if (!empty || !post) {
-        setDoDateError("Enter Empty validity and Post validity before Received.");
+        setDoDateError("Enter Empty validity and Port validity before Received.");
         return;
       }
       setDoDateError("");
@@ -802,6 +890,16 @@ function StageCard({
   const canSelectReceived =
     section !== "do" ||
     (emptyValidity.trim().length > 0 && postValidity.trim().length > 0);
+
+  const remarkAudit =
+    section === "movement"
+      ? item.importMovementRemarkAudit
+      : section === "igm"
+        ? item.importIgmRemarkAudit
+        : null;
+  const savedRemark = getImportStageRemark(item, section);
+  const showMovementIgmRemark =
+    section !== "do" && (pending || (complete && savedRemark.trim()));
 
   return (
     <section
@@ -887,7 +985,7 @@ function StageCard({
             />
           </label>
           <label className="block text-xs">
-            <span className="font-medium text-zinc-700">Post validity</span>
+            <span className="font-medium text-zinc-700">Port validity</span>
             <input
               type="date"
               value={postValidity}
@@ -914,7 +1012,7 @@ function StageCard({
             </span>
           </div>
           <div>
-            <span className="text-zinc-500">Post validity: </span>
+            <span className="text-zinc-500">Port validity: </span>
             <span className="font-medium text-zinc-800">
               {item.importDoPostValidity || "—"}
             </span>
@@ -922,7 +1020,7 @@ function StageCard({
         </div>
       )}
 
-      {pending && (
+      {showMovementIgmRemark && (
         <div
           className="mt-3 space-y-2"
           onClick={(event) => event.stopPropagation()}
@@ -931,24 +1029,88 @@ function StageCard({
             Remark
           </label>
           <textarea
-            value={remarkDraft}
-            disabled={busy}
+            value={pending ? remarkDraft : savedRemark}
+            disabled={busy || complete}
+            readOnly={complete}
             rows={2}
             placeholder={`Add ${title} remark...`}
             onChange={(event) => setRemarkDraft(event.target.value)}
             className="w-full resize-none rounded-lg border border-zinc-200 px-2.5 py-2 text-[11px] outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 disabled:bg-zinc-100"
           />
-          <button
-            type="button"
-            disabled={
-              busy ||
-              remarkDraft.trim() === getImportStageRemark(item, section).trim()
-            }
-            onClick={() => void onRemark(item, section, remarkDraft)}
-            className="rounded-lg bg-zinc-900 px-2.5 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
-          >
-            Save remark
-          </button>
+          {complete && remarkAudit && (
+            <p className="text-[10px] text-zinc-500">
+              Updated by{" "}
+              <span className="font-medium text-zinc-800">
+                {remarkAudit.updatedBy}
+              </span>{" "}
+              · {formatImportAuditDate(remarkAudit.updatedAt)}
+            </p>
+          )}
+          {pending && (
+            <button
+              type="button"
+              disabled={
+                busy ||
+                remarkDraft.trim() === getImportStageRemark(item, section).trim()
+              }
+              onClick={() => void onRemark(item, section, remarkDraft)}
+              className="rounded-lg bg-zinc-900 px-2.5 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
+            >
+              Save remark
+            </button>
+          )}
+        </div>
+      )}
+
+      {section === "do" && (
+        <div
+          className="mt-3 space-y-2"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Remarks
+          </label>
+          <div className="flex gap-2">
+            <select
+              value={doRemarkCategory}
+              disabled={busy}
+              onChange={(event) =>
+                setDoRemarkCategory(event.target.value as ImportDoRemarkCategory)
+              }
+              className="min-w-0 flex-1 rounded-lg border border-zinc-200 px-2 py-1.5 text-[11px] outline-none focus:border-zinc-500"
+            >
+              {IMPORT_DO_REMARK_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void onDoRemark?.(item, doRemarkCategory)}
+              className="rounded-lg bg-zinc-900 px-2.5 text-[11px] font-semibold text-white disabled:opacity-40"
+            >
+              +
+            </button>
+          </div>
+          <div className="space-y-2">
+            {(item.importDoRemarks ?? []).length === 0 ? (
+              <p className="text-[11px] text-zinc-400">No DO remarks yet.</p>
+            ) : (
+              (item.importDoRemarks ?? []).map((entry, index) => (
+                <div
+                  key={`${entry.category}-${index}`}
+                  className="rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-2 text-[11px]"
+                >
+                  <p className="font-medium text-zinc-800">{entry.label}</p>
+                  <p className="mt-0.5 text-zinc-500">
+                    {entry.updatedBy} · {formatImportAuditDate(entry.updatedAt)}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       )}
 
