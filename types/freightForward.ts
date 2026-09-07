@@ -204,6 +204,7 @@ export interface FreightForward {
   importBoeClearanceStatus?: ImportBoeClearanceStatus;
   importBoeInCompleted?: boolean;
   importBoeInCompleteAudit?: ImportAuditStamp;
+  importBoeInInwardSaveAudit?: ImportAuditStamp;
   /** Transport — captured after BOE In completion. */
   importTransporter?: string;
   importTruckStash?: boolean;

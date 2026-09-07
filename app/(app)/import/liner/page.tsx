@@ -10,9 +10,15 @@ import {
   LockKeyhole,
 } from "lucide-react";
 import ModuleHeader from "@/components/ModuleHeader";
+import ImportDocumentLink from "@/components/import/ImportDocumentLink";
 import ImportJobEditDrawer from "@/components/import/ImportJobEditDrawer";
 import { ImportLocationCell } from "@/components/import/ImportLocationCell";
+import ImportSortableHeader from "@/components/import/ImportSortableHeader";
 import { ImportSearchDownloadBar } from "@/components/import/ImportTableExtras";
+import {
+  ImportCurrentStatusCell,
+  useImportTableRows,
+} from "@/components/import/ImportTableState";
 import { downloadMergedImportDocuments } from "@/lib/import/mergeDocuments";
 import { formatImportAuditDate } from "@/lib/import/auditDisplay";
 import ActionMenu from "@/components/shared/ActionMenu";
@@ -42,10 +48,19 @@ import {
   isImportStagePending,
   matchesImportLinerCard,
 } from "@/lib/import/linerWorkflow";
+import {
+  canActOnImportModule,
+  canExpandImportRow,
+  parseImportSessionUser,
+} from "@/lib/import/permissions";
+import {
+  ImportSortDir,
+  ImportSortKey,
+  toggleImportSort,
+} from "@/lib/import/sortImportRecords";
 import { formatContainersDisplay } from "@/lib/freightForward/containers";
 import {
   FreightForward,
-  FreightForwardDocument,
   ImportDoStatus,
   ImportDoRemarkCategory,
   ImportIgmStatus,
@@ -139,21 +154,22 @@ export default function ImportLinerPage() {
   const [activeCard, setActiveCard] = useState<ImportLinerCard | null>("do");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
+  const [sortKey, setSortKey] = useState<ImportSortKey>("eta");
+  const [sortDir, setSortDir] = useState<ImportSortDir>("asc");
   const [error, setError] = useState("");
   const [editItem, setEditItem] = useState<FreightForward | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const [panelWidth, setPanelWidth] = useState(0);
-  const [user] = useState<{ username?: string; role?: string } | null>(() => {
-    if (typeof window === "undefined") return null;
-    const stored = sessionStorage.getItem("user");
-    if (!stored) return null;
-    try {
-      return JSON.parse(stored);
-    } catch {
-      return null;
-    }
-  });
+  const [user] = useState(() => parseImportSessionUser());
+  const canExpand = canExpandImportRow(user, "liner");
+  const canAct = canActOnImportModule(user, "liner");
+
+  const handleColumnSort = (key: ImportSortKey) => {
+    const next = toggleImportSort(sortKey, sortDir, key);
+    setSortKey(next.sortKey);
+    setSortDir(next.sortDir);
+  };
 
   useEffect(() => {
     let active = true;
@@ -201,30 +217,20 @@ export default function ImportLinerPage() {
     },
   ];
 
-  const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    return records.filter((item) => {
-      if (activeCard && !matchesImportLinerCard(item, activeCard)) return false;
-      if (!needle) return true;
-      return [
-        item.jobNumber,
-        item.ezRefNumber,
-        item.consignmentName,
-        item.clientName,
-        item.inwardBoeNo,
-        item.mbl,
-        item.hbl,
-        item.vesselName,
-        item.liner,
-        item.agent,
-        item.containerNumber,
-        formatContainersDisplay(item),
-      ].some((value) => String(value ?? "").toLowerCase().includes(needle));
-    });
-  }, [activeCard, records, search]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const visibleRows = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const { filtered, totalPages, visibleRows } = useImportTableRows({
+    records,
+    module: "liner",
+    search,
+    page,
+    pageSize: PAGE_SIZE,
+    sortKey,
+    sortDir,
+    activeCard,
+    matchesCard: matchesImportLinerCard as (
+      item: FreightForward,
+      card: string
+    ) => boolean,
+  });
 
   const reload = async () => {
     setLoading(true);
@@ -397,12 +403,24 @@ export default function ImportLinerPage() {
           <thead className="bg-zinc-50 text-[10px] uppercase tracking-wide text-zinc-500">
             <tr>
               <th className="w-9 px-2 py-3" />
-              <th className="px-3 py-3 font-semibold">Job No</th>
+              <ImportSortableHeader
+                label="Job No"
+                sortKey="jobNumber"
+                activeSortKey={sortKey}
+                sortDir={sortDir}
+                onSort={handleColumnSort}
+              />
               <th className="px-3 py-3 font-semibold">EZ No</th>
               <th className="px-3 py-3 font-semibold">BL Type</th>
               <th className="px-3 py-3 font-semibold">Trade Terms</th>
               <th className="px-3 py-3 font-semibold">Vessel</th>
-              <th className="px-3 py-3 font-semibold">ETA</th>
+              <ImportSortableHeader
+                label="ETA"
+                sortKey="eta"
+                activeSortKey={sortKey}
+                sortDir={sortDir}
+                onSort={handleColumnSort}
+              />
               <th className="px-3 py-3 font-semibold">Location</th>
               <th className="px-3 py-3 font-semibold">Consignee</th>
               <th className="px-3 py-3 font-semibold">Client</th>
@@ -414,6 +432,7 @@ export default function ImportLinerPage() {
               <th className="px-3 py-3 font-semibold">HBL</th>
               <th className="px-3 py-3 font-semibold">Containers</th>
               <th className="px-3 py-3 font-semibold">Done</th>
+              <th className="px-3 py-3 font-semibold">Current Status</th>
               <th className="px-3 py-3 font-semibold">Import Status</th>
               <th className="px-3 py-3 font-semibold">Actions</th>
             </tr>
@@ -421,13 +440,13 @@ export default function ImportLinerPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={20} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={21} className="px-4 py-10 text-center text-zinc-400">
                   Loading Import Liner jobs...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={20} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={21} className="px-4 py-10 text-center text-zinc-400">
                   No jobs found for this filter. Add jobs from Import Job List,
                   or enable “Use this job for Import” in Freight Forward.
                 </td>
@@ -442,6 +461,8 @@ export default function ImportLinerPage() {
                     expanded={expanded}
                     busy={updatingId === item.id}
                     isAdmin={user?.role === "admin"}
+                    canExpand={canExpand}
+                    canAct={canAct}
                     onToggle={() =>
                       setExpandedId((current) =>
                         current === item.id ? null : item.id ?? null
@@ -518,6 +539,8 @@ function Row({
   expanded,
   busy,
   isAdmin,
+  canExpand,
+  canAct,
   onToggle,
   onUpdate,
   onRemark,
@@ -530,6 +553,8 @@ function Row({
   expanded: boolean;
   busy: boolean;
   isAdmin: boolean;
+  canExpand: boolean;
+  canAct: boolean;
   onToggle: () => void;
   onUpdate: (
     item: FreightForward,
@@ -558,11 +583,19 @@ function Row({
   return (
     <>
       <tr
-        onClick={onToggle}
-        className="cursor-pointer border-t border-zinc-100 hover:bg-zinc-50"
+        onClick={canExpand ? onToggle : undefined}
+        className={`border-t border-zinc-100 ${
+          canExpand ? "cursor-pointer hover:bg-zinc-50" : ""
+        }`}
       >
         <td className="px-2 py-3 text-zinc-400">
-          {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+          {canExpand ? (
+            expanded ? (
+              <ChevronDown size={15} />
+            ) : (
+              <ChevronRight size={15} />
+            )
+          ) : null}
         </td>
         <TableCell value={item.jobNumber} width={105} className="font-medium text-zinc-900" />
         <TableCell value={item.ezRefNumber} width={105} />
@@ -583,6 +616,7 @@ function Row({
         <td className="px-3 py-3 font-medium text-zinc-800">
           {completedStages} / 3
         </td>
+        <ImportCurrentStatusCell item={item} module="liner" />
         <td className="px-3 py-3">
           {busy ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2 py-1 text-[10px] font-semibold text-zinc-600">
@@ -613,9 +647,9 @@ function Row({
           />
         </td>
       </tr>
-      {expanded && (
+      {canExpand && expanded && (
         <tr className="border-t border-zinc-100 bg-zinc-100/70">
-          <td colSpan={20} className="p-0">
+          <td colSpan={21} className="p-0">
             <div
               className="sticky left-0 min-w-0 p-3"
               style={panelWidth ? { width: panelWidth } : undefined}
@@ -658,6 +692,7 @@ function Row({
                     lockHint=""
                     item={item}
                     busy={busy}
+                    canAct={canAct}
                     onUpdate={onUpdate}
                     onRemark={onRemark}
                   />
@@ -673,6 +708,7 @@ function Row({
                     lockHint="Complete Movement first"
                     item={item}
                     busy={busy}
+                    canAct={canAct}
                     onUpdate={onUpdate}
                     onRemark={onRemark}
                   />
@@ -688,6 +724,7 @@ function Row({
                     lockHint="Post IGM first"
                     item={item}
                     busy={busy}
+                    canAct={canAct}
                     onUpdate={onUpdate}
                     onRemark={onRemark}
                     onDoRemark={onDoRemark}
@@ -702,10 +739,10 @@ function Row({
                     <DocumentsDownloadAll item={item} />
                   </div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    <DocumentLink label="MBL" doc={item.mblUrl} />
-                    <DocumentLink label="HBL" doc={item.hblUrl} />
+                    <ImportDocumentLink label="MBL" doc={item.mblUrl} />
+                    <ImportDocumentLink label="HBL" doc={item.hblUrl} />
                     {(item.otherDocuments ?? []).map((doc, index) => (
-                      <DocumentLink
+                      <ImportDocumentLink
                         key={`${doc.url}-${index}`}
                         label={doc.name || `Document ${index + 1}`}
                         doc={doc}
@@ -765,37 +802,6 @@ function DocumentsDownloadAll({ item }: { item: FreightForward }) {
   );
 }
 
-function DocumentLink({
-  label,
-  doc,
-}: {
-  label: string;
-  doc?: FreightForwardDocument;
-}) {
-  if (!doc?.url) {
-    return (
-      <div className="rounded-lg border border-dashed border-zinc-200 px-3 py-2 text-[11px] text-zinc-400">
-        {label}: not uploaded
-      </div>
-    );
-  }
-
-  return (
-    <a
-      href={doc.url}
-      target="_blank"
-      rel="noreferrer"
-      onClick={(event) => event.stopPropagation()}
-      className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-[11px] font-medium text-zinc-800 transition hover:bg-white"
-    >
-      <span className="block text-[10px] uppercase tracking-wide text-zinc-500">
-        {label}
-      </span>
-      <span className="mt-0.5 block truncate">{doc.name || "View file"}</span>
-    </a>
-  );
-}
-
 function StageCard({
   title,
   section,
@@ -805,6 +811,7 @@ function StageCard({
   lockHint,
   item,
   busy,
+  canAct,
   onUpdate,
   onRemark,
   onDoRemark,
@@ -817,6 +824,7 @@ function StageCard({
   lockHint: string;
   item: FreightForward;
   busy: boolean;
+  canAct: boolean;
   onUpdate: (
     item: FreightForward,
     section: ImportWorkflowSection,
@@ -944,7 +952,7 @@ function StageCard({
         </div>
         <select
           value={value}
-          disabled={busy || locked}
+          disabled={busy || locked || !canAct}
           onClick={(event) => event.stopPropagation()}
           onChange={(event) => handleStatusChange(event.target.value)}
           className="max-w-32 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-zinc-700 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400"
@@ -976,7 +984,7 @@ function StageCard({
             <input
               type="date"
               value={emptyValidity}
-              disabled={busy || complete}
+              disabled={busy || complete || !canAct}
               onChange={(event) => {
                 setEmptyValidity(event.target.value);
                 setDoDateError("");
@@ -989,7 +997,7 @@ function StageCard({
             <input
               type="date"
               value={postValidity}
-              disabled={busy || complete}
+              disabled={busy || complete || !canAct}
               onChange={(event) => {
                 setPostValidity(event.target.value);
                 setDoDateError("");
@@ -1030,7 +1038,7 @@ function StageCard({
           </label>
           <textarea
             value={pending ? remarkDraft : savedRemark}
-            disabled={busy || complete}
+            disabled={busy || complete || !canAct}
             readOnly={complete}
             rows={2}
             placeholder={`Add ${title} remark...`}
@@ -1046,7 +1054,7 @@ function StageCard({
               · {formatImportAuditDate(remarkAudit.updatedAt)}
             </p>
           )}
-          {pending && (
+          {pending && canAct && (
             <button
               type="button"
               disabled={
@@ -1073,7 +1081,7 @@ function StageCard({
           <div className="flex gap-2">
             <select
               value={doRemarkCategory}
-              disabled={busy}
+              disabled={busy || !canAct}
               onChange={(event) =>
                 setDoRemarkCategory(event.target.value as ImportDoRemarkCategory)
               }
@@ -1085,14 +1093,16 @@ function StageCard({
                 </option>
               ))}
             </select>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void onDoRemark?.(item, doRemarkCategory)}
-              className="rounded-lg bg-zinc-900 px-2.5 text-[11px] font-semibold text-white disabled:opacity-40"
-            >
-              +
-            </button>
+            {canAct && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void onDoRemark?.(item, doRemarkCategory)}
+                className="rounded-lg bg-zinc-900 px-2.5 text-[11px] font-semibold text-white disabled:opacity-40"
+              >
+                +
+              </button>
+            )}
           </div>
           <div className="space-y-2">
             {(item.importDoRemarks ?? []).length === 0 ? (

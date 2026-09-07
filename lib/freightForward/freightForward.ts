@@ -979,7 +979,7 @@ export async function saveImportBoeInInward(
   }
 
   const complete = data.importBoeClearanceStatus === "rms";
-  const audit = complete ? stamp(updatedBy) : before.importBoeInCompleteAudit;
+  const saveAudit = stamp(updatedBy);
   const search = buildFreightSearchIndex({ ...before, inwardBoeNo });
   const patch: Record<string, unknown> = {
     inwardBoeNo,
@@ -991,10 +991,14 @@ export async function saveImportBoeInInward(
     updatedAt: serverTimestamp(),
   };
   if (complete) {
-    patch.importBoeInCompleteAudit = audit;
-  } else if (before.importBoeInCompleted) {
-    patch.importBoeInCompleted = false;
-    patch.importBoeInCompleteAudit = deleteField();
+    patch.importBoeInCompleteAudit = saveAudit;
+    patch.importBoeInInwardSaveAudit = deleteField();
+  } else {
+    patch.importBoeInInwardSaveAudit = saveAudit;
+    if (before.importBoeInCompleted) {
+      patch.importBoeInCompleted = false;
+      patch.importBoeInCompleteAudit = deleteField();
+    }
   }
 
   await updateDoc(docRef, patch);
@@ -1006,7 +1010,8 @@ export async function saveImportBoeInInward(
     inwardBoeDate,
     importBoeClearanceStatus: data.importBoeClearanceStatus,
     importBoeInCompleted: complete,
-    importBoeInCompleteAudit: complete ? audit : undefined,
+    importBoeInCompleteAudit: complete ? saveAudit : undefined,
+    importBoeInInwardSaveAudit: complete ? undefined : saveAudit,
     updatedBy,
   } as FreightForward;
 }
@@ -1055,6 +1060,7 @@ export async function revertImportBoeInAdmin(
     patch.importBoeClearanceStatus = deleteField();
     patch.importBoeInCompleted = false;
     patch.importBoeInCompleteAudit = deleteField();
+    patch.importBoeInInwardSaveAudit = deleteField();
   } else if (section === "filing") {
     patch.importBoeFilingStatus = "unfiled";
     patch.importBoeFilingAudit = deleteField();
@@ -1063,12 +1069,14 @@ export async function revertImportBoeInAdmin(
     patch.importBoeClearanceStatus = deleteField();
     patch.importBoeInCompleted = false;
     patch.importBoeInCompleteAudit = deleteField();
+    patch.importBoeInInwardSaveAudit = deleteField();
   } else {
     patch.inwardBoeNo = deleteField();
     patch.inwardBoeDate = deleteField();
     patch.importBoeClearanceStatus = deleteField();
     patch.importBoeInCompleted = false;
     patch.importBoeInCompleteAudit = deleteField();
+    patch.importBoeInInwardSaveAudit = deleteField();
   }
 
   await updateDoc(docRef, patch);

@@ -16,6 +16,11 @@ import {
   ImportSearchDownloadBar,
 } from "@/components/import/ImportTableExtras";
 import { ImportLocationCell } from "@/components/import/ImportLocationCell";
+import ImportSortableHeader from "@/components/import/ImportSortableHeader";
+import {
+  ImportCurrentStatusCell,
+  useImportTableRows,
+} from "@/components/import/ImportTableState";
 import { ImportTableCell } from "@/components/import/ImportJobTableCells";
 import {
   completeImportBoeIn,
@@ -38,6 +43,16 @@ import {
 } from "@/lib/import/boeInWorkflow";
 import { getInwardBoeNoDisplay } from "@/lib/import/linerWorkflow";
 import {
+  canActOnImportModule,
+  canExpandImportRow,
+  parseImportSessionUser,
+} from "@/lib/import/permissions";
+import {
+  ImportSortDir,
+  ImportSortKey,
+  toggleImportSort,
+} from "@/lib/import/sortImportRecords";
+import {
   FreightForward,
   ImportBoeChecklist,
   ImportBoeClearanceStatus,
@@ -57,19 +72,20 @@ export default function ImportBoeInPage() {
   );
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
+  const [sortKey, setSortKey] = useState<ImportSortKey>("eta");
+  const [sortDir, setSortDir] = useState<ImportSortDir>("asc");
   const [error, setError] = useState("");
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const [panelWidth, setPanelWidth] = useState(0);
-  const [user] = useState<{ username?: string; role?: string } | null>(() => {
-    if (typeof window === "undefined") return null;
-    const stored = sessionStorage.getItem("user");
-    if (!stored) return null;
-    try {
-      return JSON.parse(stored);
-    } catch {
-      return null;
-    }
-  });
+  const [user] = useState(() => parseImportSessionUser());
+  const canExpand = canExpandImportRow(user, "ztype");
+  const canAct = canActOnImportModule(user, "ztype");
+
+  const handleColumnSort = (key: ImportSortKey) => {
+    const next = toggleImportSort(sortKey, sortDir, key);
+    setSortKey(next.sortKey);
+    setSortDir(next.sortDir);
+  };
 
   useEffect(() => {
     let active = true;
@@ -119,27 +135,20 @@ export default function ImportBoeInPage() {
     },
   ];
 
-  const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    return records.filter((item) => {
-      if (activeCard && !matchesImportBoeInCard(item, activeCard)) return false;
-      if (!needle) return true;
-      return [
-        item.jobNumber,
-        item.ezRefNumber,
-        item.consignmentName,
-        item.clientName,
-        item.mbl,
-        item.hbl,
-        item.vesselName,
-        item.inwardBoeNo,
-        formatContainersDisplay(item),
-      ].some((value) => String(value ?? "").toLowerCase().includes(needle));
-    });
-  }, [activeCard, records, search]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const visibleRows = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const { filtered, totalPages, visibleRows } = useImportTableRows({
+    records,
+    module: "ztype",
+    search,
+    page,
+    pageSize: PAGE_SIZE,
+    sortKey,
+    sortDir,
+    activeCard,
+    matchesCard: matchesImportBoeInCard as (
+      item: FreightForward,
+      card: string
+    ) => boolean,
+  });
 
   const applyUpdated = (updated: FreightForward) => {
     setRecords((current) =>
@@ -208,12 +217,24 @@ export default function ImportBoeInPage() {
           <thead className="bg-zinc-50 text-[10px] uppercase tracking-wide text-zinc-500">
             <tr>
               <th className="w-9 px-2 py-3" />
-              <th className="px-3 py-3 font-semibold">Job No</th>
+              <ImportSortableHeader
+                label="Job No"
+                sortKey="jobNumber"
+                activeSortKey={sortKey}
+                sortDir={sortDir}
+                onSort={handleColumnSort}
+              />
               <th className="px-3 py-3 font-semibold">EZ No</th>
               <th className="px-3 py-3 font-semibold">BL Type</th>
               <th className="px-3 py-3 font-semibold">Trade Terms</th>
               <th className="px-3 py-3 font-semibold">Vessel</th>
-              <th className="px-3 py-3 font-semibold">ETA</th>
+              <ImportSortableHeader
+                label="ETA"
+                sortKey="eta"
+                activeSortKey={sortKey}
+                sortDir={sortDir}
+                onSort={handleColumnSort}
+              />
               <th className="px-3 py-3 font-semibold">Location</th>
               <th className="px-3 py-3 font-semibold">Consignee</th>
               <th className="px-3 py-3 font-semibold">Client</th>
@@ -224,19 +245,20 @@ export default function ImportBoeInPage() {
               <th className="px-3 py-3 font-semibold">MBL</th>
               <th className="px-3 py-3 font-semibold">HBL</th>
               <th className="px-3 py-3 font-semibold">Containers</th>
+              <th className="px-3 py-3 font-semibold">Current Status</th>
               <th className="px-3 py-3 font-semibold">Status</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={18} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={19} className="px-4 py-10 text-center text-zinc-400">
                   Loading BOE In jobs...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={18} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={19} className="px-4 py-10 text-center text-zinc-400">
                   No import jobs found.
                 </td>
               </tr>
@@ -249,6 +271,8 @@ export default function ImportBoeInPage() {
                   busy={updatingId === item.id}
                   username={user?.username ?? "Unknown"}
                   isAdmin={user?.role === "admin"}
+                  canExpand={canExpand}
+                  canAct={canAct}
                   panelWidth={panelWidth}
                   onToggle={() =>
                     setExpandedId((current) =>
@@ -298,6 +322,8 @@ function BoeRow({
   busy,
   username,
   isAdmin,
+  canExpand,
+  canAct,
   panelWidth,
   onToggle,
   onBusy,
@@ -309,6 +335,8 @@ function BoeRow({
   busy: boolean;
   username: string;
   isAdmin: boolean;
+  canExpand: boolean;
+  canAct: boolean;
   panelWidth: number;
   onToggle: () => void;
   onBusy: (id: string | null) => void;
@@ -322,11 +350,19 @@ function BoeRow({
   return (
     <>
       <tr
-        onClick={onToggle}
-        className="cursor-pointer border-t border-zinc-100 hover:bg-zinc-50"
+        onClick={canExpand ? onToggle : undefined}
+        className={`border-t border-zinc-100 ${
+          canExpand ? "cursor-pointer hover:bg-zinc-50" : ""
+        }`}
       >
         <td className="px-2 py-3 text-zinc-400">
-          {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+          {canExpand ? (
+            expanded ? (
+              <ChevronDown size={15} />
+            ) : (
+              <ChevronRight size={15} />
+            )
+          ) : null}
         </td>
         <ImportTableCell value={item.jobNumber} width={105} className="font-medium text-zinc-900" />
         <ImportTableCell value={item.ezRefNumber} width={105} />
@@ -342,6 +378,7 @@ function BoeRow({
         <ImportTableCell value={item.mbl} width={130} />
         <ImportTableCell value={item.hbl} width={130} />
         <ImportTableCell value={formatContainersDisplay(item)} width={170} />
+        <ImportCurrentStatusCell item={item} module="ztype" />
         <td className="px-3 py-3">
           {busy ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2 py-1 text-[10px] font-semibold text-zinc-600">
@@ -361,9 +398,9 @@ function BoeRow({
           )}
         </td>
       </tr>
-      {expanded && (
+      {canExpand && expanded && (
         <tr className="border-t border-zinc-100 bg-zinc-100/70">
-          <td colSpan={18} className="p-0">
+          <td colSpan={19} className="p-0">
             <div
               className="sticky left-0 min-w-0 p-3"
               style={panelWidth ? { width: panelWidth } : undefined}
@@ -373,6 +410,7 @@ function BoeRow({
                 busy={busy}
                 username={username}
                 isAdmin={isAdmin}
+                canAct={canAct}
                 checklistDone={checklistDone}
                 filed={filed}
                 completed={completed}
@@ -393,6 +431,7 @@ function BoeExpansion({
   busy,
   username,
   isAdmin,
+  canAct,
   checklistDone,
   filed,
   completed,
@@ -404,6 +443,7 @@ function BoeExpansion({
   busy: boolean;
   username: string;
   isAdmin: boolean;
+  canAct: boolean;
   checklistDone: boolean;
   filed: boolean;
   completed: boolean;
@@ -413,6 +453,7 @@ function BoeExpansion({
 }) {
   const [adminEdit, setAdminEdit] = useState(false);
   const locked = completed && !(isAdmin && adminEdit);
+  const readOnly = locked || !canAct;
   const [inwardNo, setInwardNo] = useState(item.inwardBoeNo ?? "");
   const [inwardDate, setInwardDate] = useState(item.inwardBoeDate ?? "");
   const [clearance, setClearance] = useState<ImportBoeClearanceStatus>(
@@ -535,7 +576,7 @@ function BoeExpansion({
                 <input
                   type="checkbox"
                   checked={!!item.importBoeChecklist?.[entry.key]}
-                  disabled={busy || locked}
+                  disabled={busy || readOnly}
                   onChange={(event) =>
                     toggleCheck(entry.key, event.target.checked)
                   }
@@ -545,7 +586,7 @@ function BoeExpansion({
             ))}
           </div>
           <ImportAuditLine audit={item.importBoeChecklistAudit} />
-          {isAdmin && adminEdit && (
+          {isAdmin && adminEdit && canAct && (
             <button
               type="button"
               disabled={busy}
@@ -595,7 +636,7 @@ function BoeExpansion({
                       type="radio"
                       name={`boe-filing-${item.id}`}
                       checked={getBoeFilingStatus(item) === status}
-                      disabled={busy || locked}
+                      disabled={busy || readOnly}
                       onChange={() => setFiling(status)}
                     />
                     {status}
@@ -605,7 +646,7 @@ function BoeExpansion({
             </div>
           )}
           <ImportAuditLine audit={item.importBoeFilingAudit} />
-          {isAdmin && adminEdit && (
+          {isAdmin && adminEdit && canAct && (
             <button
               type="button"
               disabled={busy}
@@ -653,7 +694,7 @@ function BoeExpansion({
                 <input
                   value={inwardNo}
                   maxLength={7}
-                  disabled={busy || locked}
+                  disabled={busy || readOnly}
                   onChange={(event) =>
                     setInwardNo(event.target.value.replace(/\D/g, "").slice(0, 7))
                   }
@@ -666,7 +707,7 @@ function BoeExpansion({
                 <input
                   type="date"
                   value={inwardDate}
-                  disabled={busy || locked}
+                  disabled={busy || readOnly}
                   onChange={(event) => setInwardDate(event.target.value)}
                   className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
                 />
@@ -675,7 +716,7 @@ function BoeExpansion({
                 <span className="font-medium text-zinc-700">Status</span>
                 <select
                   value={clearance}
-                  disabled={busy || locked}
+                  disabled={busy || readOnly}
                   onChange={(event) =>
                     setClearance(event.target.value as ImportBoeClearanceStatus)
                   }
@@ -685,7 +726,7 @@ function BoeExpansion({
                   <option value="open">Open</option>
                 </select>
               </label>
-              {(!locked || (isAdmin && adminEdit)) && (
+              {(!readOnly || (isAdmin && adminEdit)) && canAct && (
                 <div className="flex flex-wrap gap-2">
                   {clearance === "open" ? (
                     <button
@@ -714,7 +755,7 @@ function BoeExpansion({
                       Complete
                     </button>
                   )}
-                  {isAdmin && adminEdit && (
+                  {isAdmin && adminEdit && canAct && (
                     <button
                       type="button"
                       disabled={busy}
@@ -728,7 +769,9 @@ function BoeExpansion({
               )}
             </div>
           )}
-          <ImportAuditLine audit={item.importBoeInCompleteAudit} />
+          <ImportAuditLine
+            audit={item.importBoeInCompleteAudit ?? item.importBoeInInwardSaveAudit}
+          />
         </section>
       </div>
       <ImportDoStatusPanel item={item} />

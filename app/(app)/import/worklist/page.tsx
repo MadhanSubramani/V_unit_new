@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import ModuleHeader from "@/components/ModuleHeader";
 import ImportJobEditDrawer from "@/components/import/ImportJobEditDrawer";
@@ -19,7 +19,21 @@ import {
   isImportLinerCompleted,
 } from "@/lib/import/linerWorkflow";
 import { ImportLocationCell } from "@/components/import/ImportLocationCell";
+import ImportSortableHeader from "@/components/import/ImportSortableHeader";
 import { ImportSearchDownloadBar } from "@/components/import/ImportTableExtras";
+import {
+  ImportCurrentStatusCell,
+  useImportTableRows,
+} from "@/components/import/ImportTableState";
+import {
+  canActOnImportModule,
+  parseImportSessionUser,
+} from "@/lib/import/permissions";
+import {
+  ImportSortDir,
+  ImportSortKey,
+  toggleImportSort,
+} from "@/lib/import/sortImportRecords";
 import { FreightForward } from "@/types/freightForward";
 
 const PAGE_SIZE = 15;
@@ -29,20 +43,20 @@ export default function ImportWorklistPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
+  const [sortKey, setSortKey] = useState<ImportSortKey>("eta");
+  const [sortDir, setSortDir] = useState<ImportSortDir>("asc");
   const [error, setError] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activeItem, setActiveItem] = useState<FreightForward | null>(null);
   const [drawerMode, setDrawerMode] = useState<"edit" | "view" | null>(null);
-  const [user] = useState<{ username?: string } | null>(() => {
-    if (typeof window === "undefined") return null;
-    const stored = sessionStorage.getItem("user");
-    if (!stored) return null;
-    try {
-      return JSON.parse(stored);
-    } catch {
-      return null;
-    }
-  });
+  const [user] = useState(() => parseImportSessionUser());
+  const canAct = canActOnImportModule(user, "worklist");
+
+  const handleColumnSort = (key: ImportSortKey) => {
+    const next = toggleImportSort(sortKey, sortDir, key);
+    setSortKey(next.sortKey);
+    setSortDir(next.sortDir);
+  };
 
   const reload = async () => {
     setLoading(true);
@@ -60,28 +74,15 @@ export default function ImportWorklistPage() {
     void reload();
   }, []);
 
-  const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    if (!needle) return records;
-    return records.filter((item) =>
-      [
-        item.jobNumber,
-        item.ezRefNumber,
-        item.consignmentName,
-        item.clientName,
-        item.inwardBoeNo,
-        item.mbl,
-        item.hbl,
-        item.vesselName,
-        item.liner,
-        item.containerNumber,
-        formatContainersDisplay(item),
-      ].some((value) => String(value ?? "").toLowerCase().includes(needle))
-    );
-  }, [records, search]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const visibleRows = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const { filtered, totalPages, visibleRows } = useImportTableRows({
+    records,
+    module: "worklist",
+    search,
+    page,
+    pageSize: PAGE_SIZE,
+    sortKey,
+    sortDir,
+  });
 
   const closeDetailDrawer = () => {
     setActiveItem(null);
@@ -98,7 +99,8 @@ export default function ImportWorklistPage() {
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-zinc-900 px-3 py-2 text-xs font-medium text-white"
+          disabled={!canAct}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-zinc-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-40"
         >
           <Plus size={14} />
           Add
@@ -125,10 +127,22 @@ export default function ImportWorklistPage() {
         <table className="min-w-[1100px] w-full text-left text-xs">
           <thead className="bg-zinc-50 text-[10px] uppercase tracking-wide text-zinc-500">
             <tr>
-              <th className="px-3 py-3 font-semibold">Job No</th>
+              <ImportSortableHeader
+                label="Job No"
+                sortKey="jobNumber"
+                activeSortKey={sortKey}
+                sortDir={sortDir}
+                onSort={handleColumnSort}
+              />
               <th className="px-3 py-3 font-semibold">EZ No</th>
               <th className="px-3 py-3 font-semibold">Vessel</th>
-              <th className="px-3 py-3 font-semibold">ETA</th>
+              <ImportSortableHeader
+                label="ETA"
+                sortKey="eta"
+                activeSortKey={sortKey}
+                sortDir={sortDir}
+                onSort={handleColumnSort}
+              />
               <th className="px-3 py-3 font-semibold">Location</th>
               <th className="px-3 py-3 font-semibold">Consignee</th>
               <th className="px-3 py-3 font-semibold">Client</th>
@@ -140,6 +154,7 @@ export default function ImportWorklistPage() {
               <th className="px-3 py-3 font-semibold">HBL</th>
               <th className="px-3 py-3 font-semibold">Containers</th>
               <th className="px-3 py-3 font-semibold">Completion</th>
+              <th className="px-3 py-3 font-semibold">Current Status</th>
               <th className="px-3 py-3 font-semibold">Status</th>
               <th className="px-3 py-3 font-semibold">Actions</th>
             </tr>
@@ -147,13 +162,13 @@ export default function ImportWorklistPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={17} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={18} className="px-4 py-10 text-center text-zinc-400">
                   Loading job list...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={17} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={18} className="px-4 py-10 text-center text-zinc-400">
                   No jobs found. Use Add, or enable “Use this job for Import” in
                   Freight Forward.
                 </td>
@@ -198,6 +213,7 @@ export default function ImportWorklistPage() {
                       {formatContainersDisplay(item)}
                     </td>
                     <td className="px-3 py-3 text-zinc-700">{done} / 3</td>
+                    <ImportCurrentStatusCell item={item} module="worklist" />
                     <td className="px-3 py-3">
                       <span
                         className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
@@ -220,7 +236,7 @@ export default function ImportWorklistPage() {
                         }}
                         onEdit={() => {
                           setActiveItem(item);
-                          setDrawerMode("edit");
+                          setDrawerMode(canAct ? "edit" : "view");
                         }}
                         onDelete={() => undefined}
                       />

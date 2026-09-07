@@ -16,6 +16,11 @@ import {
   ImportSearchDownloadBar,
 } from "@/components/import/ImportTableExtras";
 import { ImportLocationCell } from "@/components/import/ImportLocationCell";
+import ImportSortableHeader from "@/components/import/ImportSortableHeader";
+import {
+  ImportCurrentStatusCell,
+  useImportTableRows,
+} from "@/components/import/ImportTableState";
 import { ImportTableCell } from "@/components/import/ImportJobTableCells";
 import {
   changeImportBoeOutVehicle,
@@ -44,6 +49,16 @@ import {
 } from "@/lib/import/boeOutWorkflow";
 import { getInwardBoeNoDisplay } from "@/lib/import/linerWorkflow";
 import {
+  canActOnImportModule,
+  canExpandImportRow,
+  parseImportSessionUser,
+} from "@/lib/import/permissions";
+import {
+  ImportSortDir,
+  ImportSortKey,
+  toggleImportSort,
+} from "@/lib/import/sortImportRecords";
+import {
   FreightForward,
   ImportBoeClearanceStatus,
   ImportBoeOutDutyStatus,
@@ -63,19 +78,20 @@ export default function ImportBoeOutPage() {
   );
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
+  const [sortKey, setSortKey] = useState<ImportSortKey>("eta");
+  const [sortDir, setSortDir] = useState<ImportSortDir>("asc");
   const [error, setError] = useState("");
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const [panelWidth, setPanelWidth] = useState(0);
-  const [user] = useState<{ username?: string } | null>(() => {
-    if (typeof window === "undefined") return null;
-    const stored = sessionStorage.getItem("user");
-    if (!stored) return null;
-    try {
-      return JSON.parse(stored);
-    } catch {
-      return null;
-    }
-  });
+  const [user] = useState(() => parseImportSessionUser());
+  const canExpand = canExpandImportRow(user, "ttype");
+  const canAct = canActOnImportModule(user, "ttype");
+
+  const handleColumnSort = (key: ImportSortKey) => {
+    const next = toggleImportSort(sortKey, sortDir, key);
+    setSortKey(next.sortKey);
+    setSortDir(next.sortDir);
+  };
 
   useEffect(() => {
     let active = true;
@@ -116,29 +132,20 @@ export default function ImportBoeOutPage() {
     { key: "dispatched", label: "Dispatched", value: counts.dispatched },
   ];
 
-  const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    return records.filter((item) => {
-      if (activeCard && !matchesImportBoeOutCard(item, activeCard)) return false;
-      if (!needle) return true;
-      return [
-        item.jobNumber,
-        item.ezRefNumber,
-        item.consignmentName,
-        item.clientName,
-        item.mbl,
-        item.hbl,
-        item.vesselName,
-        item.inwardBoeNo,
-        item.importTTypeBoeNo,
-        item.importVehicleNo,
-        formatContainersDisplay(item),
-      ].some((value) => String(value ?? "").toLowerCase().includes(needle));
-    });
-  }, [activeCard, records, search]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const visibleRows = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const { filtered, totalPages, visibleRows } = useImportTableRows({
+    records,
+    module: "ttype",
+    search,
+    page,
+    pageSize: PAGE_SIZE,
+    sortKey,
+    sortDir,
+    activeCard,
+    matchesCard: matchesImportBoeOutCard as (
+      item: FreightForward,
+      card: string
+    ) => boolean,
+  });
 
   const applyUpdated = (updated: FreightForward) => {
     setRecords((current) =>
@@ -150,7 +157,7 @@ export default function ImportBoeOutPage() {
     <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
       <ModuleHeader
         title="Import — T type BE"
-        description="Transport-completed jobs. Complete inward OCC, T type filing, duty, and dispatch."
+        description="Transport-completed jobs. Complete inward OOC, T type filing, duty, and dispatch."
       />
 
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -207,12 +214,24 @@ export default function ImportBoeOutPage() {
           <thead className="bg-zinc-50 text-[10px] uppercase tracking-wide text-zinc-500">
             <tr>
               <th className="w-9 px-2 py-3" />
-              <th className="px-3 py-3 font-semibold">Job No</th>
+              <ImportSortableHeader
+                label="Job No"
+                sortKey="jobNumber"
+                activeSortKey={sortKey}
+                sortDir={sortDir}
+                onSort={handleColumnSort}
+              />
               <th className="px-3 py-3 font-semibold">EZ No</th>
               <th className="px-3 py-3 font-semibold">BL Type</th>
               <th className="px-3 py-3 font-semibold">Trade Terms</th>
               <th className="px-3 py-3 font-semibold">Vessel</th>
-              <th className="px-3 py-3 font-semibold">ETA</th>
+              <ImportSortableHeader
+                label="ETA"
+                sortKey="eta"
+                activeSortKey={sortKey}
+                sortDir={sortDir}
+                onSort={handleColumnSort}
+              />
               <th className="px-3 py-3 font-semibold">Location</th>
               <th className="px-3 py-3 font-semibold">Consignee</th>
               <th className="px-3 py-3 font-semibold">Client</th>
@@ -223,19 +242,20 @@ export default function ImportBoeOutPage() {
               <th className="px-3 py-3 font-semibold">MBL</th>
               <th className="px-3 py-3 font-semibold">HBL</th>
               <th className="px-3 py-3 font-semibold">Containers</th>
+              <th className="px-3 py-3 font-semibold">Current Status</th>
               <th className="px-3 py-3 font-semibold">Status</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={18} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={19} className="px-4 py-10 text-center text-zinc-400">
                   Loading T type BE jobs...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={18} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={19} className="px-4 py-10 text-center text-zinc-400">
                   No transport-completed jobs found.
                 </td>
               </tr>
@@ -247,6 +267,8 @@ export default function ImportBoeOutPage() {
                   expanded={expandedId === item.id}
                   busy={updatingId === item.id}
                   username={user?.username ?? "Unknown"}
+                  canExpand={canExpand}
+                  canAct={canAct}
                   panelWidth={panelWidth}
                   onToggle={() =>
                     setExpandedId((current) =>
@@ -295,6 +317,8 @@ function BoeOutRow({
   expanded,
   busy,
   username,
+  canExpand,
+  canAct,
   panelWidth,
   onToggle,
   onBusy,
@@ -305,6 +329,8 @@ function BoeOutRow({
   expanded: boolean;
   busy: boolean;
   username: string;
+  canExpand: boolean;
+  canAct: boolean;
   panelWidth: number;
   onToggle: () => void;
   onBusy: (id: string | null) => void;
@@ -316,11 +342,19 @@ function BoeOutRow({
   return (
     <>
       <tr
-        onClick={onToggle}
-        className="cursor-pointer border-t border-zinc-100 hover:bg-zinc-50"
+        onClick={canExpand ? onToggle : undefined}
+        className={`border-t border-zinc-100 ${
+          canExpand ? "cursor-pointer hover:bg-zinc-50" : ""
+        }`}
       >
         <td className="px-2 py-3 text-zinc-400">
-          {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+          {canExpand ? (
+            expanded ? (
+              <ChevronDown size={15} />
+            ) : (
+              <ChevronRight size={15} />
+            )
+          ) : null}
         </td>
         <ImportTableCell value={item.jobNumber} width={105} className="font-medium text-zinc-900" />
         <ImportTableCell value={item.ezRefNumber} width={105} />
@@ -336,6 +370,7 @@ function BoeOutRow({
         <ImportTableCell value={item.mbl} width={130} />
         <ImportTableCell value={item.hbl} width={130} />
         <ImportTableCell value={formatContainersDisplay(item)} width={170} />
+        <ImportCurrentStatusCell item={item} module="ttype" />
         <td className="px-3 py-3">
           {busy ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2 py-1 text-[10px] font-semibold text-zinc-600">
@@ -355,9 +390,9 @@ function BoeOutRow({
           )}
         </td>
       </tr>
-      {expanded && (
+      {canExpand && expanded && (
         <tr className="border-t border-zinc-100 bg-zinc-100/70">
-          <td colSpan={18} className="p-0">
+          <td colSpan={19} className="p-0">
             <div
               className="sticky left-0 min-w-0 p-3"
               style={panelWidth ? { width: panelWidth } : undefined}
@@ -366,6 +401,7 @@ function BoeOutRow({
                 item={item}
                 busy={busy}
                 username={username}
+                canAct={canAct}
                 onBusy={onBusy}
                 onError={onError}
                 onUpdated={onUpdated}
@@ -382,6 +418,7 @@ function BoeOutExpansion({
   item,
   busy,
   username,
+  canAct,
   onBusy,
   onError,
   onUpdated,
@@ -389,11 +426,13 @@ function BoeOutExpansion({
   item: FreightForward;
   busy: boolean;
   username: string;
+  canAct: boolean;
   onBusy: (id: string | null) => void;
   onError: (message: string) => void;
   onUpdated: (item: FreightForward) => void;
 }) {
   const dispatched = isImportBoeOutDispatched(item);
+  const readOnly = dispatched || !canAct;
   const occDone = isImportBoeOutInwardOccDone(item);
   const tTypeSaved = isImportTTypeBoeSaved(item);
   const dutyUnlocked = canUnlockImportDutySection(item);
@@ -492,7 +531,7 @@ function BoeOutExpansion({
     void run(() => dispatchImportBoeOut(item.id!, username));
   };
 
-  const locked = dispatched;
+  const locked = readOnly;
 
   return (
     <div className="min-w-0 overflow-hidden rounded-xl border border-zinc-200 bg-white">
@@ -501,7 +540,7 @@ function BoeOutExpansion({
           T type BE workflow
         </p>
         <h3 className="mt-1 text-sm font-semibold text-zinc-900">
-          {item.jobNumber || "Import"} — inward OCC, T type, duty, eway & dispatch
+          {item.jobNumber || "Import"} — inward OOC, T type, duty, e waybill & dispatch
         </h3>
       </div>
 
@@ -511,7 +550,7 @@ function BoeOutExpansion({
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-zinc-900 text-[11px] font-bold text-white">
               {occDone ? <Check size={14} strokeWidth={3} /> : "1"}
             </span>
-            <h3 className="text-sm font-semibold text-zinc-900">Inward OCC</h3>
+            <h3 className="text-sm font-semibold text-zinc-900">Inward OOC</h3>
           </div>
           <div
             className="mt-3 space-y-2 text-xs"
@@ -527,7 +566,7 @@ function BoeOutExpansion({
                     disabled={busy || locked}
                     onChange={() => setOcc(status)}
                   />
-                  {status === "occ" ? "OCC" : "Pending"}
+                  {status === "occ" ? "OOC" : "Pending"}
                 </label>
               )
             )}
@@ -563,7 +602,7 @@ function BoeOutExpansion({
           {!canUnlockImportTTypeSection(item) ? (
             <p className="mt-3 flex items-center gap-1.5 text-[11px] font-medium text-zinc-500">
               <LockKeyhole size={12} />
-              Mark Inward OCC first
+              Mark Inward OOC first
             </p>
           ) : (
             <div
@@ -607,7 +646,7 @@ function BoeOutExpansion({
                   <option value="rms">RMS</option>
                 </select>
               </label>
-              {!tTypeSaved && !locked && (
+              {!tTypeSaved && !readOnly && (
                 <button
                   type="button"
                   disabled={
@@ -695,7 +734,7 @@ function BoeOutExpansion({
                 <LockKeyhole size={13} />
               )}
             </span>
-            <h3 className="text-sm font-semibold text-zinc-900">Eway open</h3>
+            <h3 className="text-sm font-semibold text-zinc-900">E waybill</h3>
           </div>
           {!ewayUnlocked ? (
             <p className="mt-3 flex items-center gap-1.5 text-[11px] font-medium text-zinc-500">
@@ -709,7 +748,7 @@ function BoeOutExpansion({
             >
               <TransportDetailsReadOnly item={item} label="Transport details" />
 
-              {!item.importBoeOutVehicleChanged && !locked && (
+              {!item.importBoeOutVehicleChanged && !readOnly && (
                 <button
                   type="button"
                   disabled={busy}
@@ -782,7 +821,7 @@ function BoeOutExpansion({
                         />
                       </label>
                     </div>
-                    {!locked && (
+                    {!readOnly && (
                       <button
                         type="button"
                         disabled={
@@ -802,7 +841,7 @@ function BoeOutExpansion({
                 </div>
               )}
 
-              {!locked && (
+              {!readOnly && (
                 <button
                   type="button"
                   disabled={busy}

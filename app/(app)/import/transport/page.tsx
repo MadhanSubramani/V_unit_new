@@ -11,6 +11,11 @@ import ModuleHeader from "@/components/ModuleHeader";
 import ImportAuditLine from "@/components/import/ImportAuditLine";
 import ImportDoStatusPanel from "@/components/import/ImportDoStatusPanel";
 import { ImportLocationCell } from "@/components/import/ImportLocationCell";
+import ImportSortableHeader from "@/components/import/ImportSortableHeader";
+import {
+  ImportCurrentStatusCell,
+  useImportTableRows,
+} from "@/components/import/ImportTableState";
 import { ImportTableCell } from "@/components/import/ImportJobTableCells";
 import {
   ImportDoTableCells,
@@ -33,6 +38,16 @@ import {
   isImportTransportCompleted,
   matchesImportTransportCard,
 } from "@/lib/import/transportWorkflow";
+import {
+  canActOnImportModule,
+  canExpandImportRow,
+  parseImportSessionUser,
+} from "@/lib/import/permissions";
+import {
+  ImportSortDir,
+  ImportSortKey,
+  toggleImportSort,
+} from "@/lib/import/sortImportRecords";
 import { FreightForward, ImportCfsReachedStatus, ImportPortDirection } from "@/types/freightForward";
 
 const PAGE_SIZE = 10;
@@ -47,19 +62,20 @@ export default function ImportTransportPage() {
   );
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
+  const [sortKey, setSortKey] = useState<ImportSortKey>("eta");
+  const [sortDir, setSortDir] = useState<ImportSortDir>("asc");
   const [error, setError] = useState("");
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const [panelWidth, setPanelWidth] = useState(0);
-  const [user] = useState<{ username?: string } | null>(() => {
-    if (typeof window === "undefined") return null;
-    const stored = sessionStorage.getItem("user");
-    if (!stored) return null;
-    try {
-      return JSON.parse(stored);
-    } catch {
-      return null;
-    }
-  });
+  const [user] = useState(() => parseImportSessionUser());
+  const canExpand = canExpandImportRow(user, "transport");
+  const canAct = canActOnImportModule(user, "transport");
+
+  const handleColumnSort = (key: ImportSortKey) => {
+    const next = toggleImportSort(sortKey, sortDir, key);
+    setSortKey(next.sortKey);
+    setSortDir(next.sortDir);
+  };
 
   useEffect(() => {
     let active = true;
@@ -103,32 +119,24 @@ export default function ImportTransportPage() {
     { key: "boeUnfiled", label: "BOE Unfiled", value: counts.boeUnfiled },
   ];
 
-  const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    return records.filter((item) => {
-      if (excludeTransportBoeUnfiledFromList(item, activeCard)) {
-        return false;
-      }
-      if (activeCard && !matchesImportTransportCard(item, activeCard)) {
-        return false;
-      }
-      if (!needle) return true;
-      return [
-        item.jobNumber,
-        item.ezRefNumber,
-        item.consignmentName,
-        item.clientName,
-        item.mbl,
-        item.hbl,
-        item.inwardBoeNo,
-        item.importVehicleNo,
-        formatContainersDisplay(item),
-      ].some((value) => String(value ?? "").toLowerCase().includes(needle));
-    });
-  }, [activeCard, records, search]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const visibleRows = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const { filtered, totalPages, visibleRows } = useImportTableRows({
+    records,
+    module: "transport",
+    search,
+    page,
+    pageSize: PAGE_SIZE,
+    sortKey,
+    sortDir,
+    activeCard,
+    matchesCard: matchesImportTransportCard as (
+      item: FreightForward,
+      card: string
+    ) => boolean,
+    excludeFromList: excludeTransportBoeUnfiledFromList as (
+      item: FreightForward,
+      activeCard: string | null
+    ) => boolean,
+  });
 
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
@@ -191,12 +199,24 @@ export default function ImportTransportPage() {
           <thead className="bg-zinc-50 text-[10px] uppercase tracking-wide text-zinc-500">
             <tr>
               <th className="w-9 px-2 py-3" />
-              <th className="px-3 py-3 font-semibold">Job No</th>
+              <ImportSortableHeader
+                label="Job No"
+                sortKey="jobNumber"
+                activeSortKey={sortKey}
+                sortDir={sortDir}
+                onSort={handleColumnSort}
+              />
               <th className="px-3 py-3 font-semibold">EZ No</th>
               <th className="px-3 py-3 font-semibold">BL Type</th>
               <th className="px-3 py-3 font-semibold">Trade Terms</th>
               <th className="px-3 py-3 font-semibold">Vessel</th>
-              <th className="px-3 py-3 font-semibold">ETA</th>
+              <ImportSortableHeader
+                label="ETA"
+                sortKey="eta"
+                activeSortKey={sortKey}
+                sortDir={sortDir}
+                onSort={handleColumnSort}
+              />
               <th className="px-3 py-3 font-semibold">Location</th>
               <th className="px-3 py-3 font-semibold">Consignee</th>
               <th className="px-3 py-3 font-semibold">Client</th>
@@ -207,19 +227,20 @@ export default function ImportTransportPage() {
               <th className="px-3 py-3 font-semibold">MBL</th>
               <th className="px-3 py-3 font-semibold">HBL</th>
               <th className="px-3 py-3 font-semibold">Containers</th>
+              <th className="px-3 py-3 font-semibold">Current Status</th>
               <th className="px-3 py-3 font-semibold">Status</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={18} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={19} className="px-4 py-10 text-center text-zinc-400">
                   Loading Transport jobs...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={18} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={19} className="px-4 py-10 text-center text-zinc-400">
                   No liner-completed jobs found.
                 </td>
               </tr>
@@ -231,6 +252,8 @@ export default function ImportTransportPage() {
                   expanded={expandedId === item.id}
                   busy={updatingId === item.id}
                   username={user?.username ?? "Unknown"}
+                  canExpand={canExpand}
+                  canAct={canAct}
                   panelWidth={panelWidth}
                   onToggle={() =>
                     setExpandedId((current) =>
@@ -285,6 +308,8 @@ function TransportRow({
   expanded,
   busy,
   username,
+  canExpand,
+  canAct,
   panelWidth,
   onToggle,
   onBusy,
@@ -295,6 +320,8 @@ function TransportRow({
   expanded: boolean;
   busy: boolean;
   username: string;
+  canExpand: boolean;
+  canAct: boolean;
   panelWidth: number;
   onToggle: () => void;
   onBusy: (id: string | null) => void;
@@ -307,11 +334,19 @@ function TransportRow({
   return (
     <>
       <tr
-        onClick={onToggle}
-        className="cursor-pointer border-t border-zinc-100 hover:bg-zinc-50"
+        onClick={canExpand ? onToggle : undefined}
+        className={`border-t border-zinc-100 ${
+          canExpand ? "cursor-pointer hover:bg-zinc-50" : ""
+        }`}
       >
         <td className="px-2 py-3 text-zinc-400">
-          {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+          {canExpand ? (
+            expanded ? (
+              <ChevronDown size={15} />
+            ) : (
+              <ChevronRight size={15} />
+            )
+          ) : null}
         </td>
         <ImportTableCell value={item.jobNumber} width={105} className="font-medium text-zinc-900" />
         <ImportTableCell value={item.ezRefNumber} width={105} />
@@ -327,6 +362,7 @@ function TransportRow({
         <ImportTableCell value={item.mbl} width={130} />
         <ImportTableCell value={item.hbl} width={130} />
         <ImportTableCell value={formatContainersDisplay(item)} width={170} />
+        <ImportCurrentStatusCell item={item} module="transport" />
         <td className="px-3 py-3">
           {busy ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2 py-1 text-[10px] font-semibold text-zinc-600">
@@ -346,9 +382,9 @@ function TransportRow({
           )}
         </td>
       </tr>
-      {expanded && (
+      {canExpand && expanded && (
         <tr className="border-t border-zinc-100 bg-zinc-100/70">
-          <td colSpan={18} className="p-0">
+          <td colSpan={19} className="p-0">
             <div
               className="sticky left-0 min-w-0 p-3"
               style={panelWidth ? { width: panelWidth } : undefined}
@@ -359,6 +395,7 @@ function TransportRow({
                 username={username}
                 completed={completed}
                 actionable={actionable}
+                canAct={canAct}
                 onBusy={onBusy}
                 onError={onError}
                 onUpdated={onUpdated}
@@ -377,6 +414,7 @@ function TruckDetailCard({
   username,
   completed,
   actionable,
+  canAct,
   onBusy,
   onError,
   onUpdated,
@@ -386,10 +424,12 @@ function TruckDetailCard({
   username: string;
   completed: boolean;
   actionable: boolean;
+  canAct: boolean;
   onBusy: (id: string | null) => void;
   onError: (message: string) => void;
   onUpdated: (item: FreightForward) => void;
 }) {
+  const editable = actionable && canAct && !completed;
   const [stash, setStash] = useState<boolean>(
     typeof item.importTruckStash === "boolean" ? item.importTruckStash : false
   );
@@ -469,7 +509,7 @@ function TruckDetailCard({
               type="radio"
               name={`stash-${item.id}`}
               checked={stash === true}
-              disabled={busy || completed || !actionable}
+              disabled={busy || !editable}
               onChange={() => setStash(true)}
             />
             Yes
@@ -479,7 +519,7 @@ function TruckDetailCard({
               type="radio"
               name={`stash-${item.id}`}
               checked={stash === false}
-              disabled={busy || completed || !actionable}
+              disabled={busy || !editable}
               onChange={() => setStash(false)}
             />
             No
@@ -490,7 +530,7 @@ function TruckDetailCard({
             <span className="font-medium text-zinc-700">Transporter</span>
             <input
               value={transporter}
-              disabled={busy || completed || !actionable}
+              disabled={busy || !editable}
               onChange={(event) => setTransporter(event.target.value)}
               className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
             />
@@ -499,7 +539,7 @@ function TruckDetailCard({
             <span className="font-medium text-zinc-700">Vehicle No</span>
             <input
               value={vehicleNo}
-              disabled={busy || completed || !actionable}
+              disabled={busy || !editable}
               onChange={(event) => setVehicleNo(event.target.value.toUpperCase())}
               className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
             />
@@ -508,7 +548,7 @@ function TruckDetailCard({
             <span className="font-medium text-zinc-700">Driver name</span>
             <input
               value={driverName}
-              disabled={busy || completed || !actionable}
+              disabled={busy || !editable}
               onChange={(event) => setDriverName(event.target.value)}
               className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
             />
@@ -517,7 +557,7 @@ function TruckDetailCard({
             <span className="font-medium text-zinc-700">Ph no</span>
             <input
               value={phone}
-              disabled={busy || completed || !actionable}
+              disabled={busy || !editable}
               onChange={(event) =>
                 setPhone(event.target.value.replace(/\D/g, "").slice(0, 10))
               }
@@ -526,7 +566,7 @@ function TruckDetailCard({
             />
           </label>
         </div>
-        {!completed && actionable && (
+        {!completed && editable && (
           <button
             type="button"
             disabled={
@@ -547,7 +587,7 @@ function TruckDetailCard({
       <TransportTrackingSection
         item={item}
         busy={busy}
-        actionable={actionable}
+        actionable={actionable && canAct}
         username={username}
         onBusy={onBusy}
         onError={onError}

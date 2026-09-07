@@ -15,6 +15,11 @@ import {
   ImportSearchDownloadBar,
 } from "@/components/import/ImportTableExtras";
 import { ImportLocationCell } from "@/components/import/ImportLocationCell";
+import ImportSortableHeader from "@/components/import/ImportSortableHeader";
+import {
+  ImportCurrentStatusCell,
+  useImportTableRows,
+} from "@/components/import/ImportTableState";
 import { ImportTableCell } from "@/components/import/ImportJobTableCells";
 import {
   completeImportAccounts,
@@ -34,6 +39,16 @@ import {
 } from "@/lib/import/accountsWorkflow";
 import { getInwardBoeNoDisplay } from "@/lib/import/linerWorkflow";
 import {
+  canActOnImportModule,
+  canExpandImportRow,
+  parseImportSessionUser,
+} from "@/lib/import/permissions";
+import {
+  ImportSortDir,
+  ImportSortKey,
+  toggleImportSort,
+} from "@/lib/import/sortImportRecords";
+import {
   FreightForward,
   ImportAccountsBillingStatus,
   ImportAccountsPaymentStatus,
@@ -51,19 +66,20 @@ export default function ImportAccountsPage() {
   );
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
+  const [sortKey, setSortKey] = useState<ImportSortKey>("eta");
+  const [sortDir, setSortDir] = useState<ImportSortDir>("asc");
   const [error, setError] = useState("");
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const [panelWidth, setPanelWidth] = useState(0);
-  const [user] = useState<{ username?: string } | null>(() => {
-    if (typeof window === "undefined") return null;
-    const stored = sessionStorage.getItem("user");
-    if (!stored) return null;
-    try {
-      return JSON.parse(stored);
-    } catch {
-      return null;
-    }
-  });
+  const [user] = useState(() => parseImportSessionUser());
+  const canExpand = canExpandImportRow(user, "accounts");
+  const canAct = canActOnImportModule(user, "accounts");
+
+  const handleColumnSort = (key: ImportSortKey) => {
+    const next = toggleImportSort(sortKey, sortDir, key);
+    setSortKey(next.sortKey);
+    setSortDir(next.sortDir);
+  };
 
   useEffect(() => {
     let active = true;
@@ -112,28 +128,20 @@ export default function ImportAccountsPage() {
     { key: "completed", label: "Completed", value: counts.completed },
   ];
 
-  const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    return records.filter((item) => {
-      if (activeCard && !matchesImportAccountsCard(item, activeCard)) {
-        return false;
-      }
-      if (!needle) return true;
-      return [
-        item.jobNumber,
-        item.ezRefNumber,
-        item.consignmentName,
-        item.clientName,
-        item.mbl,
-        item.hbl,
-        item.inwardBoeNo,
-        formatContainersDisplay(item),
-      ].some((value) => String(value ?? "").toLowerCase().includes(needle));
-    });
-  }, [activeCard, records, search]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const visibleRows = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const { filtered, totalPages, visibleRows } = useImportTableRows({
+    records,
+    module: "accounts",
+    search,
+    page,
+    pageSize: PAGE_SIZE,
+    sortKey,
+    sortDir,
+    activeCard,
+    matchesCard: matchesImportAccountsCard as (
+      item: FreightForward,
+      card: string
+    ) => boolean,
+  });
 
   const applyUpdated = (updated: FreightForward) => {
     setRecords((current) =>
@@ -202,12 +210,24 @@ export default function ImportAccountsPage() {
           <thead className="bg-zinc-50 text-[10px] uppercase tracking-wide text-zinc-500">
             <tr>
               <th className="w-9 px-2 py-3" />
-              <th className="px-3 py-3 font-semibold">Job No</th>
+              <ImportSortableHeader
+                label="Job No"
+                sortKey="jobNumber"
+                activeSortKey={sortKey}
+                sortDir={sortDir}
+                onSort={handleColumnSort}
+              />
               <th className="px-3 py-3 font-semibold">EZ No</th>
               <th className="px-3 py-3 font-semibold">BL Type</th>
               <th className="px-3 py-3 font-semibold">Trade Terms</th>
               <th className="px-3 py-3 font-semibold">Vessel</th>
-              <th className="px-3 py-3 font-semibold">ETA</th>
+              <ImportSortableHeader
+                label="ETA"
+                sortKey="eta"
+                activeSortKey={sortKey}
+                sortDir={sortDir}
+                onSort={handleColumnSort}
+              />
               <th className="px-3 py-3 font-semibold">Location</th>
               <th className="px-3 py-3 font-semibold">Consignee</th>
               <th className="px-3 py-3 font-semibold">Client</th>
@@ -218,19 +238,20 @@ export default function ImportAccountsPage() {
               <th className="px-3 py-3 font-semibold">MBL</th>
               <th className="px-3 py-3 font-semibold">HBL</th>
               <th className="px-3 py-3 font-semibold">Containers</th>
+              <th className="px-3 py-3 font-semibold">Current Status</th>
               <th className="px-3 py-3 font-semibold">Status</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={18} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={19} className="px-4 py-10 text-center text-zinc-400">
                   Loading Accounts jobs...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={18} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={19} className="px-4 py-10 text-center text-zinc-400">
                   No transport-completed jobs found.
                 </td>
               </tr>
@@ -242,6 +263,8 @@ export default function ImportAccountsPage() {
                   expanded={expandedId === item.id}
                   busy={updatingId === item.id}
                   username={user?.username ?? "Unknown"}
+                  canExpand={canExpand}
+                  canAct={canAct}
                   panelWidth={panelWidth}
                   onToggle={() =>
                     setExpandedId((current) =>
@@ -290,6 +313,8 @@ function AccountsRow({
   expanded,
   busy,
   username,
+  canExpand,
+  canAct,
   panelWidth,
   onToggle,
   onBusy,
@@ -300,6 +325,8 @@ function AccountsRow({
   expanded: boolean;
   busy: boolean;
   username: string;
+  canExpand: boolean;
+  canAct: boolean;
   panelWidth: number;
   onToggle: () => void;
   onBusy: (id: string | null) => void;
@@ -311,11 +338,19 @@ function AccountsRow({
   return (
     <>
       <tr
-        onClick={onToggle}
-        className="cursor-pointer border-t border-zinc-100 hover:bg-zinc-50"
+        onClick={canExpand ? onToggle : undefined}
+        className={`border-t border-zinc-100 ${
+          canExpand ? "cursor-pointer hover:bg-zinc-50" : ""
+        }`}
       >
         <td className="px-2 py-3 text-zinc-400">
-          {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+          {canExpand ? (
+            expanded ? (
+              <ChevronDown size={15} />
+            ) : (
+              <ChevronRight size={15} />
+            )
+          ) : null}
         </td>
         <ImportTableCell
           value={item.jobNumber}
@@ -335,6 +370,7 @@ function AccountsRow({
         <ImportTableCell value={item.mbl} width={130} />
         <ImportTableCell value={item.hbl} width={130} />
         <ImportTableCell value={formatContainersDisplay(item)} width={170} />
+        <ImportCurrentStatusCell item={item} module="accounts" />
         <td className="px-3 py-3">
           {busy ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2 py-1 text-[10px] font-semibold text-zinc-600">
@@ -354,9 +390,9 @@ function AccountsRow({
           )}
         </td>
       </tr>
-      {expanded && (
+      {canExpand && expanded && (
         <tr className="border-t border-zinc-100 bg-zinc-100/70">
-          <td colSpan={18} className="p-0">
+          <td colSpan={19} className="p-0">
             <div
               className="sticky left-0 min-w-0 p-3"
               style={panelWidth ? { width: panelWidth } : undefined}
@@ -365,6 +401,7 @@ function AccountsRow({
                 item={item}
                 busy={busy}
                 username={username}
+                canAct={canAct}
                 onBusy={onBusy}
                 onError={onError}
                 onUpdated={onUpdated}
@@ -381,6 +418,7 @@ function AccountsExpansion({
   item,
   busy,
   username,
+  canAct,
   onBusy,
   onError,
   onUpdated,
@@ -388,11 +426,13 @@ function AccountsExpansion({
   item: FreightForward;
   busy: boolean;
   username: string;
+  canAct: boolean;
   onBusy: (id: string | null) => void;
   onError: (message: string) => void;
   onUpdated: (item: FreightForward) => void;
 }) {
   const jobCompleted = isImportAccountsCompleted(item);
+  const readOnly = jobCompleted || !canAct;
   const billingStatus = getImportAccountsBillingStatus(item);
   const billingDone = billingStatus === "completed";
   const paymentStatus = getImportAccountsPaymentStatus(item);
@@ -475,7 +515,7 @@ function AccountsExpansion({
                     type="radio"
                     name={`billing-${item.id}`}
                     checked={billingStatus === status}
-                    disabled={busy || jobCompleted}
+                    disabled={busy || readOnly}
                     onChange={() => {
                       if (status === "completed" && !billingRemark.trim()) return;
                       setBilling(status);
@@ -491,7 +531,7 @@ function AccountsExpansion({
               </span>
               <textarea
                 value={billingRemark}
-                disabled={busy || jobCompleted}
+                disabled={busy || readOnly}
                 rows={2}
                 placeholder={
                   billingDone
@@ -502,7 +542,7 @@ function AccountsExpansion({
                 className="mt-1 w-full resize-none rounded-lg border border-zinc-200 px-2.5 py-2 text-[11px] outline-none focus:border-zinc-500"
               />
             </label>
-            {!jobCompleted &&
+            {!readOnly &&
               billingStatus === "pending" &&
               billingRemark.trim() && (
                 <button
@@ -556,7 +596,7 @@ function AccountsExpansion({
                       type="radio"
                       name={`payment-${item.id}`}
                       checked={paymentStatus === status}
-                      disabled={busy || jobCompleted}
+                      disabled={busy || readOnly}
                       onChange={() => {
                         if (!paymentRemark.trim()) return;
                         setPayment(status);
@@ -570,14 +610,14 @@ function AccountsExpansion({
                 <span className="font-medium text-zinc-700">Remark</span>
                 <textarea
                   value={paymentRemark}
-                  disabled={busy || jobCompleted}
+                  disabled={busy || readOnly}
                   rows={2}
                   placeholder="Payment remark"
                   onChange={(event) => setPaymentRemark(event.target.value)}
                   className="mt-1 w-full resize-none rounded-lg border border-zinc-200 px-2.5 py-2 text-[11px] outline-none focus:border-zinc-500"
                 />
               </label>
-              {!jobCompleted && paymentRemark.trim() && (
+              {!readOnly && paymentRemark.trim() && (
                 <button
                   type="button"
                   disabled={busy}
@@ -635,14 +675,16 @@ function AccountsExpansion({
             </div>
           ) : (
             <div className="mt-3" onClick={(event) => event.stopPropagation()}>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={completeJob}
-                className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
-              >
-                Complete job
-              </button>
+              {canAct && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={completeJob}
+                  className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
+                >
+                  Complete job
+                </button>
+              )}
             </div>
           )}
           <ImportAuditLine audit={item.importAccountsCompleteAudit} />

@@ -17,12 +17,15 @@ export interface LoginResult {
   error?: string;
 }
 
+import { ImportModuleKey } from "@/types/importRoles";
+
 export interface User {
   id?: string;
   username: string;
   email: string;
   password: string;
   role: "admin" | "user" | "accountant";
+  importRoles?: ImportModuleKey[];
 }
 
 /**

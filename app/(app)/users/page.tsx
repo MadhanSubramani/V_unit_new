@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { createUser, getUsers, deleteUserData, updateUserData, User } from "@/lib/auth";
+import { IMPORT_MODULE_OPTIONS } from "@/types/importRoles";
+import type { ImportModuleKey } from "@/types/importRoles";
 import { Eye, EyeOff, Pencil, Trash2 ,MoreHorizontal} from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import ModuleHeader from "@/components/ModuleHeader";
@@ -31,7 +33,18 @@ export default function UsersPage() {
         email: "",
         password: "",
         role: "user",
+        importRoles: [],
     });
+
+    const toggleImportRole = (role: ImportModuleKey) => {
+        setForm((current) => {
+            const existing = current.importRoles ?? [];
+            const next = existing.includes(role)
+                ? existing.filter((entry) => entry !== role)
+                : [...existing, role];
+            return { ...current, importRoles: next };
+        });
+    };
 
     const loadUsers = async () => {
         const data = await getUsers();
@@ -85,7 +98,7 @@ export default function UsersPage() {
                 await createUser(form);
             }
 
-            setForm({ username: "", email: "", password: "", role: "user" });
+            setForm({ username: "", email: "", password: "", role: "user", importRoles: [] });
             setErrors({});
             setDrawerOpen(false);
             setSelectedUser(null);
@@ -103,7 +116,7 @@ export default function UsersPage() {
 
     const openAddDrawer = () => {
         setSelectedUser(null);
-        setForm({ username: "", email: "", password: "", role: "user" });
+        setForm({ username: "", email: "", password: "", role: "user", importRoles: [] });
         setErrors({});
         setSubmitError("");
         setDrawerOpen(true);
@@ -116,6 +129,7 @@ export default function UsersPage() {
             email: user.email,
             password: user.password,
             role: user.role,
+            importRoles: user.importRoles ?? [],
         });
         setErrors({});
         setSubmitError("");
@@ -474,6 +488,33 @@ export default function UsersPage() {
                                 <option value="user">User</option>
                                 <option value="accountant">Accountant</option>
                             </select>
+                        </div>
+
+                        <div>
+                            <label className="mb-2 block text-[11px] font-medium text-zinc-600">
+                                Import module access
+                            </label>
+                            <p className="mb-2 text-[10px] text-zinc-500">
+                                Leave all unchecked for full Import access (legacy). Selected modules allow row expand and actions on that page only.
+                            </p>
+                            <div className="grid grid-cols-2 gap-2">
+                                {IMPORT_MODULE_OPTIONS.map((option) => {
+                                    const checked = (form.importRoles ?? []).includes(option.value);
+                                    return (
+                                        <label
+                                            key={option.value}
+                                            className="flex items-center gap-2 rounded-lg border border-zinc-200 px-2.5 py-2 text-[11px] text-zinc-700"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                onChange={() => toggleImportRole(option.value)}
+                                            />
+                                            {option.label}
+                                        </label>
+                                    );
+                                })}
+                            </div>
                         </div>
 
                         <button
