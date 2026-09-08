@@ -46,7 +46,8 @@ export default function KycTable({
             data.map((item) => (
               <tr
                 key={item.id}
-                className="border-t border-zinc-100 hover:bg-zinc-50"
+                onClick={() => onView(item)}
+                className="cursor-pointer border-t border-zinc-100 hover:bg-zinc-50"
               >
                 <td className="px-4 py-3 text-zinc-700">
                   {item.gstin}
@@ -91,7 +92,10 @@ export default function KycTable({
                   </div>
                 </td>
 
-                <td className="px-4 py-3 text-center">
+                <td
+                  className="px-4 py-3 text-center"
+                  onClick={(event) => event.stopPropagation()}
+                >
                   <DropdownMenu.Root>
                     <DropdownMenu.Trigger asChild>
                       <button className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100">

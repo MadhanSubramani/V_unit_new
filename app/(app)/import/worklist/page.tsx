@@ -6,8 +6,10 @@ import ModuleHeader from "@/components/ModuleHeader";
 import ImportJobEditDrawer from "@/components/import/ImportJobEditDrawer";
 import ImportLinerDrawer from "@/components/import/ImportLinerDrawer";
 import ActionMenu from "@/components/shared/ActionMenu";
+import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import {
   getImportLinerRecords,
+  softDeleteFreightForward,
 } from "@/lib/freightForward/freightForward";
 import { formatContainersDisplay } from "@/lib/freightForward/containers";
 import {
@@ -27,6 +29,7 @@ import {
 } from "@/components/import/ImportTableState";
 import {
   canActOnImportModule,
+  isImportAdmin,
   parseImportSessionUser,
 } from "@/lib/import/permissions";
 import {
@@ -49,8 +52,10 @@ export default function ImportWorklistPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activeItem, setActiveItem] = useState<FreightForward | null>(null);
   const [drawerMode, setDrawerMode] = useState<"edit" | "view" | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [user] = useState(() => parseImportSessionUser());
   const canAct = canActOnImportModule(user, "worklist");
+  const canDelete = isImportAdmin(user);
 
   const handleColumnSort = (key: ImportSortKey) => {
     const next = toggleImportSort(sortKey, sortDir, key);
@@ -87,6 +92,17 @@ export default function ImportWorklistPage() {
   const closeDetailDrawer = () => {
     setActiveItem(null);
     setDrawerMode(null);
+  };
+
+  const handleDelete = async () => {
+    if (!deleteId) return;
+    try {
+      await softDeleteFreightForward(deleteId, user?.username ?? "Unknown");
+      setDeleteId(null);
+      await reload();
+    } catch {
+      setError("Unable to move job to trash.");
+    }
   };
 
   return (
@@ -229,7 +245,7 @@ export default function ImportWorklistPage() {
                     </td>
                     <td className="px-3 py-3 text-center">
                       <ActionMenu
-                        showDelete={false}
+                        showDelete={canDelete}
                         onView={() => {
                           setActiveItem(item);
                           setDrawerMode("view");
@@ -238,7 +254,7 @@ export default function ImportWorklistPage() {
                           setActiveItem(item);
                           setDrawerMode(canAct ? "edit" : "view");
                         }}
-                        onDelete={() => undefined}
+                        onDelete={() => setDeleteId(item.id ?? null)}
                       />
                     </td>
                   </tr>
@@ -297,6 +313,15 @@ export default function ImportWorklistPage() {
           username={user?.username ?? "Unknown"}
         />
       ) : null}
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title="Move to trash?"
+        message="This Import job will move to Import Trash. You can recover it later."
+        confirmLabel="Move to trash"
+        onConfirm={() => void handleDelete()}
+        onCancel={() => setDeleteId(null)}
+      />
     </div>
   );
 }

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import ModuleHeader from "@/components/ModuleHeader";
 import ImportAuditLine from "@/components/import/ImportAuditLine";
+import ImportJobDocumentsPanel from "@/components/import/ImportJobDocumentsPanel";
 import {
   ImportDoTableCells,
   ImportSearchDownloadBar,
@@ -29,6 +30,7 @@ import {
 } from "@/lib/freightForward/freightForward";
 import { formatContainersDisplay } from "@/lib/freightForward/containers";
 import {
+  canTakeAccountsAction,
   computeImportAccountsCounts,
   getImportAccountsBillingStatus,
   getImportAccountsPaymentStatus,
@@ -153,7 +155,7 @@ export default function ImportAccountsPage() {
     <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
       <ModuleHeader
         title="Import — Accounts"
-        description="Transport-completed jobs. Track billing, payment, and job completion."
+        description="All Import jobs. Billing and payment unlock after T type BE is dispatched. Jobs stay incomplete until Accounts is completed."
       />
 
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -252,7 +254,7 @@ export default function ImportAccountsPage() {
             ) : visibleRows.length === 0 ? (
               <tr>
                 <td colSpan={19} className="px-4 py-10 text-center text-zinc-400">
-                  No transport-completed jobs found.
+                  No import jobs found.
                 </td>
               </tr>
             ) : (
@@ -432,7 +434,8 @@ function AccountsExpansion({
   onUpdated: (item: FreightForward) => void;
 }) {
   const jobCompleted = isImportAccountsCompleted(item);
-  const readOnly = jobCompleted || !canAct;
+  const actionable = canTakeAccountsAction(item);
+  const readOnly = jobCompleted || !canAct || !actionable;
   const billingStatus = getImportAccountsBillingStatus(item);
   const billingDone = billingStatus === "completed";
   const paymentStatus = getImportAccountsPaymentStatus(item);
@@ -493,6 +496,12 @@ function AccountsExpansion({
           {item.jobNumber || "Import"} — billing, payment, completion
         </h3>
       </div>
+
+      {!actionable && !jobCompleted && (
+        <p className="mx-4 mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+          Dispatch T type BE before Accounts actions are available.
+        </p>
+      )}
 
       <div className="grid min-w-0 gap-3 p-4 lg:grid-cols-3">
         <section className="rounded-xl border border-zinc-200 p-4">
@@ -690,6 +699,7 @@ function AccountsExpansion({
           <ImportAuditLine audit={item.importAccountsCompleteAudit} />
         </section>
       </div>
+      <ImportJobDocumentsPanel item={item} />
     </div>
   );
 }

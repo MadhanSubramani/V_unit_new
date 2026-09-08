@@ -10,6 +10,7 @@ import {
 import ModuleHeader from "@/components/ModuleHeader";
 import ImportAuditLine from "@/components/import/ImportAuditLine";
 import ImportDoStatusPanel from "@/components/import/ImportDoStatusPanel";
+import ImportJobDocumentsPanel from "@/components/import/ImportJobDocumentsPanel";
 import { ImportLocationCell } from "@/components/import/ImportLocationCell";
 import ImportSortableHeader from "@/components/import/ImportSortableHeader";
 import {
@@ -32,7 +33,6 @@ import { getInwardBoeNoDisplay } from "@/lib/import/linerWorkflow";
 import {
   canTakeTransportAction,
   computeImportTransportCounts,
-  excludeTransportBoeUnfiledFromList,
   getImportTransportRecords,
   ImportTransportCard,
   isImportTransportCompleted,
@@ -132,17 +132,13 @@ export default function ImportTransportPage() {
       item: FreightForward,
       card: string
     ) => boolean,
-    excludeFromList: excludeTransportBoeUnfiledFromList as (
-      item: FreightForward,
-      activeCard: string | null
-    ) => boolean,
   });
 
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
       <ModuleHeader
         title="Import — Transport"
-        description="Liner-completed jobs. Capture truck details after BOE In is completed."
+        description="All Import jobs. Capture truck details after Z type BE is completed."
       />
 
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -241,7 +237,7 @@ export default function ImportTransportPage() {
             ) : visibleRows.length === 0 ? (
               <tr>
                 <td colSpan={19} className="px-4 py-10 text-center text-zinc-400">
-                  No liner-completed jobs found.
+                  No import jobs found.
                 </td>
               </tr>
             ) : (
@@ -493,7 +489,7 @@ function TruckDetailCard({
       >
         {!actionable && !completed && (
           <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-            BOE must be filed and BOE In completed before transport actions are
+            BOE must be filed and Z type BE completed before transport actions are
             available.
           </p>
         )}
@@ -594,6 +590,7 @@ function TruckDetailCard({
         onUpdated={onUpdated}
       />
       <ImportDoStatusPanel item={item} />
+      <ImportJobDocumentsPanel item={item} />
     </div>
   );
 }

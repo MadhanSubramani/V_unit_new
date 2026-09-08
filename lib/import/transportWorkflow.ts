@@ -1,6 +1,6 @@
 import { FreightForward } from "@/types/freightForward";
 import { getBoeFilingStatus, isImportBoeInCompleted } from "@/lib/import/boeInWorkflow";
-import { isImportLinerCompleted } from "@/lib/import/linerWorkflow";
+import { isImportWorklistJob } from "@/lib/import/linerWorkflow";
 
 export type ImportTransportCard =
   | "incomplete"
@@ -32,7 +32,7 @@ export function matchesImportTransportCard(
     case "completed":
       return transportCompleted;
     case "incomplete":
-      return !transportCompleted && !unfiled;
+      return !transportCompleted;
     case "boeFiled":
       return filed && !transportCompleted;
     case "boeUnfiled":
@@ -65,7 +65,7 @@ export function computeImportTransportCounts(records: FreightForward[]) {
   };
 }
 
-/** Liner-completed jobs eligible for the Transport module list. */
+/** All Import jobs — actions stay locked until Z type BE is completed. */
 export function getImportTransportRecords(records: FreightForward[]) {
-  return records.filter(isImportLinerCompleted);
+  return records.filter(isImportWorklistJob);
 }

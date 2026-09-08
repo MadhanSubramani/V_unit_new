@@ -11,6 +11,7 @@ import {
 import ModuleHeader from "@/components/ModuleHeader";
 import ImportAuditLine from "@/components/import/ImportAuditLine";
 import ImportDoStatusPanel from "@/components/import/ImportDoStatusPanel";
+import ImportJobDocumentsPanel from "@/components/import/ImportJobDocumentsPanel";
 import {
   ImportDoTableCells,
   ImportSearchDownloadBar,
@@ -775,6 +776,7 @@ function BoeExpansion({
         </section>
       </div>
       <ImportDoStatusPanel item={item} />
+      <ImportJobDocumentsPanel item={item} />
     </div>
   );
 }

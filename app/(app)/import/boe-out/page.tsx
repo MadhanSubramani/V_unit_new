@@ -11,6 +11,7 @@ import {
 import ModuleHeader from "@/components/ModuleHeader";
 import ImportAuditLine from "@/components/import/ImportAuditLine";
 import ImportDoStatusPanel from "@/components/import/ImportDoStatusPanel";
+import ImportJobDocumentsPanel from "@/components/import/ImportJobDocumentsPanel";
 import {
   ImportDoTableCells,
   ImportSearchDownloadBar,
@@ -33,6 +34,7 @@ import {
 } from "@/lib/freightForward/freightForward";
 import { formatContainersDisplay } from "@/lib/freightForward/containers";
 import {
+  canTakeTTypeAction,
   canUnlockImportDutySection,
   canUnlockImportEwaySection,
   canUnlockImportTTypeSection,
@@ -157,7 +159,7 @@ export default function ImportBoeOutPage() {
     <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
       <ModuleHeader
         title="Import — T type BE"
-        description="Transport-completed jobs. Complete inward OOC, T type filing, duty, and dispatch."
+        description="All Import jobs. Complete inward OOC, T type filing, duty, and dispatch after Transport."
       />
 
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -256,7 +258,7 @@ export default function ImportBoeOutPage() {
             ) : visibleRows.length === 0 ? (
               <tr>
                 <td colSpan={19} className="px-4 py-10 text-center text-zinc-400">
-                  No transport-completed jobs found.
+                  No import jobs found.
                 </td>
               </tr>
             ) : (
@@ -433,6 +435,7 @@ function BoeOutExpansion({
 }) {
   const dispatched = isImportBoeOutDispatched(item);
   const readOnly = dispatched || !canAct;
+  const transportReady = canTakeTTypeAction(item);
   const occDone = isImportBoeOutInwardOccDone(item);
   const tTypeSaved = isImportTTypeBoeSaved(item);
   const dutyUnlocked = canUnlockImportDutySection(item);
@@ -552,6 +555,12 @@ function BoeOutExpansion({
             </span>
             <h3 className="text-sm font-semibold text-zinc-900">Inward OOC</h3>
           </div>
+          {!transportReady ? (
+            <p className="mt-3 flex items-center gap-1.5 text-[11px] font-medium text-zinc-500">
+              <LockKeyhole size={12} />
+              Complete Transport first
+            </p>
+          ) : (
           <div
             className="mt-3 space-y-2 text-xs"
             onClick={(event) => event.stopPropagation()}
@@ -571,6 +580,7 @@ function BoeOutExpansion({
               )
             )}
           </div>
+          )}
           <ImportAuditLine audit={item.importBoeOutInwardOccAudit} />
         </section>
 
@@ -602,7 +612,9 @@ function BoeOutExpansion({
           {!canUnlockImportTTypeSection(item) ? (
             <p className="mt-3 flex items-center gap-1.5 text-[11px] font-medium text-zinc-500">
               <LockKeyhole size={12} />
-              Mark Inward OOC first
+              {transportReady
+                ? "Mark Inward OOC first"
+                : "Complete Transport first"}
             </p>
           ) : (
             <div
@@ -857,6 +869,7 @@ function BoeOutExpansion({
         </section>
       </div>
       <ImportDoStatusPanel item={item} />
+      <ImportJobDocumentsPanel item={item} />
     </div>
   );
 }

@@ -10,23 +10,20 @@ import {
   LockKeyhole,
 } from "lucide-react";
 import ModuleHeader from "@/components/ModuleHeader";
-import ImportDocumentLink from "@/components/import/ImportDocumentLink";
 import ImportJobEditDrawer from "@/components/import/ImportJobEditDrawer";
 import { ImportLocationCell } from "@/components/import/ImportLocationCell";
 import ImportSortableHeader from "@/components/import/ImportSortableHeader";
+import ImportJobDocumentsPanel from "@/components/import/ImportJobDocumentsPanel";
 import { ImportSearchDownloadBar } from "@/components/import/ImportTableExtras";
 import {
   ImportCurrentStatusCell,
   useImportTableRows,
 } from "@/components/import/ImportTableState";
-import { downloadMergedImportDocuments } from "@/lib/import/mergeDocuments";
 import { formatImportAuditDate } from "@/lib/import/auditDisplay";
 import ActionMenu from "@/components/shared/ActionMenu";
-import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import {
   getImportLinerRecords,
   addImportDoRemark,
-  softDeleteFreightForward,
   updateImportLinerRemark,
   updateImportLinerStage,
 } from "@/lib/freightForward/freightForward";
@@ -158,7 +155,6 @@ export default function ImportLinerPage() {
   const [sortDir, setSortDir] = useState<ImportSortDir>("asc");
   const [error, setError] = useState("");
   const [editItem, setEditItem] = useState<FreightForward | null>(null);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const [panelWidth, setPanelWidth] = useState(0);
   const [user] = useState(() => parseImportSessionUser());
@@ -231,29 +227,6 @@ export default function ImportLinerPage() {
       card: string
     ) => boolean,
   });
-
-  const reload = async () => {
-    setLoading(true);
-    try {
-      setRecords(await getImportLinerRecords());
-    } catch {
-      setError("Unable to load Import Liner jobs.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!deleteId) return;
-    try {
-      await softDeleteFreightForward(deleteId, user?.username ?? "Unknown");
-      setDeleteId(null);
-      setExpandedId(null);
-      await reload();
-    } catch {
-      setError("Unable to move job to trash.");
-    }
-  };
 
   const updateStage = async (
     item: FreightForward,
@@ -460,7 +433,6 @@ export default function ImportLinerPage() {
                     item={item}
                     expanded={expanded}
                     busy={updatingId === item.id}
-                    isAdmin={user?.role === "admin"}
                     canExpand={canExpand}
                     canAct={canAct}
                     onToggle={() =>
@@ -472,7 +444,6 @@ export default function ImportLinerPage() {
                     onRemark={saveRemark}
                     onDoRemark={saveDoRemark}
                     onEdit={() => setEditItem(item)}
-                    onDelete={() => setDeleteId(item.id ?? null)}
                     panelWidth={panelWidth}
                   />
                 );
@@ -521,15 +492,6 @@ export default function ImportLinerPage() {
           username={user?.username ?? "Unknown"}
         />
       ) : null}
-
-      <ConfirmDialog
-        open={!!deleteId}
-        title="Move to trash?"
-        message="This Import job will move to Import Trash. You can recover it later."
-        confirmLabel="Move to trash"
-        onConfirm={() => void handleDelete()}
-        onCancel={() => setDeleteId(null)}
-      />
     </div>
   );
 }
@@ -538,7 +500,6 @@ function Row({
   item,
   expanded,
   busy,
-  isAdmin,
   canExpand,
   canAct,
   onToggle,
@@ -546,13 +507,11 @@ function Row({
   onRemark,
   onDoRemark,
   onEdit,
-  onDelete,
   panelWidth,
 }: {
   item: FreightForward;
   expanded: boolean;
   busy: boolean;
-  isAdmin: boolean;
   canExpand: boolean;
   canAct: boolean;
   onToggle: () => void;
@@ -572,7 +531,6 @@ function Row({
     category: ImportDoRemarkCategory
   ) => Promise<void>;
   onEdit: () => void;
-  onDelete: () => void;
   panelWidth: number;
 }) {
   const movementStatus = getImportMovementStatus(item);
@@ -641,9 +599,9 @@ function Row({
         >
           <ActionMenu
             showView={false}
-            showDelete={isAdmin}
+            showDelete={false}
             onEdit={onEdit}
-            onDelete={onDelete}
+            onDelete={() => undefined}
           />
         </td>
       </tr>
@@ -731,74 +689,13 @@ function Row({
                   />
                 </div>
 
-                <div className="border-t border-zinc-200 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
-                      Documents
-                    </p>
-                    <DocumentsDownloadAll item={item} />
-                  </div>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    <ImportDocumentLink label="MBL" doc={item.mblUrl} />
-                    <ImportDocumentLink label="HBL" doc={item.hblUrl} />
-                    {(item.otherDocuments ?? []).map((doc, index) => (
-                      <ImportDocumentLink
-                        key={`${doc.url}-${index}`}
-                        label={doc.name || `Document ${index + 1}`}
-                        doc={doc}
-                      />
-                    ))}
-                    {!item.mblUrl &&
-                      !item.hblUrl &&
-                      !(item.otherDocuments ?? []).length && (
-                        <p className="text-[11px] text-zinc-400">
-                          No documents uploaded.
-                        </p>
-                      )}
-                  </div>
-                </div>
+                <ImportJobDocumentsPanel item={item} />
               </div>
             </div>
           </td>
         </tr>
       )}
     </>
-  );
-}
-
-function DocumentsDownloadAll({ item }: { item: FreightForward }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  const handleDownload = async (event: React.MouseEvent) => {
-    event.stopPropagation();
-    setBusy(true);
-    setError("");
-    try {
-      await downloadMergedImportDocuments(item);
-    } catch (downloadError) {
-      setError(
-        downloadError instanceof Error
-          ? downloadError.message
-          : "Unable to download documents."
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="text-right" onClick={(event) => event.stopPropagation()}>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={(event) => void handleDownload(event)}
-        className="rounded-lg border border-zinc-200 px-2.5 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
-      >
-        {busy ? "Preparing..." : "Download all"}
-      </button>
-      {error && <p className="mt-1 text-[10px] text-red-500">{error}</p>}
-    </div>
   );
 }
 

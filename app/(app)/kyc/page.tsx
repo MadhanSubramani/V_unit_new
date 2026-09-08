@@ -193,7 +193,8 @@ export default function KycPage() {
               currentData.map((item) => (
                 <tr
                   key={item.id}
-                  className="border-b border-zinc-100 hover:bg-zinc-50"
+                  onClick={() => openViewDrawer(item)}
+                  className="cursor-pointer border-b border-zinc-100 hover:bg-zinc-50"
                 >
                   <td className="px-4 py-3 font-medium text-zinc-800">
                     {item.fileNo || "-"}
@@ -219,7 +220,10 @@ export default function KycPage() {
                     {item.phone}
                   </td>
 
-                  <td className="px-4 py-3 text-center">
+                  <td
+                    className="px-4 py-3 text-center"
+                    onClick={(event) => event.stopPropagation()}
+                  >
                    <DropdownMenu.Root>
   <DropdownMenu.Trigger asChild>
     <button className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900">

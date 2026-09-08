@@ -3,7 +3,8 @@ import {
   ImportAccountsBillingStatus,
   ImportAccountsPaymentStatus,
 } from "@/types/freightForward";
-import { isImportTransportCompleted } from "@/lib/import/transportWorkflow";
+import { isImportWorklistJob } from "@/lib/import/linerWorkflow";
+import { isImportBoeOutDispatched } from "@/lib/import/boeOutWorkflow";
 
 export type ImportAccountsCard =
   | "inProcess"
@@ -66,6 +67,10 @@ export function computeImportAccountsCounts(records: FreightForward[]) {
   };
 }
 
+export function canTakeAccountsAction(item: FreightForward) {
+  return isImportBoeOutDispatched(item);
+}
+
 export function getImportAccountsRecords(records: FreightForward[]) {
-  return records.filter(isImportTransportCompleted);
+  return records.filter(isImportWorklistJob);
 }

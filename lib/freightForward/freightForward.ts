@@ -1456,8 +1456,8 @@ export async function updateImportAccountsBilling(
   updatedBy: string
 ) {
   const { docRef, before } = await loadActiveImportJob(id);
-  if (!isImportTransportCompleted(before)) {
-    throw new Error("Complete Transport before updating Accounts.");
+  if (!isImportBoeOutDispatched(before)) {
+    throw new Error("Dispatch T type BE before updating Accounts.");
   }
   if (before.importAccountsCompleted) {
     throw new Error("Accounts job is already completed.");
@@ -1496,8 +1496,8 @@ export async function updateImportAccountsPayment(
   updatedBy: string
 ) {
   const { docRef, before } = await loadActiveImportJob(id);
-  if (!isImportTransportCompleted(before)) {
-    throw new Error("Complete Transport before updating Accounts.");
+  if (!isImportBoeOutDispatched(before)) {
+    throw new Error("Dispatch T type BE before updating Accounts.");
   }
   if (before.importAccountsCompleted) {
     throw new Error("Accounts job is already completed.");
@@ -1534,8 +1534,8 @@ export async function updateImportAccountsPayment(
 
 export async function completeImportAccounts(id: string, updatedBy: string) {
   const { docRef, before } = await loadActiveImportJob(id);
-  if (!isImportTransportCompleted(before)) {
-    throw new Error("Complete Transport before completing Accounts.");
+  if (!isImportBoeOutDispatched(before)) {
+    throw new Error("Dispatch T type BE before completing Accounts.");
   }
   if (before.importAccountsBillingStatus !== "completed") {
     throw new Error("Complete billing before completing the job.");

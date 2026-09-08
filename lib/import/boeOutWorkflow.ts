@@ -1,4 +1,5 @@
 import { FreightForward } from "@/types/freightForward";
+import { isImportWorklistJob } from "@/lib/import/linerWorkflow";
 import { isImportTransportCompleted } from "@/lib/import/transportWorkflow";
 
 export type ImportBoeOutCard =
@@ -29,8 +30,12 @@ export function isImportBoeOutInwardOccDone(item: FreightForward) {
   return getImportBoeOutInwardOccStatus(item) === "occ";
 }
 
+export function canTakeTTypeAction(item: FreightForward) {
+  return isImportTransportCompleted(item);
+}
+
 export function canUnlockImportTTypeSection(item: FreightForward) {
-  return isImportBoeOutInwardOccDone(item);
+  return canTakeTTypeAction(item) && isImportBoeOutInwardOccDone(item);
 }
 
 export function canUnlockImportDutySection(item: FreightForward) {
@@ -75,7 +80,7 @@ export function computeImportBoeOutCounts(records: FreightForward[]) {
 }
 
 export function getImportBoeOutRecords(records: FreightForward[]) {
-  return records.filter(isImportTransportCompleted);
+  return records.filter(isImportWorklistJob);
 }
 
 export function getTTypeBoeNoDisplay(item: FreightForward) {
