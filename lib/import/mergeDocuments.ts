@@ -1,4 +1,14 @@
+"use client";
+
 import { FreightForward, FreightForwardDocument } from "@/types/freightForward";
+import { fetchDocumentBytes } from "@/lib/import/fetchDocumentBytes";
+import {
+  bytesToBlob,
+  looksLikePdf,
+  savePdfBytes,
+  triggerBrowserDownload,
+} from "@/lib/import/blobDownload";
+import { mergeImportDocumentsClient } from "@/lib/import/clientDocumentMerge";
 
 function collectJobDocuments(item: FreightForward): FreightForwardDocument[] {
   const docs: FreightForwardDocument[] = [];
@@ -23,14 +33,22 @@ export function getImportJobDocuments(item: FreightForward) {
 }
 
 export async function downloadImportDocument(doc: FreightForwardDocument) {
-  const anchor = document.createElement("a");
-  anchor.href = doc.url;
-  anchor.target = "_blank";
-  anchor.rel = "noopener noreferrer";
-  anchor.download = doc.name?.trim() || "document";
-  anchor.click();
+  const bytes = await fetchDocumentBytes(doc);
+  const lower = `${doc.name ?? ""} ${doc.url}`.toLowerCase();
+  const isPdf = lower.includes(".pdf") || looksLikePdf(bytes);
+
+  if (isPdf) {
+    await savePdfBytes(bytes, doc.name?.trim() || "document.pdf");
+    return;
+  }
+
+  await triggerBrowserDownload(
+    bytesToBlob(bytes, "application/octet-stream"),
+    doc.name?.trim() || "document"
+  );
 }
 
+/** Merge and download in the browser — works on Firebase static hosting (no API routes). */
 export async function downloadMergedImportDocuments(
   item: FreightForward,
   jobLabel?: string
@@ -40,27 +58,7 @@ export async function downloadMergedImportDocuments(
     throw new Error("No documents available to download.");
   }
 
-  const response = await fetch("/api/import/merge-documents", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      documents: documents.map((doc) => ({ url: doc.url, name: doc.name })),
-      fileName: `${jobLabel || item.jobNumber || "import"}-documents.pdf`,
-    }),
-  });
-
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-    throw new Error(body?.error || "Unable to merge documents.");
-  }
-
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `${jobLabel || item.jobNumber || "import"}-documents.pdf`;
-  anchor.click();
-  URL.revokeObjectURL(url);
+  const pdfBytes = await mergeImportDocumentsClient(documents);
+  const fileName = `${jobLabel || item.jobNumber || "import"}-documents.pdf`;
+  await savePdfBytes(pdfBytes, fileName);
 }
