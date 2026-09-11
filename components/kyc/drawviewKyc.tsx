@@ -1,9 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { X, Download } from "lucide-react";
 import { Kyc, KycDocument } from "@/types/kyc";
 import { normalizeDocArray } from "@/lib/kyc/normalizeKyc";
 import { isGstActive } from "@/lib/gst/parseGstStatus";
+import {
+  collectKycDocuments,
+  downloadMergedKycDocuments,
+} from "@/lib/kyc/kycDocuments";
 
 interface Props {
   open: boolean;
@@ -106,6 +111,8 @@ export default function KycViewDrawer({ open, onClose, kyc }: Props) {
             <MultiDocField label="Supporting Documents" docs={supportingDocs} />
           </div>
         </div>
+
+        <KycDownloadAllFooter kyc={kyc} />
       </div>
     </>
   );
@@ -227,6 +234,54 @@ function MultiDocField({ label, docs }: { label: string; docs: KycDocument[] }) 
       ) : (
         <EmptyValue />
       )}
+    </div>
+  );
+}
+
+function KycDownloadAllFooter({ kyc }: { kyc: Kyc }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const documents = collectKycDocuments(kyc);
+
+  const handleDownload = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await downloadMergedKycDocuments(kyc);
+    } catch (downloadError) {
+      setError(
+        downloadError instanceof Error
+          ? downloadError.message
+          : "Unable to download documents."
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="border-t border-zinc-200 bg-zinc-50 px-6 py-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+            Documents
+          </p>
+          <p className="mt-0.5 text-[11px] text-zinc-600">
+            {documents.length
+              ? `${documents.length} file${documents.length === 1 ? "" : "s"} uploaded`
+              : "No files uploaded"}
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={busy || !documents.length}
+          onClick={() => void handleDownload()}
+          className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
+        >
+          {busy ? "Preparing..." : "Download all"}
+        </button>
+      </div>
+      {error && <p className="mt-2 text-[11px] text-red-500">{error}</p>}
     </div>
   );
 }

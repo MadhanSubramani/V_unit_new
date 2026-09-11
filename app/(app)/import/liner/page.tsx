@@ -14,6 +14,7 @@ import ImportJobEditDrawer from "@/components/import/ImportJobEditDrawer";
 import { ImportLocationCell } from "@/components/import/ImportLocationCell";
 import ImportSortableHeader from "@/components/import/ImportSortableHeader";
 import ImportJobDocumentsPanel from "@/components/import/ImportJobDocumentsPanel";
+import ImportSectionProgress from "@/components/import/ImportSectionProgress";
 import { ImportSearchDownloadBar } from "@/components/import/ImportTableExtras";
 import {
   ImportCurrentStatusCell,
@@ -45,6 +46,7 @@ import {
   isImportStagePending,
   matchesImportLinerCard,
 } from "@/lib/import/linerWorkflow";
+import { getImportModuleProgressSteps } from "@/lib/import/sectionProgress";
 import {
   canActOnImportModule,
   canExpandImportRow,
@@ -690,6 +692,7 @@ function Row({
                 </div>
 
                 <ImportJobDocumentsPanel item={item} />
+                <ImportSectionProgress steps={getImportModuleProgressSteps(item)} />
               </div>
             </div>
           </td>

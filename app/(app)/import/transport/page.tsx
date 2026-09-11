@@ -11,6 +11,7 @@ import ModuleHeader from "@/components/ModuleHeader";
 import ImportAuditLine from "@/components/import/ImportAuditLine";
 import ImportDoStatusPanel from "@/components/import/ImportDoStatusPanel";
 import ImportJobDocumentsPanel from "@/components/import/ImportJobDocumentsPanel";
+import ImportSectionProgress from "@/components/import/ImportSectionProgress";
 import { ImportLocationCell } from "@/components/import/ImportLocationCell";
 import ImportSortableHeader from "@/components/import/ImportSortableHeader";
 import {
@@ -38,6 +39,7 @@ import {
   isImportTransportCompleted,
   matchesImportTransportCard,
 } from "@/lib/import/transportWorkflow";
+import { getImportModuleProgressSteps } from "@/lib/import/sectionProgress";
 import {
   canActOnImportModule,
   canExpandImportRow,
@@ -591,6 +593,7 @@ function TruckDetailCard({
       />
       <ImportDoStatusPanel item={item} />
       <ImportJobDocumentsPanel item={item} />
+      <ImportSectionProgress steps={getImportModuleProgressSteps(item)} />
     </div>
   );
 }

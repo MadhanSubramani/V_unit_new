@@ -12,6 +12,7 @@ import ModuleHeader from "@/components/ModuleHeader";
 import ImportAuditLine from "@/components/import/ImportAuditLine";
 import ImportDoStatusPanel from "@/components/import/ImportDoStatusPanel";
 import ImportJobDocumentsPanel from "@/components/import/ImportJobDocumentsPanel";
+import ImportSectionProgress from "@/components/import/ImportSectionProgress";
 import {
   ImportDoTableCells,
   ImportSearchDownloadBar,
@@ -42,6 +43,7 @@ import {
   isImportBoeInCompleted,
   matchesImportBoeInCard,
 } from "@/lib/import/boeInWorkflow";
+import { getImportModuleProgressSteps } from "@/lib/import/sectionProgress";
 import { getInwardBoeNoDisplay } from "@/lib/import/linerWorkflow";
 import {
   canActOnImportModule,
@@ -777,6 +779,7 @@ function BoeExpansion({
       </div>
       <ImportDoStatusPanel item={item} />
       <ImportJobDocumentsPanel item={item} />
+      <ImportSectionProgress steps={getImportModuleProgressSteps(item)} />
     </div>
   );
 }

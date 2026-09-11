@@ -11,6 +11,7 @@ import {
 import ModuleHeader from "@/components/ModuleHeader";
 import ImportAuditLine from "@/components/import/ImportAuditLine";
 import ImportJobDocumentsPanel from "@/components/import/ImportJobDocumentsPanel";
+import ImportSectionProgress from "@/components/import/ImportSectionProgress";
 import {
   ImportDoTableCells,
   ImportSearchDownloadBar,
@@ -39,6 +40,7 @@ import {
   isImportAccountsCompleted,
   matchesImportAccountsCard,
 } from "@/lib/import/accountsWorkflow";
+import { getImportModuleProgressSteps } from "@/lib/import/sectionProgress";
 import { getInwardBoeNoDisplay } from "@/lib/import/linerWorkflow";
 import {
   canActOnImportModule,
@@ -700,6 +702,7 @@ function AccountsExpansion({
         </section>
       </div>
       <ImportJobDocumentsPanel item={item} />
+      <ImportSectionProgress steps={getImportModuleProgressSteps(item)} />
     </div>
   );
 }
