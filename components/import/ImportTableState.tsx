@@ -68,10 +68,15 @@ export function ImportCurrentStatusCell({
   width?: number;
 }) {
   const label = getImportCurrentStatus(item, module);
+  const completed = label === "Completed";
   return (
     <td className="px-3 py-3">
       <span
-        className="inline-block max-w-[130px] truncate rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-700"
+        className={`inline-block max-w-[130px] truncate rounded-full px-2 py-0.5 text-[10px] font-medium ${
+          completed
+            ? "bg-zinc-900 font-semibold text-white"
+            : "bg-zinc-100 text-zinc-700"
+        }`}
         style={{ maxWidth: width }}
         title={label}
       >

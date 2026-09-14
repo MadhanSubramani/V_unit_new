@@ -12,13 +12,13 @@ import {
   softDeleteFreightForward,
 } from "@/lib/freightForward/freightForward";
 import { formatContainersDisplay } from "@/lib/freightForward/containers";
+import { isImportAccountsCompleted } from "@/lib/import/accountsWorkflow";
 import {
   getImportCompletionCount,
   getImportDoEmptyDisplay,
   getImportDoPortDisplay,
   getImportDoStatusLabel,
   getInwardBoeNoDisplay,
-  isImportLinerCompleted,
 } from "@/lib/import/linerWorkflow";
 import { ImportLocationCell } from "@/components/import/ImportLocationCell";
 import ImportSortableHeader from "@/components/import/ImportSortableHeader";
@@ -192,6 +192,7 @@ export default function ImportWorklistPage() {
             ) : (
               visibleRows.map((item) => {
                 const done = getImportCompletionCount(item);
+                const jobCompleted = isImportAccountsCompleted(item);
                 return (
                   <tr key={item.id} className="border-t border-zinc-100">
                     <td className="px-3 py-3 font-medium text-zinc-900">
@@ -233,14 +234,12 @@ export default function ImportWorklistPage() {
                     <td className="px-3 py-3">
                       <span
                         className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
-                          isImportLinerCompleted(item)
+                          jobCompleted
                             ? "bg-zinc-900 text-white"
                             : "bg-zinc-100 text-zinc-600"
                         }`}
                       >
-                        {isImportLinerCompleted(item)
-                          ? "Completed"
-                          : "In Process"}
+                        {jobCompleted ? "Completed" : "In Process"}
                       </span>
                     </td>
                     <td className="px-3 py-3 text-center">

@@ -15,11 +15,11 @@ function collectJobDocuments(item: FreightForward): FreightForwardDocument[] {
   const push = (doc?: FreightForwardDocument) => {
     if (doc?.url) docs.push(doc);
   };
-  push(item.mblUrl);
-  push(item.hblUrl);
-  (item.mblDocs ?? []).forEach(push);
-  (item.hblDocs ?? []).forEach(push);
   (item.otherDocuments ?? []).forEach(push);
+  push(item.mblUrl);
+  (item.mblDocs ?? []).forEach(push);
+  push(item.hblUrl);
+  (item.hblDocs ?? []).forEach(push);
   const seen = new Set<string>();
   return docs.filter((doc) => {
     if (seen.has(doc.url)) return false;

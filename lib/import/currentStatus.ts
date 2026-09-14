@@ -72,14 +72,33 @@ export function getImportTtypeCurrentStatus(item: FreightForward) {
 }
 
 export function getImportAccountsCurrentStatus(item: FreightForward) {
-  if (isImportAccountsCompleted(item)) return "Accounts Complete";
+  if (isImportAccountsCompleted(item)) return "Completed";
   if (getImportAccountsPaymentStatus(item) === "received") return "Payment Received";
   if (getImportAccountsBillingStatus(item) === "completed") return "Billing Complete";
   return "Billing Pending";
 }
 
 export function getImportWorklistCurrentStatus(item: FreightForward) {
-  if (isImportLinerCompleted(item)) return "Liner Complete";
+  if (isImportAccountsCompleted(item)) return "Completed";
+  if (isImportBoeOutDispatched(item)) {
+    return getImportAccountsCurrentStatus(item);
+  }
+  if (isImportTransportCompleted(item)) {
+    return getImportTtypeCurrentStatus(item);
+  }
+
+  const linerDone = isImportLinerCompleted(item);
+  const ztypeDone = isImportBoeInCompleted(item);
+
+  if (linerDone && ztypeDone) {
+    return getImportTransportCurrentStatus(item);
+  }
+  if (linerDone) {
+    return getImportZtypeCurrentStatus(item);
+  }
+  if (ztypeDone) {
+    return getImportLinerCurrentStatus(item);
+  }
   return getImportLinerCurrentStatus(item);
 }
 

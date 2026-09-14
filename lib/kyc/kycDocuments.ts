@@ -11,6 +11,7 @@ export function collectKycDocuments(kyc: Kyc): KycDocument[] {
     if (doc?.url) docs.push(doc);
   };
 
+  normalizeDocArray(kyc.supportingDocuments).forEach(push);
   push(kyc.gstinDocument);
   push(kyc.panDocument);
   push(kyc.iecDocument);
@@ -18,7 +19,6 @@ export function collectKycDocuments(kyc: Kyc): KycDocument[] {
   push(kyc.loiDocument);
   normalizeDocArray(kyc.directorAadhar).forEach(push);
   normalizeDocArray(kyc.directorPan).forEach(push);
-  normalizeDocArray(kyc.supportingDocuments).forEach(push);
 
   const seen = new Set<string>();
   return docs.filter((doc) => {
