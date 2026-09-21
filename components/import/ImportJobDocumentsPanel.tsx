@@ -1,19 +1,76 @@
 "use client";
 
 import { useState } from "react";
+import { Plus, X } from "lucide-react";
 import ImportDocumentLink from "@/components/import/ImportDocumentLink";
+import FileInputWithClip from "@/components/import/FileInputWithClip";
 import {
   downloadMergedImportDocuments,
   getImportJobDocuments,
 } from "@/lib/import/mergeDocuments";
-import { FreightForward } from "@/types/freightForward";
+import {
+  appendImportOtherDocuments,
+  setImportOtherDocuments,
+} from "@/lib/freightForward/freightForward";
+import { uploadDocument } from "@/lib/kyc/uploadDocument";
+import { FreightForward, FreightForwardDocument } from "@/types/freightForward";
 
 export default function ImportJobDocumentsPanel({
   item,
+  canManage = false,
+  username = "Unknown",
+  onUpdated,
 }: {
   item: FreightForward;
+  canManage?: boolean;
+  username?: string;
+  onUpdated?: (item: FreightForward) => void;
 }) {
   const documents = getImportJobDocuments(item);
+  const [name, setName] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const supporting = item.otherDocuments ?? [];
+
+  const addDoc = async () => {
+    if (!item.id || !name.trim() || !file) return;
+    setBusy(true);
+    setError("");
+    try {
+      const uploaded = await uploadDocument(file, "freight-forward/other-documents");
+      const updated = await appendImportOtherDocuments(
+        item.id,
+        [{ name: name.trim(), url: uploaded.url }],
+        username
+      );
+      setName("");
+      setFile(null);
+      onUpdated?.(updated);
+    } catch (addError) {
+      setError(addError instanceof Error ? addError.message : "Unable to add document.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeSupporting = async (index: number) => {
+    if (!item.id) return;
+    setBusy(true);
+    setError("");
+    try {
+      const next = supporting.filter((_, i) => i !== index);
+      const updated = await setImportOtherDocuments(item.id, next, username);
+      onUpdated?.(updated);
+    } catch (removeError) {
+      setError(
+        removeError instanceof Error ? removeError.message : "Unable to delete document."
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="border-t border-zinc-200 p-4">
@@ -36,6 +93,49 @@ export default function ImportJobDocumentsPanel({
           ))
         )}
       </div>
+
+      {canManage && (
+        <div
+          className="mt-3 space-y-2 rounded-xl border border-zinc-200 p-3"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Supporting documents
+          </p>
+          {supporting.map((doc, index) => (
+            <div key={`${doc.url}-${index}`} className="flex items-center justify-between gap-2">
+              <ImportDocumentLink label={doc.name || `Document ${index + 1}`} doc={doc} />
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void removeSupporting(index)}
+                className="rounded-lg border border-zinc-200 p-1 text-zinc-500"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ))}
+          <div className="flex gap-2">
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Document name"
+              className="min-w-0 flex-1 rounded-lg border border-zinc-200 px-2 py-1.5 text-[11px]"
+            />
+            <button
+              type="button"
+              onClick={() => void addDoc()}
+              disabled={busy || !name.trim() || !file}
+              className="inline-flex items-center gap-1 rounded-lg bg-zinc-900 px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-40"
+            >
+              <Plus size={12} />
+              Add
+            </button>
+          </div>
+          <FileInputWithClip onChange={setFile} disabled={busy} />
+          {error && <p className="text-[10px] text-red-500">{error}</p>}
+        </div>
+      )}
     </div>
   );
 }

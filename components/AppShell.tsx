@@ -11,6 +11,7 @@ import {
   FileText,
   LogOut,
   Menu,
+  ScanLine,
   Settings,
   ShieldCheck,
   Ship,
@@ -21,6 +22,12 @@ import {
   Warehouse,
   X,
 } from "lucide-react";
+import {
+  hasImportModuleAccess,
+  isImportAdmin,
+  parseImportSessionUser,
+} from "@/lib/import/permissions";
+import type { ImportModuleKey } from "@/types/importRoles";
 
 const OPERATIONS_SUB = [
   { href: "/operations/cfs", label: "CFS Master", icon: Warehouse },
@@ -34,16 +41,22 @@ const FREIGHT_FORWARD_SUB = [
   { href: "/freight-forward/trash", label: "Trash", icon: Trash2, adminOnly: true },
 ] as const;
 
-const IMPORT_SUB = [
-  { href: "/import/eta-updater", label: "ETA Updater", icon: CalendarClock, enabled: true },
-  { href: "/import/worklist", label: "Job List", icon: ClipboardList, enabled: true },
-  { href: "/import/liner", label: "Liner", icon: Ship, enabled: true },
-  { href: "/import/boe-in", label: "Z type BE", icon: FileText, enabled: true },
-  { href: "/import/transport", label: "Transport", icon: Warehouse, enabled: true },
-  { href: "/import/boe-out", label: "T type BE", icon: ClipboardList, enabled: true },
-  { href: "/import/accounts", label: "Accounts", icon: Settings, enabled: true },
-  { href: "/import/trash", label: "Trash", icon: Trash2, enabled: true },
-] as const;
+const IMPORT_SUB: {
+  href: string;
+  label: string;
+  icon: typeof Ship;
+  enabled: boolean;
+  module?: ImportModuleKey | "trash";
+}[] = [
+  { href: "/import/eta-updater", label: "ETA Updater", icon: CalendarClock, enabled: true, module: "eta" },
+  { href: "/import/worklist", label: "Job List", icon: ClipboardList, enabled: true, module: "worklist" },
+  { href: "/import/liner", label: "Liner", icon: Ship, enabled: true, module: "liner" },
+  { href: "/import/boe-in", label: "Z type BE", icon: FileText, enabled: true, module: "ztype" },
+  { href: "/import/transport", label: "Transport", icon: ScanLine, enabled: true, module: "transport" },
+  { href: "/import/boe-out", label: "T type BE", icon: ClipboardList, enabled: true, module: "ttype" },
+  { href: "/import/accounts", label: "Accounts", icon: Settings, enabled: true, module: "accounts" },
+  { href: "/import/trash", label: "Trash", icon: Trash2, enabled: true, module: "trash" },
+];
 
 const NAV_ITEMS = [
   { href: "/export", label: "Export", icon: ArrowUpFromLine },
@@ -56,7 +69,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [ready, setReady] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const [user, setUser] = useState<{ username?: string; role?: string } | null>(null);
+  const [user, setUser] = useState<ReturnType<typeof parseImportSessionUser>>(null);
   const [operationsOpen, setOperationsOpen] = useState(
     pathname.startsWith("/operations")
   );
@@ -294,7 +307,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
           {!collapsed && importOpen && (
             <div className="my-2 ml-5 space-y-1 border-l border-zinc-200 py-1.5 pl-2">
-              {IMPORT_SUB.map(({ href, label, icon: Icon, enabled }) => {
+              {IMPORT_SUB.filter((item) => {
+                if (item.module === "trash") return isImportAdmin(user);
+                if (!item.module) return true;
+                return hasImportModuleAccess(user, item.module);
+              }).map(({ href, label, icon: Icon, enabled }) => {
                 const active = pathname === href;
                 return enabled ? (
                   <Link key={href} href={href} className={subNavClass(active)}>

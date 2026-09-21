@@ -32,9 +32,12 @@ import {
   ImportCfsReachedStatus,
   ImportDoRemarkCategory,
   ImportDoStatus,
+  ImportFreeRemark,
   ImportIgmStatus,
   ImportMovementStatus,
   ImportPortDirection,
+  ImportRemarkSection,
+  ImportYesNo,
   ImportWorkflowSection,
   ImportWorkflowTimelineEntry,
   INWARD_BOE_NO_REGEX,
@@ -73,6 +76,8 @@ import {
   isImportDoCompleted,
   isImportLinerCompleted,
   isImportWorklistJob,
+  isIgmAdvanced,
+  isIgmInward,
 } from "@/lib/import/linerWorkflow";
 import {
   isBoeChecklistComplete,
@@ -283,6 +288,7 @@ export async function createImportLinerJob(
     importIgmStatus: data.importIgmStatus ?? ("pending" as const),
     importDoStatus: data.importDoStatus ?? ("pending" as const),
     importCompleted: false,
+    ezDate: data.ezDate || new Date().toISOString().slice(0, 10),
   };
 
   const newDocRef = doc(collection(db, "freightForward"));
@@ -546,7 +552,7 @@ function isValidImportStatus(
     return ["pending", "accepted", "completed"].includes(status);
   }
   if (section === "igm") {
-    return ["pending", "posted"].includes(status);
+    return ["pending", "posted", "inward"].includes(status);
   }
   return ["pending", "received", "eod"].includes(status);
 }
@@ -560,7 +566,11 @@ export async function updateImportLinerStage(
   section: ImportWorkflowSection,
   status: ImportLinerStatus,
   updatedBy: string,
-  doDates?: { importDoEmptyValidity: string; importDoPostValidity: string }
+  doDates?: {
+    importDoEmptyValidity: string;
+    importDoPostValidity: string;
+    importDoPlaceOfDelivery?: string;
+  }
 ) {
   if (!isValidImportStatus(section, status)) {
     throw new Error(`Invalid ${section} status: ${status}`);
@@ -596,15 +606,25 @@ export async function updateImportLinerStage(
     if (section === "igm" && !canUpdateImportIgm(before)) {
       throw new Error("Complete Movement before updating IGM.");
     }
+    if (section === "igm" && status === "inward" && !before.importIgmAttachment?.url) {
+      throw new Error("Upload the IGM attachment before setting Inward.");
+    }
     if (section === "do" && !canUpdateImportDo(before)) {
-      throw new Error("Post IGM before updating DO.");
+      throw new Error("Post or mark IGM Inward before updating DO.");
     }
 
     if (section === "do" && status === "received") {
       const emptyValidity = doDates?.importDoEmptyValidity?.trim().slice(0, 10);
       const postValidity = doDates?.importDoPostValidity?.trim().slice(0, 10);
+      const place = doDates?.importDoPlaceOfDelivery?.trim();
       if (!emptyValidity || !postValidity) {
-        throw new Error("Empty validity and Post validity dates are required.");
+        throw new Error("Empty validity and Port validity dates are required.");
+      }
+      if (!place) {
+        throw new Error("Place of delivery is required.");
+      }
+      if (!before.importDoEmptyAttachment?.url || !before.importDoPortAttachment?.url) {
+        throw new Error("Upload Empty and Port attachments before Received.");
       }
     }
 
@@ -656,7 +676,7 @@ export async function updateImportLinerStage(
           updatedAt: now,
         });
       }
-    } else if (section === "igm" && nextIgm !== "posted" && nextDo !== "pending") {
+    } else if (section === "igm" && !isIgmAdvanced(nextIgm) && nextDo !== "pending") {
       nextDo = "pending";
       importEntries.push({
         section: "do",
@@ -668,7 +688,7 @@ export async function updateImportLinerStage(
 
     const importCompleted =
       nextMovement === "completed" &&
-      nextIgm === "posted" &&
+      nextIgm === "inward" &&
       (nextDo === "received" || nextDo === "eod");
 
     const patch: Record<string, unknown> = {
@@ -691,12 +711,15 @@ export async function updateImportLinerStage(
       patch.importDoPostValidity = doDates!.importDoPostValidity
         .trim()
         .slice(0, 10);
+      patch.importDoPlaceOfDelivery =
+        doDates!.importDoPlaceOfDelivery?.trim() ?? "";
     } else if (section === "do" && status === "pending") {
       patch.importDoEmptyValidity = deleteField();
       patch.importDoPostValidity = deleteField();
+      patch.importDoPlaceOfDelivery = deleteField();
     } else if (
       (section === "movement" && nextMovement !== "completed") ||
-      (section === "igm" && nextIgm !== "posted")
+      (section === "igm" && !isIgmAdvanced(nextIgm))
     ) {
       if (nextDo === "pending") {
         patch.importDoEmptyValidity = deleteField();
@@ -890,15 +913,29 @@ export async function updateImportBoeChecklist(
     docReceived: !!checklist.docReceived,
     checklist: !!checklist.checklist,
     clientConfirmation: !!checklist.clientConfirmation,
+    igmInward: !!checklist.igmInward,
+    customsConfirmation: !!checklist.customsConfirmation,
   };
   const complete = isBoeChecklistComplete({
     ...before,
     importBoeChecklist: next,
   });
   const audit = complete ? stamp(updatedBy) : before.importBoeChecklistAudit;
+  const checkedAt = {
+    ...(before.importBoeChecklistCheckedAt ?? {}),
+  };
+  (Object.keys(next) as (keyof ImportBoeChecklist)[]).forEach((key) => {
+    if (next[key] && !before.importBoeChecklist?.[key]) {
+      checkedAt[key] = Timestamp.now();
+    }
+    if (!next[key]) {
+      delete checkedAt[key];
+    }
+  });
 
   await updateDoc(docRef, {
     importBoeChecklist: next,
+    importBoeChecklistCheckedAt: checkedAt,
     ...(audit ? { importBoeChecklistAudit: audit } : {}),
     updatedBy,
     updatedAt: serverTimestamp(),
@@ -908,6 +945,7 @@ export async function updateImportBoeChecklist(
   return {
     ...before,
     importBoeChecklist: next,
+    importBoeChecklistCheckedAt: checkedAt,
     importBoeChecklistAudit: audit,
     updatedBy,
   } as FreightForward;
@@ -974,8 +1012,8 @@ export async function saveImportBoeInInward(
   }
   const inwardBoeDate = data.inwardBoeDate.trim().slice(0, 10);
   if (!inwardBoeDate) throw new Error("Date is required.");
-  if (!["rms", "open"].includes(data.importBoeClearanceStatus)) {
-    throw new Error("Select RMS or Open.");
+  if (!["rms", "open", "ooc"].includes(data.importBoeClearanceStatus)) {
+    throw new Error("Select RMS, Open, or OOC.");
   }
 
   const complete = data.importBoeClearanceStatus === "rms";
@@ -1016,6 +1054,36 @@ export async function saveImportBoeInInward(
   } as FreightForward;
 }
 
+export async function completeImportBoeInOoc(id: string, updatedBy: string) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  if (before.importBoeClearanceStatus !== "ooc") {
+    throw new Error("OOC complete is only available after an OOC save.");
+  }
+  if (!before.inwardBoeNo?.trim()) {
+    throw new Error("Save inward BOE before completing OOC.");
+  }
+
+  const audit = stamp(updatedBy);
+  await updateDoc(docRef, {
+    importBoeInOocCompleted: true,
+    importBoeInOocCompleteAudit: audit,
+    importBoeInCompleted: true,
+    importBoeInCompleteAudit: audit,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+
+  return {
+    ...before,
+    importBoeInOocCompleted: true,
+    importBoeInOocCompleteAudit: audit,
+    importBoeInCompleted: true,
+    importBoeInCompleteAudit: audit,
+    updatedBy,
+  } as FreightForward;
+}
+
 export async function completeImportBoeIn(
   id: string,
   data: {
@@ -1051,8 +1119,12 @@ export async function revertImportBoeInAdmin(
       docReceived: false,
       checklist: false,
       clientConfirmation: false,
+      igmInward: false,
+      customsConfirmation: false,
     };
     patch.importBoeChecklistAudit = deleteField();
+    patch.importBoeChecklistCheckedAt = deleteField();
+    patch.importBoeChecklistAttachment = deleteField();
     patch.importBoeFilingStatus = "unfiled";
     patch.importBoeFilingAudit = deleteField();
     patch.inwardBoeNo = deleteField();
@@ -1147,6 +1219,7 @@ export async function completeImportTransport(
     importVehicleNo: string;
     importDriverName: string;
     importDriverPhone: string;
+    importScanningEnabled?: boolean;
   },
   updatedBy: string
 ) {
@@ -1165,12 +1238,14 @@ export async function completeImportTransport(
   if (!importDriverPhone) throw new Error("Phone number is required.");
 
   const audit = stamp(updatedBy);
+  const importScanningEnabled = data.importScanningEnabled ?? false;
   await updateDoc(docRef, {
     importTransporter,
     importTruckStash: data.importTruckStash,
     importVehicleNo,
     importDriverName,
     importDriverPhone,
+    importScanningEnabled,
     importTransportCompleted: true,
     importTransportCompleteAudit: audit,
     updatedBy,
@@ -1185,6 +1260,7 @@ export async function completeImportTransport(
     importVehicleNo,
     importDriverName,
     importDriverPhone,
+    importScanningEnabled,
     importTransportCompleted: true,
     importTransportCompleteAudit: audit,
     updatedBy,
@@ -1256,8 +1332,9 @@ export async function saveImportTTypeBoe(
   }
   const importTTypeBoeDate = data.importTTypeBoeDate.trim().slice(0, 10);
   if (!importTTypeBoeDate) throw new Error("Date is required.");
-  if (!["rms", "open"].includes(data.importTTypeBoeClearanceStatus)) {
-    throw new Error("Select RMS or Open.");
+  const allowed = ["rms", "open", "ins", "psc", "sup", "ooc"];
+  if (!allowed.includes(data.importTTypeBoeClearanceStatus)) {
+    throw new Error("Select a valid T type status.");
   }
 
   const audit = stamp(updatedBy);
@@ -1267,6 +1344,8 @@ export async function saveImportTTypeBoe(
     importTTypeBoeClearanceStatus: data.importTTypeBoeClearanceStatus,
     importTTypeBoeSaved: true,
     importTTypeBoeSaveAudit: audit,
+    importTTypeOocCompleted:
+      data.importTTypeBoeClearanceStatus === "ooc" ? false : deleteField(),
     updatedBy,
     updatedAt: serverTimestamp(),
   });
@@ -1279,6 +1358,104 @@ export async function saveImportTTypeBoe(
     importTTypeBoeClearanceStatus: data.importTTypeBoeClearanceStatus,
     importTTypeBoeSaved: true,
     importTTypeBoeSaveAudit: audit,
+    importTTypeOocCompleted:
+      data.importTTypeBoeClearanceStatus === "ooc" ? false : before.importTTypeOocCompleted,
+    updatedBy,
+  } as FreightForward;
+}
+
+export async function completeImportTTypeOoc(id: string, updatedBy: string) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  if (before.importTTypeBoeClearanceStatus !== "ooc") {
+    throw new Error("OOC complete is only available for OOC T type.");
+  }
+  if (!isImportTTypeBoeSaved(before)) {
+    throw new Error("Save T type before completing OOC.");
+  }
+  const audit = stamp(updatedBy);
+  await updateDoc(docRef, {
+    importTTypeOocCompleted: true,
+    importTTypeOocCompleteAudit: audit,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+  return {
+    ...before,
+    importTTypeOocCompleted: true,
+    importTTypeOocCompleteAudit: audit,
+    updatedBy,
+  } as FreightForward;
+}
+
+export async function updateImportEwayBill(
+  id: string,
+  value: ImportYesNo,
+  updatedBy: string
+) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  requireImportTransportCompleted(before);
+  if (!isImportTTypeBoeSaved(before)) {
+    throw new Error("Save T type before updating e waybill.");
+  }
+  if (!["yes", "no"].includes(value)) {
+    throw new Error("Select Yes or No for e waybill.");
+  }
+  const audit = stamp(updatedBy);
+  await updateDoc(docRef, {
+    importEwayBill: value,
+    importEwayBillAudit: audit,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+  return {
+    ...before,
+    importEwayBill: value,
+    importEwayBillAudit: audit,
+    updatedBy,
+  } as FreightForward;
+}
+
+const IMPORT_REMARK_FIELDS: Record<
+  ImportRemarkSection,
+  keyof FreightForward
+> = {
+  movement: "importMovementRemarks",
+  igm: "importIgmRemarks",
+  ztype: "importBoeInRemarks",
+  transport: "importTransportRemarks",
+  ttype: "importBoeOutRemarks",
+  accounts: "importAccountsRemarks",
+};
+
+export async function addImportSectionRemark(
+  id: string,
+  section: ImportRemarkSection,
+  text: string,
+  updatedBy: string
+) {
+  const trimmed = text.trim();
+  if (!trimmed) throw new Error("Remark is required.");
+  const field = IMPORT_REMARK_FIELDS[section];
+  if (!field) throw new Error("Invalid remark section.");
+
+  const { docRef, before } = await loadActiveImportJob(id);
+  const entry: ImportFreeRemark = {
+    text: trimmed,
+    updatedBy,
+    updatedAt: Timestamp.now(),
+  };
+  await updateDoc(docRef, {
+    [field]: arrayUnion(entry),
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+  const existing = (before[field] as ImportFreeRemark[] | undefined) ?? [];
+  return {
+    ...before,
+    [field]: [...existing, entry],
     updatedBy,
   } as FreightForward;
 }
@@ -1591,6 +1768,49 @@ export async function appendImportOtherDocuments(
   invalidateFreightForwardListCache();
 
   return { ...before, otherDocuments, updatedBy };
+}
+
+export async function setImportOtherDocuments(
+  id: string,
+  documents: FreightForwardDocument[],
+  updatedBy: string
+) {
+  const docRef = doc(db, "freightForward", id);
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) throw new Error("Freight Forward job not found.");
+  const before = {
+    id: snap.id,
+    ...(snap.data() as Omit<FreightForward, "id">),
+  } as FreightForward;
+  if (before.isDeleted) throw new Error("This job is in trash.");
+
+  await updateDoc(docRef, {
+    otherDocuments: documents,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+  return { ...before, otherDocuments: documents, updatedBy };
+}
+
+export async function saveImportNamedAttachment(
+  id: string,
+  field:
+    | "importIgmAttachment"
+    | "importDoEmptyAttachment"
+    | "importDoPortAttachment"
+    | "importBoeChecklistAttachment",
+  file: FreightForwardDocument,
+  updatedBy: string
+) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  await updateDoc(docRef, {
+    [field]: file,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+  return { ...before, [field]: file, updatedBy } as FreightForward;
 }
 
 /** Import worklist / ETA scope: IMP* or useForImport jobs. */

@@ -13,6 +13,8 @@ import {
 } from "@/lib/freightForward/freightForward";
 import { formatContainersDisplay } from "@/lib/freightForward/containers";
 import { isImportAccountsCompleted } from "@/lib/import/accountsWorkflow";
+import { formatHblDisplay } from "@/lib/import/hbl";
+import { ImportEzCell } from "@/components/import/ImportEzCell";
 import {
   getImportCompletionCount,
   getImportDoEmptyDisplay,
@@ -22,9 +24,10 @@ import {
 } from "@/lib/import/linerWorkflow";
 import { ImportLocationCell } from "@/components/import/ImportLocationCell";
 import ImportSortableHeader from "@/components/import/ImportSortableHeader";
-import { ImportSearchDownloadBar } from "@/components/import/ImportTableExtras";
+import { ImportSearchDownloadBar, ImportDoTableCells, ImportGoodsAndBeHeaders, ImportGoodsAndBeCells } from "@/components/import/ImportTableExtras";
 import {
   ImportCurrentStatusCell,
+  useCfsScopedImportRecords,
   useImportTableRows,
 } from "@/components/import/ImportTableState";
 import {
@@ -45,6 +48,8 @@ export default function ImportWorklistPage() {
   const [records, setRecords] = useState<FreightForward[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(0);
   const [sortKey, setSortKey] = useState<ImportSortKey>("eta");
   const [sortDir, setSortDir] = useState<ImportSortDir>("asc");
@@ -79,10 +84,16 @@ export default function ImportWorklistPage() {
     void reload();
   }, []);
 
+  const scoped = useCfsScopedImportRecords(records);
+  const completedCount = scoped.filter(isImportAccountsCompleted).length;
+  const inProgressCount = scoped.length - completedCount;
+
   const { filtered, totalPages, visibleRows } = useImportTableRows({
-    records,
+    records: scoped,
     module: "worklist",
     search,
+    dateFrom,
+    dateTo,
     page,
     pageSize: PAGE_SIZE,
     sortKey,
@@ -123,11 +134,36 @@ export default function ImportWorklistPage() {
         </button>
       </div>
 
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-2">
+        <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
+            In Progress
+          </p>
+          <p className="mt-1 text-2xl font-bold text-zinc-900">{inProgressCount}</p>
+        </div>
+        <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
+            Completed
+          </p>
+          <p className="mt-1 text-2xl font-bold text-zinc-900">{completedCount}</p>
+        </div>
+      </div>
+
       <ImportSearchDownloadBar
         search={search}
         onSearchChange={(value) => {
           setPage(0);
           setSearch(value);
+        }}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onDateFromChange={(value) => {
+          setPage(0);
+          setDateFrom(value);
+        }}
+        onDateToChange={(value) => {
+          setPage(0);
+          setDateTo(value);
         }}
         records={filtered}
         filePrefix="import-job-list"
@@ -151,6 +187,8 @@ export default function ImportWorklistPage() {
                 onSort={handleColumnSort}
               />
               <th className="px-3 py-3 font-semibold">EZ No</th>
+              <th className="px-3 py-3 font-semibold">BL Type</th>
+              <th className="px-3 py-3 font-semibold">Trade Terms</th>
               <th className="px-3 py-3 font-semibold">Vessel</th>
               <ImportSortableHeader
                 label="ETA"
@@ -162,10 +200,10 @@ export default function ImportWorklistPage() {
               <th className="px-3 py-3 font-semibold">Location</th>
               <th className="px-3 py-3 font-semibold">Consignee</th>
               <th className="px-3 py-3 font-semibold">Client</th>
+              <ImportGoodsAndBeHeaders />
               <th className="px-3 py-3 font-semibold">DO Status</th>
               <th className="px-3 py-3 font-semibold">Port</th>
               <th className="px-3 py-3 font-semibold">Empty</th>
-              <th className="px-3 py-3 font-semibold">Inward BOE No</th>
               <th className="px-3 py-3 font-semibold">MBL</th>
               <th className="px-3 py-3 font-semibold">HBL</th>
               <th className="px-3 py-3 font-semibold">Containers</th>
@@ -178,13 +216,13 @@ export default function ImportWorklistPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={18} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={20} className="px-4 py-10 text-center text-zinc-400">
                   Loading job list...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={18} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={20} className="px-4 py-10 text-center text-zinc-400">
                   No jobs found. Use Add, or enable “Use this job for Import” in
                   Freight Forward.
                 </td>
@@ -198,8 +236,12 @@ export default function ImportWorklistPage() {
                     <td className="px-3 py-3 font-medium text-zinc-900">
                       {item.jobNumber || "—"}
                     </td>
+                    <ImportEzCell item={item} />
                     <td className="px-3 py-3 text-zinc-700">
-                      {item.ezRefNumber || "—"}
+                      {item.blType || "—"}
+                    </td>
+                    <td className="px-3 py-3 text-zinc-700">
+                      {item.tradeTerms || "—"}
                     </td>
                     <td className="px-3 py-3 text-zinc-700">
                       {item.vesselName || "—"}
@@ -212,20 +254,12 @@ export default function ImportWorklistPage() {
                     <td className="px-3 py-3 text-zinc-700">
                       {item.clientName || "—"}
                     </td>
-                    <td className="px-3 py-3 text-zinc-700">
-                      {getImportDoStatusLabel(item)}
-                    </td>
-                    <td className="px-3 py-3 text-zinc-700">
-                      {getImportDoPortDisplay(item)}
-                    </td>
-                    <td className="px-3 py-3 text-zinc-700">
-                      {getImportDoEmptyDisplay(item)}
-                    </td>
-                    <td className="px-3 py-3 text-zinc-700">
-                      {getInwardBoeNoDisplay(item)}
-                    </td>
+                    <ImportGoodsAndBeCells item={item} />
+                    <ImportDoTableCells item={item} />
                     <td className="px-3 py-3 text-zinc-700">{item.mbl || "—"}</td>
-                    <td className="px-3 py-3 text-zinc-700">{item.hbl || "—"}</td>
+                    <td className="px-3 py-3 text-zinc-700">
+                      {formatHblDisplay(item)}
+                    </td>
                     <td className="px-3 py-3 text-zinc-700">
                       {formatContainersDisplay(item)}
                     </td>

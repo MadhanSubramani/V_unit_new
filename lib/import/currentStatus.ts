@@ -31,6 +31,7 @@ import type { ImportModuleKey } from "@/lib/import/permissions";
 export function getImportLinerCurrentStatus(item: FreightForward) {
   if (isImportLinerCompleted(item)) return "Liner Complete";
   if (isImportDoCompleted(item)) return "DO Received";
+  if (getImportIgmStatus(item) === "inward") return "IGM Inward";
   if (getImportIgmStatus(item) === "posted") return "IGM Posted";
   if (getImportMovementStatus(item) === "completed") return "Movement Complete";
   if (getImportMovementStatus(item) === "accepted") return "Movement Accepted";
@@ -53,7 +54,7 @@ export function getImportZtypeCurrentStatus(item: FreightForward) {
 
 export function getImportTransportCurrentStatus(item: FreightForward) {
   if (isImportTransportCompleted(item)) return "Transport Complete";
-  if (item.importCfsReached === "reached") return "CFS Reached";
+  if (item.importCfsReached === "reached") return "Reached FTWZ";
   if (item.importPortDirection === "port_out") return "Port Out";
   if (item.importPortDirection === "port_in") return "Port In";
   if (item.importVehicleNo?.trim()) return "Vehicle Assigned";
@@ -62,6 +63,8 @@ export function getImportTransportCurrentStatus(item: FreightForward) {
 
 export function getImportTtypeCurrentStatus(item: FreightForward) {
   if (isImportBoeOutDispatched(item)) return "Dispatched";
+  if (item.importEwayBill === "yes") return "E Waybill Yes";
+  if (item.importEwayBill === "no") return "E Waybill No";
   if (canUnlockImportEwaySection(item)) return "E Waybill Pending";
   const duty = getImportBoeOutDutyStatus(item);
   if (duty === "final") return "Duty Final";

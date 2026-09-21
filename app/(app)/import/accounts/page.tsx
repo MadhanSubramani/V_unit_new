@@ -14,17 +14,24 @@ import ImportJobDocumentsPanel from "@/components/import/ImportJobDocumentsPanel
 import ImportSectionProgress from "@/components/import/ImportSectionProgress";
 import {
   ImportDoTableCells,
+  ImportGoodsAndBeHeaders,
+  ImportGoodsAndBeCells,
   ImportSearchDownloadBar,
 } from "@/components/import/ImportTableExtras";
 import { ImportLocationCell } from "@/components/import/ImportLocationCell";
 import ImportSortableHeader from "@/components/import/ImportSortableHeader";
 import {
   ImportCurrentStatusCell,
+  useCfsScopedImportRecords,
   useImportTableRows,
 } from "@/components/import/ImportTableState";
+import { ImportEzCell } from "@/components/import/ImportEzCell";
+import ImportSectionRemarks from "@/components/import/ImportSectionRemarks";
+import { formatHblDisplay } from "@/lib/import/hbl";
 import { ImportTableCell } from "@/components/import/ImportJobTableCells";
 import {
   completeImportAccounts,
+  addImportSectionRemark,
   getImportLinerRecords,
   updateImportAccountsBilling,
   updateImportAccountsPayment,
@@ -69,6 +76,8 @@ export default function ImportAccountsPage() {
     "billingPending"
   );
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(0);
   const [sortKey, setSortKey] = useState<ImportSortKey>("eta");
   const [sortDir, setSortDir] = useState<ImportSortDir>("asc");
@@ -112,7 +121,8 @@ export default function ImportAccountsPage() {
     return () => observer.disconnect();
   }, []);
 
-  const counts = useMemo(() => computeImportAccountsCounts(records), [records]);
+  const scoped = useCfsScopedImportRecords(records);
+  const counts = useMemo(() => computeImportAccountsCounts(scoped), [scoped]);
   const cards: {
     key: ImportAccountsCard;
     label: string;
@@ -133,9 +143,11 @@ export default function ImportAccountsPage() {
   ];
 
   const { filtered, totalPages, visibleRows } = useImportTableRows({
-    records,
+    records: scoped,
     module: "accounts",
     search,
+    dateFrom,
+    dateTo,
     page,
     pageSize: PAGE_SIZE,
     sortKey,
@@ -196,6 +208,16 @@ export default function ImportAccountsPage() {
           setPage(0);
           setSearch(value);
         }}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onDateFromChange={(value) => {
+          setPage(0);
+          setDateFrom(value);
+        }}
+        onDateToChange={(value) => {
+          setPage(0);
+          setDateTo(value);
+        }}
         records={filtered}
         filePrefix="import-accounts"
       />
@@ -235,10 +257,10 @@ export default function ImportAccountsPage() {
               <th className="px-3 py-3 font-semibold">Location</th>
               <th className="px-3 py-3 font-semibold">Consignee</th>
               <th className="px-3 py-3 font-semibold">Client</th>
+              <ImportGoodsAndBeHeaders />
               <th className="px-3 py-3 font-semibold">DO Status</th>
               <th className="px-3 py-3 font-semibold">Port</th>
               <th className="px-3 py-3 font-semibold">Empty</th>
-              <th className="px-3 py-3 font-semibold">Inward BOE No</th>
               <th className="px-3 py-3 font-semibold">MBL</th>
               <th className="px-3 py-3 font-semibold">HBL</th>
               <th className="px-3 py-3 font-semibold">Containers</th>
@@ -361,7 +383,7 @@ function AccountsRow({
           width={105}
           className="font-medium text-zinc-900"
         />
-        <ImportTableCell value={item.ezRefNumber} width={105} />
+        <ImportEzCell item={item} />
         <ImportTableCell value={item.blType} width={90} />
         <ImportTableCell value={item.tradeTerms} width={110} />
         <ImportTableCell value={item.vesselName} />
@@ -369,10 +391,10 @@ function AccountsRow({
         <ImportLocationCell item={item} />
         <ImportTableCell value={item.consignmentName} />
         <ImportTableCell value={item.clientName} />
+        <ImportGoodsAndBeCells item={item} />
         <ImportDoTableCells item={item} />
-        <ImportTableCell value={getInwardBoeNoDisplay(item)} width={120} />
         <ImportTableCell value={item.mbl} width={130} />
-        <ImportTableCell value={item.hbl} width={130} />
+        <ImportTableCell value={formatHblDisplay(item)} width={130} />
         <ImportTableCell value={formatContainersDisplay(item)} width={170} />
         <ImportCurrentStatusCell item={item} module="accounts" />
         <td className="px-3 py-3">
@@ -701,6 +723,14 @@ function AccountsExpansion({
           <ImportAuditLine audit={item.importAccountsCompleteAudit} />
         </section>
       </div>
+      <ImportSectionRemarks
+        remarks={item.importAccountsRemarks ?? []}
+        busy={busy}
+        canAct={canAct}
+        onAdd={(text) =>
+          run(() => addImportSectionRemark(item.id!, "accounts", text, username))
+        }
+      />
       <ImportJobDocumentsPanel item={item} />
       <ImportSectionProgress steps={getImportModuleProgressSteps(item)} />
     </div>

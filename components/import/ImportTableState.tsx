@@ -4,12 +4,24 @@ import { useMemo } from "react";
 import { FreightForward } from "@/types/freightForward";
 import { getImportCurrentStatus } from "@/lib/import/currentStatus";
 import type { ImportModuleKey } from "@/types/importRoles";
-import { matchesImportSearch } from "@/lib/import/searchRecords";
+import { matchesImportSearch, matchesImportDateRange } from "@/lib/import/searchRecords";
 import {
   ImportSortDir,
   ImportSortKey,
   sortImportRecords,
 } from "@/lib/import/sortImportRecords";
+import {
+  filterImportRecordsByUserCfs,
+  parseImportSessionUser,
+} from "@/lib/import/permissions";
+
+export function useCfsScopedImportRecords(records: FreightForward[]) {
+  const user = parseImportSessionUser();
+  return useMemo(
+    () => filterImportRecordsByUserCfs(records, user),
+    [records, user]
+  );
+}
 
 export function useImportTableRows<T extends FreightForward>({
   records,
@@ -22,6 +34,8 @@ export function useImportTableRows<T extends FreightForward>({
   activeCard,
   matchesCard,
   excludeFromList,
+  dateFrom,
+  dateTo,
 }: {
   records: T[];
   module: ImportModuleKey;
@@ -33,11 +47,14 @@ export function useImportTableRows<T extends FreightForward>({
   activeCard?: string | null;
   matchesCard?: (item: T, card: string) => boolean;
   excludeFromList?: (item: T, activeCard: string | null) => boolean;
+  dateFrom?: string;
+  dateTo?: string;
 }) {
   return useMemo(() => {
     let list = records.filter((item) => {
       if (excludeFromList?.(item, activeCard ?? null)) return false;
       if (activeCard && matchesCard && !matchesCard(item, activeCard)) return false;
+      if (!matchesImportDateRange(item, dateFrom, dateTo)) return false;
       return matchesImportSearch(item, search, module);
     });
     list = sortImportRecords(list, sortKey, sortDir) as T[];
@@ -55,6 +72,8 @@ export function useImportTableRows<T extends FreightForward>({
     activeCard,
     matchesCard,
     excludeFromList,
+    dateFrom,
+    dateTo,
   ]);
 }
 

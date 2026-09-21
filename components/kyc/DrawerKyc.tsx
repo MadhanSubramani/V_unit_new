@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { X, UploadCloud, Paperclip, Plus, Download } from "lucide-react";
-import { Kyc, KycDocument } from "@/types/kyc";
+import { Kyc, KycDocument, KycRemark } from "@/types/kyc";
 import { addKyc } from "@/lib/kyc/createKyc";
 import { updateKyc } from "@/lib/kyc/updateKyc";
 import { uploadDocument } from "@/lib/kyc/uploadDocument";
@@ -57,6 +57,8 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
   const [existingAadharDocs, setExistingAadharDocs] = useState<KycDocument[]>([]);
   const [existingPanDocs, setExistingPanDocs] = useState<KycDocument[]>([]);
   const [existingSupportingDocs, setExistingSupportingDocs] = useState<KycDocument[]>([]);
+  const [remarks, setRemarks] = useState<KycRemark[]>([]);
+  const [remarkDraft, setRemarkDraft] = useState("");
 
   const resetForm = () => {
     setGstin("");
@@ -87,6 +89,8 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
     setExistingAadharDocs([]);
     setExistingPanDocs([]);
     setExistingSupportingDocs([]);
+    setRemarks([]);
+    setRemarkDraft("");
     setErrors({});
   };
 
@@ -132,6 +136,8 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
     setExistingAadharDocs(normalizeDocArray(selected.directorAadhar));
     setExistingPanDocs(normalizeDocArray(selected.directorPan));
     setExistingSupportingDocs(normalizeDocArray(selected.supportingDocuments));
+    setRemarks(selected.remarks ?? []);
+    setRemarkDraft("");
 
     setGstinFile(null);
     setPanFile(null);
@@ -288,6 +294,7 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
         directorAadhar: [...existingAadharDocs, ...newAadhar],
         directorPan: [...existingPanDocs, ...newPan],
         supportingDocuments: [...existingSupportingDocs, ...newSupporting],
+        remarks,
       });
 
       if (selected?.id) {
@@ -641,6 +648,47 @@ export default function KycDrawer({ open, onClose, selected, onSaved }: Props) {
               setExistingSupportingDocs((prev) => prev.filter((_, i) => i !== index))
             }
           />
+
+          <div className="space-y-2 rounded-xl border border-zinc-200 p-3">
+            <p className="text-xs font-medium text-zinc-700">Remarks</p>
+            <div className="flex gap-2">
+              <textarea
+                value={remarkDraft}
+                rows={2}
+                onChange={(e) => setRemarkDraft(e.target.value)}
+                placeholder="Add remark..."
+                className="min-w-0 flex-1 rounded-lg border border-zinc-200 px-2.5 py-2 text-[11px]"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const text = remarkDraft.trim();
+                  if (!text) return;
+                  setRemarks((current) => [
+                    ...current,
+                    { text, updatedBy: "User", updatedAt: new Date() },
+                  ]);
+                  setRemarkDraft("");
+                }}
+                className="self-end rounded-lg bg-zinc-900 px-2.5 py-1.5 text-[11px] font-semibold text-white"
+              >
+                +
+              </button>
+            </div>
+            {remarks.length === 0 ? (
+              <p className="text-[11px] text-zinc-400">No remarks yet.</p>
+            ) : (
+              remarks.map((entry, index) => (
+                <div
+                  key={`${entry.text}-${index}`}
+                  className="rounded-lg border border-zinc-100 bg-zinc-50 px-2.5 py-2 text-[11px]"
+                >
+                  <p className="font-medium text-zinc-800">{entry.text}</p>
+                  <p className="mt-0.5 text-zinc-500">{entry.updatedBy}</p>
+                </div>
+              ))
+            )}
+          </div>
 
           <div className="flex justify-end gap-3 pt-4">
             <button

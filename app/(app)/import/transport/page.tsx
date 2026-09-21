@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
   LoaderCircle,
+  ScanLine,
 } from "lucide-react";
 import ModuleHeader from "@/components/ModuleHeader";
 import ImportAuditLine from "@/components/import/ImportAuditLine";
@@ -16,15 +17,22 @@ import { ImportLocationCell } from "@/components/import/ImportLocationCell";
 import ImportSortableHeader from "@/components/import/ImportSortableHeader";
 import {
   ImportCurrentStatusCell,
+  useCfsScopedImportRecords,
   useImportTableRows,
 } from "@/components/import/ImportTableState";
+import { ImportEzCell } from "@/components/import/ImportEzCell";
+import ImportSectionRemarks from "@/components/import/ImportSectionRemarks";
+import { formatHblDisplay } from "@/lib/import/hbl";
 import { ImportTableCell } from "@/components/import/ImportJobTableCells";
 import {
   ImportDoTableCells,
+  ImportGoodsAndBeHeaders,
+  ImportGoodsAndBeCells,
   ImportSearchDownloadBar,
 } from "@/components/import/ImportTableExtras";
 import {
   completeImportTransport,
+  addImportSectionRemark,
   getImportLinerRecords,
   updateImportTransportCfsReached,
   updateImportTransportPortDirection,
@@ -63,6 +71,8 @@ export default function ImportTransportPage() {
     "incomplete"
   );
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(0);
   const [sortKey, setSortKey] = useState<ImportSortKey>("eta");
   const [sortDir, setSortDir] = useState<ImportSortDir>("asc");
@@ -106,9 +116,10 @@ export default function ImportTransportPage() {
     return () => observer.disconnect();
   }, []);
 
+  const scoped = useCfsScopedImportRecords(records);
   const counts = useMemo(
-    () => computeImportTransportCounts(records),
-    [records]
+    () => computeImportTransportCounts(scoped),
+    [scoped]
   );
   const cards: {
     key: ImportTransportCard;
@@ -116,15 +127,17 @@ export default function ImportTransportPage() {
     value: number;
   }[] = [
     { key: "incomplete", label: "Incomplete", value: counts.incomplete },
-    { key: "completed", label: "Completed", value: counts.completed },
     { key: "boeFiled", label: "BOE Filed", value: counts.boeFiled },
     { key: "boeUnfiled", label: "BOE Unfiled", value: counts.boeUnfiled },
+    { key: "completed", label: "Completed", value: counts.completed },
   ];
 
   const { filtered, totalPages, visibleRows } = useImportTableRows({
-    records,
+    records: scoped,
     module: "transport",
     search,
+    dateFrom,
+    dateTo,
     page,
     pageSize: PAGE_SIZE,
     sortKey,
@@ -179,6 +192,16 @@ export default function ImportTransportPage() {
           setPage(0);
           setSearch(value);
         }}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onDateFromChange={(value) => {
+          setPage(0);
+          setDateFrom(value);
+        }}
+        onDateToChange={(value) => {
+          setPage(0);
+          setDateTo(value);
+        }}
         records={filtered}
         filePrefix="import-transport"
       />
@@ -218,10 +241,10 @@ export default function ImportTransportPage() {
               <th className="px-3 py-3 font-semibold">Location</th>
               <th className="px-3 py-3 font-semibold">Consignee</th>
               <th className="px-3 py-3 font-semibold">Client</th>
+              <ImportGoodsAndBeHeaders />
               <th className="px-3 py-3 font-semibold">DO Status</th>
               <th className="px-3 py-3 font-semibold">Port</th>
               <th className="px-3 py-3 font-semibold">Empty</th>
-              <th className="px-3 py-3 font-semibold">Inward BOE No</th>
               <th className="px-3 py-3 font-semibold">MBL</th>
               <th className="px-3 py-3 font-semibold">HBL</th>
               <th className="px-3 py-3 font-semibold">Containers</th>
@@ -347,7 +370,7 @@ function TransportRow({
           ) : null}
         </td>
         <ImportTableCell value={item.jobNumber} width={105} className="font-medium text-zinc-900" />
-        <ImportTableCell value={item.ezRefNumber} width={105} />
+        <ImportEzCell item={item} />
         <ImportTableCell value={item.blType} width={90} />
         <ImportTableCell value={item.tradeTerms} width={110} />
         <ImportTableCell value={item.vesselName} />
@@ -355,10 +378,10 @@ function TransportRow({
         <ImportLocationCell item={item} />
         <ImportTableCell value={item.consignmentName} />
         <ImportTableCell value={item.clientName} />
+        <ImportGoodsAndBeCells item={item} />
         <ImportDoTableCells item={item} />
-        <ImportTableCell value={getInwardBoeNoDisplay(item)} width={120} />
         <ImportTableCell value={item.mbl} width={130} />
-        <ImportTableCell value={item.hbl} width={130} />
+        <ImportTableCell value={formatHblDisplay(item)} width={130} />
         <ImportTableCell value={formatContainersDisplay(item)} width={170} />
         <ImportCurrentStatusCell item={item} module="transport" />
         <td className="px-3 py-3">
@@ -368,14 +391,24 @@ function TransportRow({
               Updating...
             </span>
           ) : (
-            <span
-              className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
-                completed
-                  ? "bg-zinc-900 text-white"
-                  : "bg-zinc-100 text-zinc-600"
-              }`}
-            >
-              {completed ? "Completed" : "In Process"}
+            <span className="inline-flex items-center gap-1.5">
+              <ScanLine
+                size={14}
+                className={
+                  item.importScanningEnabled
+                    ? "text-zinc-900"
+                    : "text-zinc-300"
+                }
+              />
+              <span
+                className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
+                  completed
+                    ? "bg-zinc-900 text-white"
+                    : "bg-zinc-100 text-zinc-600"
+                }`}
+              >
+                {completed ? "Completed" : "In Process"}
+              </span>
             </span>
           )}
         </td>
@@ -435,6 +468,7 @@ function TruckDetailCard({
   const [vehicleNo, setVehicleNo] = useState(item.importVehicleNo ?? "");
   const [driverName, setDriverName] = useState(item.importDriverName ?? "");
   const [phone, setPhone] = useState(item.importDriverPhone ?? "");
+  const [scanning, setScanning] = useState(item.importScanningEnabled === true);
 
   useEffect(() => {
     setStash(
@@ -444,6 +478,7 @@ function TruckDetailCard({
     setVehicleNo(item.importVehicleNo ?? "");
     setDriverName(item.importDriverName ?? "");
     setPhone(item.importDriverPhone ?? "");
+    setScanning(item.importScanningEnabled === true);
   }, [item]);
 
   const complete = async () => {
@@ -460,6 +495,7 @@ function TruckDetailCard({
             importVehicleNo: vehicleNo,
             importDriverName: driverName,
             importDriverPhone: phone,
+            importScanningEnabled: scanning,
           },
           username
         )
@@ -564,6 +600,31 @@ function TruckDetailCard({
             />
           </label>
         </div>
+        <div className="mt-3 space-y-1.5 text-xs">
+          <p className="font-medium text-zinc-700">Scanning</p>
+          <div className="flex gap-4">
+            <label className="inline-flex items-center gap-1.5">
+              <input
+                type="radio"
+                name={`scan-${item.id}`}
+                checked={scanning === true}
+                disabled={busy || !editable}
+                onChange={() => setScanning(true)}
+              />
+              Yes
+            </label>
+            <label className="inline-flex items-center gap-1.5">
+              <input
+                type="radio"
+                name={`scan-${item.id}`}
+                checked={scanning === false}
+                disabled={busy || !editable}
+                onChange={() => setScanning(false)}
+              />
+              No
+            </label>
+          </div>
+        </div>
         {!completed && editable && (
           <button
             type="button"
@@ -590,6 +651,29 @@ function TruckDetailCard({
         onBusy={onBusy}
         onError={onError}
         onUpdated={onUpdated}
+      />
+      <ImportSectionRemarks
+        remarks={item.importTransportRemarks ?? []}
+        busy={busy}
+        canAct={canAct}
+        onAdd={async (text) => {
+          if (!item.id) return;
+          onBusy(item.id);
+          onError("");
+          try {
+            onUpdated(
+              await addImportSectionRemark(item.id, "transport", text, username)
+            );
+          } catch (updateError) {
+            onError(
+              updateError instanceof Error
+                ? updateError.message
+                : "Unable to save remark."
+            );
+          } finally {
+            onBusy(null);
+          }
+        }}
       />
       <ImportDoStatusPanel item={item} />
       <ImportJobDocumentsPanel item={item} />
@@ -683,8 +767,8 @@ function TransportTrackingSection({
             className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
           >
             <option value="">Select</option>
-            <option value="reached">CFS reached</option>
-            <option value="not_reached">Not reached</option>
+            <option value="reached">Reached FTWZ</option>
+            <option value="not_reached">Pending</option>
           </select>
           <ImportAuditLine audit={item.importCfsReachedAudit} emptyLabel="" />
         </label>

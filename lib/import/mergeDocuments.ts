@@ -1,6 +1,7 @@
 "use client";
 
 import { FreightForward, FreightForwardDocument } from "@/types/freightForward";
+import { collectJobDocuments } from "@/lib/import/collectJobDocuments";
 import { fetchDocumentBytes } from "@/lib/import/fetchDocumentBytes";
 import {
   bytesToBlob,
@@ -9,24 +10,6 @@ import {
   triggerBrowserDownload,
 } from "@/lib/import/blobDownload";
 import { mergeImportDocumentsClient } from "@/lib/import/clientDocumentMerge";
-
-function collectJobDocuments(item: FreightForward): FreightForwardDocument[] {
-  const docs: FreightForwardDocument[] = [];
-  const push = (doc?: FreightForwardDocument) => {
-    if (doc?.url) docs.push(doc);
-  };
-  (item.otherDocuments ?? []).forEach(push);
-  push(item.mblUrl);
-  (item.mblDocs ?? []).forEach(push);
-  push(item.hblUrl);
-  (item.hblDocs ?? []).forEach(push);
-  const seen = new Set<string>();
-  return docs.filter((doc) => {
-    if (seen.has(doc.url)) return false;
-    seen.add(doc.url);
-    return true;
-  });
-}
 
 export function getImportJobDocuments(item: FreightForward) {
   return collectJobDocuments(item);

@@ -46,3 +46,27 @@ export function canActOnImportModule(
 ) {
   return hasImportModuleAccess(user, module);
 }
+
+export function canManageImportSupportingDocs(user: ImportSessionUser | null) {
+  if (!user) return false;
+  if (isImportAdmin(user)) return true;
+  return (
+    hasImportModuleAccess(user, "ztype") ||
+    hasImportModuleAccess(user, "ttype") ||
+    hasImportModuleAccess(user, "worklist")
+  );
+}
+
+export function filterImportRecordsByUserCfs<
+  T extends { cfs?: string; locationType?: string },
+>(records: T[], user: ImportSessionUser | null) {
+  if (!user || isImportAdmin(user)) return records;
+  const names = (user.importCfsNames ?? [])
+    .map((name) => name.trim().toLowerCase())
+    .filter(Boolean);
+  if (!names.length) return records;
+  const allowed = new Set(names);
+  return records.filter((item) =>
+    allowed.has((item.cfs ?? "").trim().toLowerCase())
+  );
+}

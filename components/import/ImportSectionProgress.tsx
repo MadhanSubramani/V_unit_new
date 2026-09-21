@@ -47,21 +47,17 @@ export default function ImportSectionProgress({
                 step.complete ? "text-zinc-800" : "text-zinc-500"
               }`}
             >
-              {step.complete ? "Completed" : "Not completed"}
+              {step.complete ? "Completed" : "Pending"}
             </p>
-            {step.complete && (
-              <>
-                <p className="mt-0.5 truncate text-[10px] text-zinc-600">
-                  Last updated by{" "}
-                  <span className="font-medium text-zinc-800">
-                    {step.updatedBy || "—"}
-                  </span>
-                </p>
-                <p className="truncate text-[10px] text-zinc-400">
-                  {step.updatedAtLabel}
-                </p>
-              </>
-            )}
+            <p className="mt-0.5 truncate text-[10px] text-zinc-600">
+              Last updated by{" "}
+              <span className="font-medium text-zinc-800">
+                {step.updatedBy || "—"}
+              </span>
+            </p>
+            <p className="truncate text-[10px] text-zinc-400">
+              {step.updatedAtLabel}
+            </p>
           </div>
         ))}
       </div>

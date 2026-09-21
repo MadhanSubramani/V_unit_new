@@ -19,11 +19,16 @@ export const BOE_CHECKLIST_ITEMS: {
   { key: "docReceived", label: "Doc received" },
   { key: "checklist", label: "Checklist" },
   { key: "clientConfirmation", label: "Client confirmation" },
+  { key: "igmInward", label: "IGM inward" },
+  { key: "customsConfirmation", label: "Customs confirmation" },
 ];
 
 export function isBoeChecklistComplete(item: FreightForward) {
   const checklist = item.importBoeChecklist ?? {};
-  return BOE_CHECKLIST_ITEMS.every((entry) => checklist[entry.key] === true);
+  const itemsDone = BOE_CHECKLIST_ITEMS.every(
+    (entry) => checklist[entry.key] === true
+  );
+  return itemsDone && Boolean(item.importBoeChecklistAttachment?.url);
 }
 
 export function getBoeFilingStatus(item: FreightForward): ImportBoeFilingStatus {

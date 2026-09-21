@@ -15,20 +15,34 @@ import ImportJobDocumentsPanel from "@/components/import/ImportJobDocumentsPanel
 import ImportSectionProgress from "@/components/import/ImportSectionProgress";
 import {
   ImportDoTableCells,
+  ImportGoodsAndBeHeaders,
+  ImportGoodsAndBeCells,
   ImportSearchDownloadBar,
 } from "@/components/import/ImportTableExtras";
 import { ImportLocationCell } from "@/components/import/ImportLocationCell";
 import ImportSortableHeader from "@/components/import/ImportSortableHeader";
 import {
   ImportCurrentStatusCell,
+  useCfsScopedImportRecords,
   useImportTableRows,
 } from "@/components/import/ImportTableState";
+import { ImportEzCell } from "@/components/import/ImportEzCell";
+import ImportSectionRemarks from "@/components/import/ImportSectionRemarks";
+import { formatHblDisplay } from "@/lib/import/hbl";
+import FileInputWithClip from "@/components/import/FileInputWithClip";
+import ImportDocumentLink from "@/components/import/ImportDocumentLink";
+import { uploadDocument } from "@/lib/kyc/uploadDocument";
+import { isIgmInward } from "@/lib/import/linerWorkflow";
+import { formatImportAuditDate } from "@/lib/import/auditDisplay";
 import { ImportTableCell } from "@/components/import/ImportJobTableCells";
 import {
   completeImportBoeIn,
+  completeImportBoeInOoc,
+  addImportSectionRemark,
   getImportLinerRecords,
   revertImportBoeInAdmin,
   saveImportBoeInInward,
+  saveImportNamedAttachment,
   updateImportBoeChecklist,
   updateImportBoeFiling,
 } from "@/lib/freightForward/freightForward";
@@ -74,6 +88,8 @@ export default function ImportBoeInPage() {
     "pendingChecklist"
   );
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(0);
   const [sortKey, setSortKey] = useState<ImportSortKey>("eta");
   const [sortDir, setSortDir] = useState<ImportSortDir>("asc");
@@ -117,7 +133,8 @@ export default function ImportBoeInPage() {
     return () => observer.disconnect();
   }, []);
 
-  const counts = useMemo(() => computeImportBoeInCounts(records), [records]);
+  const scoped = useCfsScopedImportRecords(records);
+  const counts = useMemo(() => computeImportBoeInCounts(scoped), [scoped]);
   const cards: {
     key: ImportBoeInCard;
     label: string;
@@ -139,9 +156,11 @@ export default function ImportBoeInPage() {
   ];
 
   const { filtered, totalPages, visibleRows } = useImportTableRows({
-    records,
+    records: scoped,
     module: "ztype",
     search,
+    dateFrom,
+    dateTo,
     page,
     pageSize: PAGE_SIZE,
     sortKey,
@@ -202,6 +221,16 @@ export default function ImportBoeInPage() {
           setPage(0);
           setSearch(value);
         }}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onDateFromChange={(value) => {
+          setPage(0);
+          setDateFrom(value);
+        }}
+        onDateToChange={(value) => {
+          setPage(0);
+          setDateTo(value);
+        }}
         records={filtered}
         filePrefix="import-z-type-be"
       />
@@ -241,10 +270,10 @@ export default function ImportBoeInPage() {
               <th className="px-3 py-3 font-semibold">Location</th>
               <th className="px-3 py-3 font-semibold">Consignee</th>
               <th className="px-3 py-3 font-semibold">Client</th>
+              <ImportGoodsAndBeHeaders />
               <th className="px-3 py-3 font-semibold">DO Status</th>
               <th className="px-3 py-3 font-semibold">Port</th>
               <th className="px-3 py-3 font-semibold">Empty</th>
-              <th className="px-3 py-3 font-semibold">Inward BOE No</th>
               <th className="px-3 py-3 font-semibold">MBL</th>
               <th className="px-3 py-3 font-semibold">HBL</th>
               <th className="px-3 py-3 font-semibold">Containers</th>
@@ -368,7 +397,7 @@ function BoeRow({
           ) : null}
         </td>
         <ImportTableCell value={item.jobNumber} width={105} className="font-medium text-zinc-900" />
-        <ImportTableCell value={item.ezRefNumber} width={105} />
+        <ImportEzCell item={item} />
         <ImportTableCell value={item.blType} width={90} />
         <ImportTableCell value={item.tradeTerms} width={110} />
         <ImportTableCell value={item.vesselName} />
@@ -376,10 +405,10 @@ function BoeRow({
         <ImportLocationCell item={item} />
         <ImportTableCell value={item.consignmentName} />
         <ImportTableCell value={item.clientName} />
+        <ImportGoodsAndBeCells item={item} />
         <ImportDoTableCells item={item} />
-        <ImportTableCell value={getInwardBoeNoDisplay(item)} width={120} />
         <ImportTableCell value={item.mbl} width={130} />
-        <ImportTableCell value={item.hbl} width={130} />
+        <ImportTableCell value={formatHblDisplay(item)} width={130} />
         <ImportTableCell value={formatContainersDisplay(item)} width={170} />
         <ImportCurrentStatusCell item={item} module="ztype" />
         <td className="px-3 py-3">
@@ -574,19 +603,68 @@ function BoeExpansion({
             {BOE_CHECKLIST_ITEMS.map((entry) => (
               <label
                 key={entry.key}
-                className="flex items-center gap-2 text-xs text-zinc-700"
+                className="flex items-start gap-2 text-xs text-zinc-700"
               >
                 <input
                   type="checkbox"
+                  className="mt-0.5"
                   checked={!!item.importBoeChecklist?.[entry.key]}
-                  disabled={busy || readOnly}
+                  disabled={
+                    busy ||
+                    readOnly ||
+                    (entry.key === "igmInward" && !isIgmInward(item))
+                  }
                   onChange={(event) =>
                     toggleCheck(entry.key, event.target.checked)
                   }
                 />
-                {entry.label}
+                <span>
+                  {entry.label}
+                  {item.importBoeChecklistCheckedAt?.[entry.key] ? (
+                    <span className="mt-0.5 block text-[10px] text-zinc-400">
+                      {formatImportAuditDate(
+                        item.importBoeChecklistCheckedAt[entry.key]
+                      )}
+                    </span>
+                  ) : null}
+                </span>
               </label>
             ))}
+            <div className="pt-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                Checklist attachment
+              </p>
+              {item.importBoeChecklistAttachment?.url ? (
+                <ImportDocumentLink
+                  label="Checklist file"
+                  doc={item.importBoeChecklistAttachment}
+                />
+              ) : (
+                <FileInputWithClip
+                  disabled={busy || readOnly}
+                  onChange={(file) => {
+                    if (!file || !item.id) return;
+                    void run(async () => {
+                      const uploaded = await uploadDocument(
+                        file,
+                        "import/checklist"
+                      );
+                      return saveImportNamedAttachment(
+                        item.id!,
+                        "importBoeChecklistAttachment",
+                        { name: file.name, url: uploaded.url },
+                        username
+                      );
+                    });
+                  }}
+                />
+              )}
+              {!item.importBoeChecklistAttachment?.url && (
+                <p className="mt-1 text-[10px] text-amber-700">
+                  Attachment is required before filing.
+                </p>
+              )}
+            </div>
           </div>
           <ImportAuditLine audit={item.importBoeChecklistAudit} />
           {isAdmin && adminEdit && canAct && (
@@ -727,24 +805,12 @@ function BoeExpansion({
                 >
                   <option value="rms">RMS</option>
                   <option value="open">Open</option>
+                  <option value="ooc">OOC</option>
                 </select>
               </label>
               {(!readOnly || (isAdmin && adminEdit)) && canAct && (
                 <div className="flex flex-wrap gap-2">
-                  {clearance === "open" ? (
-                    <button
-                      type="button"
-                      disabled={
-                        busy ||
-                        !INWARD_BOE_NO_REGEX.test(inwardNo.trim()) ||
-                        !inwardDate
-                      }
-                      onClick={saveOpen}
-                      className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
-                    >
-                      Save
-                    </button>
-                  ) : (
+                  {clearance === "rms" ? (
                     <button
                       type="button"
                       disabled={
@@ -757,6 +823,40 @@ function BoeExpansion({
                     >
                       Complete
                     </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={
+                        busy ||
+                        !INWARD_BOE_NO_REGEX.test(inwardNo.trim()) ||
+                        !inwardDate
+                      }
+                      onClick={saveOpen}
+                      className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
+                    >
+                      Save
+                    </button>
+                  )}
+                  {clearance === "ooc" &&
+                    !item.importBoeInOocCompleted &&
+                    !!item.inwardBoeNo && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void run(() =>
+                            completeImportBoeInOoc(item.id!, username)
+                          )
+                        }
+                        className="rounded-lg border border-zinc-300 px-3 py-1.5 text-[10px] font-semibold text-zinc-700 disabled:opacity-40"
+                      >
+                        OOC Complete
+                      </button>
+                    )}
+                  {item.importBoeInOocCompleted && (
+                    <p className="text-[11px] font-medium text-zinc-700">
+                      OOC completed
+                    </p>
                   )}
                   {isAdmin && adminEdit && canAct && (
                     <button
@@ -777,8 +877,21 @@ function BoeExpansion({
           />
         </section>
       </div>
+      <ImportSectionRemarks
+        remarks={item.importBoeInRemarks ?? []}
+        busy={busy}
+        canAct={canAct && !readOnly}
+        onAdd={(text) =>
+          run(() => addImportSectionRemark(item.id!, "ztype", text, username))
+        }
+      />
       <ImportDoStatusPanel item={item} />
-      <ImportJobDocumentsPanel item={item} />
+      <ImportJobDocumentsPanel
+        item={item}
+        canManage={canAct}
+        username={username}
+        onUpdated={onUpdated}
+      />
       <ImportSectionProgress steps={getImportModuleProgressSteps(item)} />
     </div>
   );

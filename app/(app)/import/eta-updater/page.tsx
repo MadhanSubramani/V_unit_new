@@ -9,6 +9,7 @@ import {
 } from "@/lib/freightForward/freightForward";
 import { formatContainersDisplay } from "@/lib/freightForward/containers";
 import { FreightForward } from "@/types/freightForward";
+import { filterImportRecordsByUserCfs } from "@/lib/import/permissions";
 
 export default function ImportEtaUpdaterPage() {
   const [vesselName, setVesselName] = useState("");
@@ -18,7 +19,11 @@ export default function ImportEtaUpdaterPage() {
   const [updating, setUpdating] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [user, setUser] = useState<{ username?: string } | null>(null);
+  const [user, setUser] = useState<{
+    username?: string;
+    role?: string;
+    importCfsNames?: string[];
+  } | null>(null);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("user");
@@ -42,14 +47,14 @@ export default function ImportEtaUpdaterPage() {
     setSearching(true);
     try {
       const rows = await findImportJobsByVesselName(trimmed);
-      setMatches(rows);
+      setMatches(filterImportRecordsByUserCfs(rows, user));
     } catch {
       setError("Unable to search Import jobs for this vessel.");
       setMatches([]);
     } finally {
       setSearching(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     const handle = window.setTimeout(() => {

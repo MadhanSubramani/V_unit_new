@@ -50,7 +50,7 @@ export function isImportDoCompleted(item: FreightForward) {
 export function getImportCompletionCount(item: FreightForward) {
   return [
     getImportMovementStatus(item) === "completed",
-    getImportIgmStatus(item) === "posted",
+    isIgmAdvanced(item),
     isImportDoCompleted(item),
   ].filter(Boolean).length;
 }
@@ -71,6 +71,16 @@ export function getImportIgmStatus(item: FreightForward): ImportIgmStatus {
   return item.importIgmStatus ?? "pending";
 }
 
+export function isIgmAdvanced(status: ImportIgmStatus | FreightForward) {
+  const value =
+    typeof status === "string" ? status : getImportIgmStatus(status);
+  return value === "posted" || value === "inward";
+}
+
+export function isIgmInward(item: FreightForward) {
+  return getImportIgmStatus(item) === "inward";
+}
+
 export function getImportDoStatus(item: FreightForward): ImportDoStatus {
   if (item.importDoStatus === "eod") return "received";
   return item.importDoStatus ?? "pending";
@@ -79,7 +89,7 @@ export function getImportDoStatus(item: FreightForward): ImportDoStatus {
 export function isImportLinerCompleted(item: FreightForward) {
   return (
     getImportMovementStatus(item) === "completed" &&
-    getImportIgmStatus(item) === "posted" &&
+    isIgmInward(item) &&
     isImportDoCompleted(item)
   );
 }
@@ -89,7 +99,7 @@ export function canUpdateImportIgm(item: FreightForward) {
 }
 
 export function canUpdateImportDo(item: FreightForward) {
-  return getImportIgmStatus(item) === "posted";
+  return isIgmAdvanced(item);
 }
 
 export function formatImportDoDate(value?: string) {
@@ -110,7 +120,7 @@ export function matchesImportLinerCard(
     case "movement":
       return getImportMovementStatus(item) !== "completed";
     case "igm":
-      return getImportIgmStatus(item) !== "posted";
+      return !isIgmInward(item);
     case "do":
       return !isImportDoCompleted(item);
     case "completed":
@@ -139,6 +149,10 @@ export function getImportDoPortDisplay(item: FreightForward) {
 export function getImportDoEmptyDisplay(item: FreightForward) {
   const value = item.importDoEmptyValidity?.trim();
   return value || "—";
+}
+
+export function getImportDoPlaceOfDelivery(item: FreightForward) {
+  return item.importDoPlaceOfDelivery?.trim() || "—";
 }
 
 export function computeImportLinerCounts(records: FreightForward[]) {

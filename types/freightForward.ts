@@ -41,14 +41,29 @@ export interface FreightContainer {
   containerType?: string;
 }
 
+export type ImportShipmentMode = "air" | "sea";
+export type ImportLoadType = "icl" | "fcl";
+export type ImportYesNo = "yes" | "no";
+
+export interface ImportHblEntry {
+  number: string;
+  file?: FreightForwardDocument;
+}
+
 export type ImportMovementStatus = "pending" | "accepted" | "completed";
-export type ImportIgmStatus = "pending" | "posted";
+export type ImportIgmStatus = "pending" | "posted" | "inward";
 /** `eod` is legacy; DO is complete at `received`. */
 export type ImportDoStatus = "pending" | "received" | "eod";
 export type ImportWorkflowSection = "movement" | "igm" | "do";
 
 export type ImportBoeFilingStatus = "unfiled" | "filed";
-export type ImportBoeClearanceStatus = "rms" | "open";
+export type ImportBoeClearanceStatus =
+  | "rms"
+  | "open"
+  | "ooc"
+  | "ins"
+  | "psc"
+  | "sup";
 export type ImportAccountsBillingStatus = "pending" | "completed";
 export type ImportAccountsPaymentStatus = "pending" | "received";
 export type ImportDoRemarkCategory =
@@ -87,10 +102,26 @@ export interface ImportDoRemarkEntry {
   updatedAt?: Timestamp | Date | unknown;
 }
 
+export interface ImportFreeRemark {
+  text: string;
+  updatedBy: string;
+  updatedAt?: Timestamp | Date | unknown;
+}
+
+export type ImportRemarkSection =
+  | "movement"
+  | "igm"
+  | "ztype"
+  | "transport"
+  | "ttype"
+  | "accounts";
+
 export interface ImportBoeChecklist {
   docReceived?: boolean;
   checklist?: boolean;
   clientConfirmation?: boolean;
+  igmInward?: boolean;
+  customsConfirmation?: boolean;
 }
 
 export type ImportWorkflowTimelineEntry =
@@ -117,8 +148,14 @@ export interface FreightForward {
   id?: string;
   jobNumber?: string;
   ezRefNumber?: string;
+  /** YYYY-MM-DD captured when the Import job is created. */
+  ezDate?: string;
+  shipmentMode?: ImportShipmentMode;
+  loadType?: ImportLoadType;
+  hblEntries?: ImportHblEntry[];
   consignmentName: string;
   clientName?: string;
+  descriptionOfGoods?: string;
   tradeTerms?: string;
   mbl: string;
   hbl: string;
@@ -188,15 +225,31 @@ export interface FreightForward {
   importMovementRemarkAudit?: ImportRemarkAudit;
   importIgmRemarkAudit?: ImportRemarkAudit;
   importDoRemarks?: ImportDoRemarkEntry[];
+  importMovementRemarks?: ImportFreeRemark[];
+  importIgmRemarks?: ImportFreeRemark[];
+  importBoeInRemarks?: ImportFreeRemark[];
+  importTransportRemarks?: ImportFreeRemark[];
+  importBoeOutRemarks?: ImportFreeRemark[];
+  importAccountsRemarks?: ImportFreeRemark[];
+  importIgmAttachment?: FreightForwardDocument;
   /** Required when DO status is set to received. */
   importDoEmptyValidity?: string;
   /** Port validity date (legacy field name: importDoPostValidity). */
   importDoPostValidity?: string;
+  importDoPlaceOfDelivery?: string;
+  importDoEmptyAttachment?: FreightForwardDocument;
+  importDoPortAttachment?: FreightForwardDocument;
   /** Extra named documents captured from Import Add / documents section. */
   otherDocuments?: FreightForwardDocument[];
   /** BOE In — captured after Liner completion. */
   importBoeChecklist?: ImportBoeChecklist;
   importBoeChecklistAudit?: ImportAuditStamp;
+  importBoeChecklistAttachment?: FreightForwardDocument;
+  importBoeChecklistCheckedAt?: Partial<
+    Record<keyof ImportBoeChecklist, Timestamp | Date | unknown>
+  >;
+  importBoeInOocCompleted?: boolean;
+  importBoeInOocCompleteAudit?: ImportAuditStamp;
   importBoeFilingStatus?: ImportBoeFilingStatus;
   importBoeFilingAudit?: ImportAuditStamp;
   inwardBoeNo?: string;
@@ -211,6 +264,7 @@ export interface FreightForward {
   importVehicleNo?: string;
   importDriverName?: string;
   importDriverPhone?: string;
+  importScanningEnabled?: boolean;
   importPortDirection?: ImportPortDirection;
   importPortDirectionAudit?: ImportAuditStamp;
   importCfsReached?: ImportCfsReachedStatus;
@@ -225,6 +279,10 @@ export interface FreightForward {
   importTTypeBoeClearanceStatus?: ImportBoeClearanceStatus;
   importTTypeBoeSaved?: boolean;
   importTTypeBoeSaveAudit?: ImportAuditStamp;
+  importTTypeOocCompleted?: boolean;
+  importTTypeOocCompleteAudit?: ImportAuditStamp;
+  importEwayBill?: ImportYesNo;
+  importEwayBillAudit?: ImportAuditStamp;
   importBoeOutDutyStatus?: ImportBoeOutDutyStatus;
   importBoeOutDutyAudit?: ImportAuditStamp;
   importBoeOutVehicleChanged?: boolean;

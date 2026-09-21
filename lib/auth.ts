@@ -26,6 +26,7 @@ export interface User {
   password: string;
   role: "admin" | "user" | "accountant";
   importRoles?: ImportModuleKey[];
+  importCfsNames?: string[];
 }
 
 /**
@@ -68,6 +69,8 @@ export async function createUser(user: User) {
     email: user.email,
     password: user.password,
     role: user.role,
+    importRoles: user.importRoles ?? [],
+    importCfsNames: user.importCfsNames ?? [],
     createdAt: new Date(),
   });
 }

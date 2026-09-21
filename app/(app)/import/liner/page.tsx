@@ -14,17 +14,26 @@ import ImportJobEditDrawer from "@/components/import/ImportJobEditDrawer";
 import { ImportLocationCell } from "@/components/import/ImportLocationCell";
 import ImportSortableHeader from "@/components/import/ImportSortableHeader";
 import ImportJobDocumentsPanel from "@/components/import/ImportJobDocumentsPanel";
+import FileInputWithClip from "@/components/import/FileInputWithClip";
+import ImportDocumentLink from "@/components/import/ImportDocumentLink";
+import { uploadDocument } from "@/lib/kyc/uploadDocument";
 import ImportSectionProgress from "@/components/import/ImportSectionProgress";
-import { ImportSearchDownloadBar } from "@/components/import/ImportTableExtras";
+import ImportSectionRemarks from "@/components/import/ImportSectionRemarks";
+import { ImportSearchDownloadBar, ImportDoTableCells, ImportGoodsAndBeHeaders, ImportGoodsAndBeCells } from "@/components/import/ImportTableExtras";
 import {
   ImportCurrentStatusCell,
+  useCfsScopedImportRecords,
   useImportTableRows,
 } from "@/components/import/ImportTableState";
+import { ImportEzCell } from "@/components/import/ImportEzCell";
+import { formatHblDisplay } from "@/lib/import/hbl";
 import { formatImportAuditDate } from "@/lib/import/auditDisplay";
 import ActionMenu from "@/components/shared/ActionMenu";
 import {
   getImportLinerRecords,
   addImportDoRemark,
+  addImportSectionRemark,
+  saveImportNamedAttachment,
   updateImportLinerRemark,
   updateImportLinerStage,
 } from "@/lib/freightForward/freightForward";
@@ -50,6 +59,7 @@ import { getImportModuleProgressSteps } from "@/lib/import/sectionProgress";
 import {
   canActOnImportModule,
   canExpandImportRow,
+  canManageImportSupportingDocs,
   parseImportSessionUser,
 } from "@/lib/import/permissions";
 import {
@@ -152,6 +162,8 @@ export default function ImportLinerPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [activeCard, setActiveCard] = useState<ImportLinerCard | null>("do");
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(0);
   const [sortKey, setSortKey] = useState<ImportSortKey>("eta");
   const [sortDir, setSortDir] = useState<ImportSortDir>("asc");
@@ -197,7 +209,8 @@ export default function ImportLinerPage() {
     return () => observer.disconnect();
   }, []);
 
-  const counts = useMemo(() => computeImportLinerCounts(records), [records]);
+  const scoped = useCfsScopedImportRecords(records);
+  const counts = useMemo(() => computeImportLinerCounts(scoped), [scoped]);
 
   const cards: {
     key: ImportLinerCard;
@@ -216,9 +229,11 @@ export default function ImportLinerPage() {
   ];
 
   const { filtered, totalPages, visibleRows } = useImportTableRows({
-    records,
+    records: scoped,
     module: "liner",
     search,
+    dateFrom,
+    dateTo,
     page,
     pageSize: PAGE_SIZE,
     sortKey,
@@ -234,7 +249,11 @@ export default function ImportLinerPage() {
     item: FreightForward,
     section: ImportWorkflowSection,
     status: ImportMovementStatus | ImportIgmStatus | ImportDoStatus,
-    doDates?: { importDoEmptyValidity: string; importDoPostValidity: string }
+    doDates?: {
+      importDoEmptyValidity: string;
+      importDoPostValidity: string;
+      importDoPlaceOfDelivery?: string;
+    }
   ) => {
     if (!item.id) return;
     setUpdatingId(item.id);
@@ -274,6 +293,35 @@ export default function ImportLinerPage() {
         item.id,
         section,
         remark,
+        user?.username ?? "Unknown"
+      );
+      setRecords((current) =>
+        current.map((record) => (record.id === updated.id ? updated : record))
+      );
+    } catch (updateError) {
+      setError(
+        updateError instanceof Error
+          ? updateError.message
+          : "Unable to save remark."
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const saveSectionRemark = async (
+    item: FreightForward,
+    section: "movement" | "igm",
+    text: string
+  ) => {
+    if (!item.id) return;
+    setUpdatingId(item.id);
+    setError("");
+    try {
+      const updated = await addImportSectionRemark(
+        item.id,
+        section,
+        text,
         user?.username ?? "Unknown"
       );
       setRecords((current) =>
@@ -360,6 +408,16 @@ export default function ImportLinerPage() {
           setPage(0);
           setSearch(value);
         }}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onDateFromChange={(value) => {
+          setPage(0);
+          setDateFrom(value);
+        }}
+        onDateToChange={(value) => {
+          setPage(0);
+          setDateTo(value);
+        }}
         records={filtered}
         filePrefix="import-liner"
       />
@@ -399,10 +457,10 @@ export default function ImportLinerPage() {
               <th className="px-3 py-3 font-semibold">Location</th>
               <th className="px-3 py-3 font-semibold">Consignee</th>
               <th className="px-3 py-3 font-semibold">Client</th>
+              <ImportGoodsAndBeHeaders />
               <th className="px-3 py-3 font-semibold">DO Status</th>
               <th className="px-3 py-3 font-semibold">Port</th>
               <th className="px-3 py-3 font-semibold">Empty</th>
-              <th className="px-3 py-3 font-semibold">Inward BOE No</th>
               <th className="px-3 py-3 font-semibold">MBL</th>
               <th className="px-3 py-3 font-semibold">HBL</th>
               <th className="px-3 py-3 font-semibold">Containers</th>
@@ -444,8 +502,16 @@ export default function ImportLinerPage() {
                     }
                     onUpdate={updateStage}
                     onRemark={saveRemark}
+                    onSectionRemark={saveSectionRemark}
                     onDoRemark={saveDoRemark}
                     onEdit={() => setEditItem(item)}
+                    onJobUpdated={(updated) =>
+                      setRecords((current) =>
+                        current.map((record) =>
+                          record.id === updated.id ? updated : record
+                        )
+                      )
+                    }
                     panelWidth={panelWidth}
                   />
                 );
@@ -507,8 +573,10 @@ function Row({
   onToggle,
   onUpdate,
   onRemark,
+  onSectionRemark,
   onDoRemark,
   onEdit,
+  onJobUpdated,
   panelWidth,
 }: {
   item: FreightForward;
@@ -521,18 +589,28 @@ function Row({
     item: FreightForward,
     section: ImportWorkflowSection,
     status: ImportMovementStatus | ImportIgmStatus | ImportDoStatus,
-    doDates?: { importDoEmptyValidity: string; importDoPostValidity: string }
+    doDates?: {
+      importDoEmptyValidity: string;
+      importDoPostValidity: string;
+      importDoPlaceOfDelivery?: string;
+    }
   ) => Promise<void>;
   onRemark: (
     item: FreightForward,
     section: ImportWorkflowSection,
     remark: string
   ) => Promise<void>;
+  onSectionRemark: (
+    item: FreightForward,
+    section: "movement" | "igm",
+    text: string
+  ) => Promise<void>;
   onDoRemark: (
     item: FreightForward,
     category: ImportDoRemarkCategory
   ) => Promise<void>;
   onEdit: () => void;
+  onJobUpdated: (item: FreightForward) => void;
   panelWidth: number;
 }) {
   const movementStatus = getImportMovementStatus(item);
@@ -558,7 +636,7 @@ function Row({
           ) : null}
         </td>
         <TableCell value={item.jobNumber} width={105} className="font-medium text-zinc-900" />
-        <TableCell value={item.ezRefNumber} width={105} />
+        <ImportEzCell item={item} />
         <TableCell value={item.blType} width={90} />
         <TableCell value={item.tradeTerms} width={110} />
         <TableCell value={item.vesselName} />
@@ -566,12 +644,10 @@ function Row({
         <ImportLocationCell item={item} />
         <TableCell value={item.consignmentName} />
         <TableCell value={item.clientName} />
-        <TableCell value={getImportDoStatusLabel(item)} width={90} />
-        <TableCell value={getImportDoPortDisplay(item)} width={100} />
-        <TableCell value={getImportDoEmptyDisplay(item)} width={100} />
-        <TableCell value={getInwardBoeNoDisplay(item)} width={120} />
+        <ImportGoodsAndBeCells item={item} />
+        <ImportDoTableCells item={item} />
         <TableCell value={item.mbl} width={130} />
-        <TableCell value={item.hbl} width={130} />
+        <TableCell value={formatHblDisplay(item)} width={130} />
         <TableCell value={formatContainersDisplay(item)} width={170} />
         <td className="px-3 py-3 font-medium text-zinc-800">
           {completedStages} / 3
@@ -655,6 +731,7 @@ function Row({
                     canAct={canAct}
                     onUpdate={onUpdate}
                     onRemark={onRemark}
+                    onSectionRemark={onSectionRemark}
                   />
                   <StageCard
                     title="IGM"
@@ -663,6 +740,7 @@ function Row({
                     options={[
                       ["pending", "Pending"],
                       ["posted", "Posted"],
+                      ["inward", "Inward"],
                     ]}
                     locked={!canUpdateImportIgm(item)}
                     lockHint="Complete Movement first"
@@ -671,6 +749,8 @@ function Row({
                     canAct={canAct}
                     onUpdate={onUpdate}
                     onRemark={onRemark}
+                    onSectionRemark={onSectionRemark}
+                    onJobUpdated={onJobUpdated}
                   />
                   <StageCard
                     title="DO"
@@ -681,17 +761,23 @@ function Row({
                       ["received", "Received"],
                     ]}
                     locked={!canUpdateImportDo(item)}
-                    lockHint="Post IGM first"
+                    lockHint="Mark IGM Posted or Inward first"
                     item={item}
                     busy={busy}
                     canAct={canAct}
                     onUpdate={onUpdate}
                     onRemark={onRemark}
                     onDoRemark={onDoRemark}
+                    onJobUpdated={onJobUpdated}
                   />
                 </div>
 
-                <ImportJobDocumentsPanel item={item} />
+                <ImportJobDocumentsPanel
+                  item={item}
+                  canManage={canManageImportSupportingDocs(parseImportSessionUser())}
+                  username={parseImportSessionUser()?.username ?? "Unknown"}
+                  onUpdated={onJobUpdated}
+                />
                 <ImportSectionProgress steps={getImportModuleProgressSteps(item)} />
               </div>
             </div>
@@ -714,7 +800,9 @@ function StageCard({
   canAct,
   onUpdate,
   onRemark,
+  onSectionRemark,
   onDoRemark,
+  onJobUpdated,
 }: {
   title: string;
   section: ImportWorkflowSection;
@@ -729,23 +817,33 @@ function StageCard({
     item: FreightForward,
     section: ImportWorkflowSection,
     status: ImportMovementStatus | ImportIgmStatus | ImportDoStatus,
-    doDates?: { importDoEmptyValidity: string; importDoPostValidity: string }
+    doDates?: {
+      importDoEmptyValidity: string;
+      importDoPostValidity: string;
+      importDoPlaceOfDelivery?: string;
+    }
   ) => Promise<void>;
   onRemark: (
     item: FreightForward,
     section: ImportWorkflowSection,
     remark: string
   ) => Promise<void>;
+  onSectionRemark?: (
+    item: FreightForward,
+    section: "movement" | "igm",
+    text: string
+  ) => Promise<void>;
   onDoRemark?: (
     item: FreightForward,
     category: ImportDoRemarkCategory
   ) => Promise<void>;
+  onJobUpdated?: (item: FreightForward) => void;
 }) {
   const audit = latestAudit(item, section);
   const stepNumber = section === "movement" ? 1 : section === "igm" ? 2 : 3;
   const complete =
     (section === "movement" && value === "completed") ||
-    (section === "igm" && value === "posted") ||
+    (section === "igm" && (value === "posted" || value === "inward")) ||
     (section === "do" && (value === "received" || value === "eod"));
   const pending = isImportStagePending(item, section);
   const [remarkDraft, setRemarkDraft] = useState(
@@ -756,6 +854,9 @@ function StageCard({
   );
   const [postValidity, setPostValidity] = useState(
     item.importDoPostValidity ?? ""
+  );
+  const [placeOfDelivery, setPlaceOfDelivery] = useState(
+    item.importDoPlaceOfDelivery ?? ""
   );
   const [doDateError, setDoDateError] = useState("");
   const [doRemarkCategory, setDoRemarkCategory] =
@@ -769,6 +870,7 @@ function StageCard({
     if (section === "do") {
       setEmptyValidity(item.importDoEmptyValidity ?? "");
       setPostValidity(item.importDoPostValidity ?? "");
+      setPlaceOfDelivery(item.importDoPlaceOfDelivery ?? "");
     }
   }, [item, section]);
 
@@ -776,14 +878,20 @@ function StageCard({
     if (section === "do" && nextStatus === "received") {
       const empty = emptyValidity.trim();
       const post = postValidity.trim();
-      if (!empty || !post) {
-        setDoDateError("Enter Empty validity and Port validity before Received.");
+      const place = placeOfDelivery.trim();
+      if (!empty || !post || !place) {
+        setDoDateError("Enter Port, Empty, and Place of delivery before Received.");
+        return;
+      }
+      if (!item.importDoEmptyAttachment?.url || !item.importDoPortAttachment?.url) {
+        setDoDateError("Upload Empty and Port attachments before Received.");
         return;
       }
       setDoDateError("");
       void onUpdate(item, section, nextStatus as ImportDoStatus, {
         importDoEmptyValidity: empty,
         importDoPostValidity: post,
+        importDoPlaceOfDelivery: place,
       });
       return;
     }
@@ -797,7 +905,11 @@ function StageCard({
 
   const canSelectReceived =
     section !== "do" ||
-    (emptyValidity.trim().length > 0 && postValidity.trim().length > 0);
+    (emptyValidity.trim().length > 0 &&
+      postValidity.trim().length > 0 &&
+      placeOfDelivery.trim().length > 0 &&
+      Boolean(item.importDoEmptyAttachment?.url) &&
+      Boolean(item.importDoPortAttachment?.url));
 
   const remarkAudit =
     section === "movement"
@@ -862,10 +974,14 @@ function StageCard({
               key={optionValue}
               value={optionValue}
               disabled={
-                section === "do" &&
-                optionValue === "received" &&
-                !canSelectReceived &&
-                value !== "received"
+                (section === "do" &&
+                  optionValue === "received" &&
+                  !canSelectReceived &&
+                  value !== "received") ||
+                (section === "igm" &&
+                  optionValue === "inward" &&
+                  !item.importIgmAttachment?.url &&
+                  value !== "inward")
               }
             >
               {label}
@@ -874,24 +990,39 @@ function StageCard({
         </select>
       </div>
 
+      {section === "igm" && !locked && (
+        <div className="mt-3 space-y-1" onClick={(event) => event.stopPropagation()}>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            IGM attachment
+          </p>
+          {item.importIgmAttachment?.url ? (
+            <ImportDocumentLink label="IGM file" doc={item.importIgmAttachment} />
+          ) : (
+            <FileInputWithClip
+              disabled={busy || !canAct}
+              onChange={(file) => {
+                if (!file || !item.id) return;
+                void (async () => {
+                  const uploaded = await uploadDocument(file, "import/igm");
+                  const updated = await saveImportNamedAttachment(
+                    item.id!,
+                    "importIgmAttachment",
+                    { name: file.name, url: uploaded.url },
+                    "Unknown"
+                  );
+                  onJobUpdated?.(updated);
+                })();
+              }}
+            />
+          )}
+        </div>
+      )}
+
       {section === "do" && !locked && (
         <div
           className="mt-3 grid gap-2 sm:grid-cols-2"
           onClick={(event) => event.stopPropagation()}
         >
-          <label className="block text-xs">
-            <span className="font-medium text-zinc-700">Empty validity</span>
-            <input
-              type="date"
-              value={emptyValidity}
-              disabled={busy || complete || !canAct}
-              onChange={(event) => {
-                setEmptyValidity(event.target.value);
-                setDoDateError("");
-              }}
-              className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
-            />
-          </label>
           <label className="block text-xs">
             <span className="font-medium text-zinc-700">Port validity</span>
             <input
@@ -905,6 +1036,77 @@ function StageCard({
               className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
             />
           </label>
+          <label className="block text-xs">
+            <span className="font-medium text-zinc-700">Empty validity</span>
+            <input
+              type="date"
+              value={emptyValidity}
+              disabled={busy || complete || !canAct}
+              onChange={(event) => {
+                setEmptyValidity(event.target.value);
+                setDoDateError("");
+              }}
+              className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
+            />
+          </label>
+          <label className="block text-xs sm:col-span-2">
+            <span className="font-medium text-zinc-700">Place of delivery</span>
+            <input
+              value={placeOfDelivery}
+              disabled={busy || complete || !canAct}
+              onChange={(event) => {
+                setPlaceOfDelivery(event.target.value);
+                setDoDateError("");
+              }}
+              className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
+            />
+          </label>
+          <div className="text-xs">
+            <p className="font-medium text-zinc-700">Port attachment</p>
+            {item.importDoPortAttachment?.url ? (
+              <ImportDocumentLink label="Port file" doc={item.importDoPortAttachment} />
+            ) : (
+              <FileInputWithClip
+                disabled={busy || complete || !canAct}
+                onChange={(file) => {
+                  if (!file || !item.id) return;
+                  void (async () => {
+                    const uploaded = await uploadDocument(file, "import/do");
+                    const updated = await saveImportNamedAttachment(
+                      item.id!,
+                      "importDoPortAttachment",
+                      { name: file.name, url: uploaded.url },
+                      "Unknown"
+                    );
+                    onJobUpdated?.(updated);
+                  })();
+                }}
+              />
+            )}
+          </div>
+          <div className="text-xs">
+            <p className="font-medium text-zinc-700">Empty attachment</p>
+            {item.importDoEmptyAttachment?.url ? (
+              <ImportDocumentLink label="Empty file" doc={item.importDoEmptyAttachment} />
+            ) : (
+              <FileInputWithClip
+                disabled={busy || complete || !canAct}
+                onChange={(file) => {
+                  if (!file || !item.id) return;
+                  void (async () => {
+                    const uploaded = await uploadDocument(file, "import/do");
+                    const updated = await saveImportNamedAttachment(
+                      item.id!,
+                      "importDoEmptyAttachment",
+                      { name: file.name, url: uploaded.url },
+                      "Unknown"
+                    );
+                    onJobUpdated?.(updated);
+                  })();
+                }}
+              />
+            )}
+          </div>
           {doDateError && (
             <p className="sm:col-span-2 text-[11px] text-red-500">{doDateError}</p>
           )}
@@ -914,9 +1116,9 @@ function StageCard({
       {section === "do" && complete && (
         <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
           <div>
-            <span className="text-zinc-500">Empty validity: </span>
+            <span className="text-zinc-500">Place of delivery: </span>
             <span className="font-medium text-zinc-800">
-              {item.importDoEmptyValidity || "—"}
+              {item.importDoPlaceOfDelivery || "—"}
             </span>
           </div>
           <div>
@@ -925,49 +1127,35 @@ function StageCard({
               {item.importDoPostValidity || "—"}
             </span>
           </div>
+          <div>
+            <span className="text-zinc-500">Empty validity: </span>
+            <span className="font-medium text-zinc-800">
+              {item.importDoEmptyValidity || "—"}
+            </span>
+          </div>
         </div>
       )}
 
-      {showMovementIgmRemark && (
-        <div
-          className="mt-3 space-y-2"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-            Remark
-          </label>
-          <textarea
-            value={pending ? remarkDraft : savedRemark}
-            disabled={busy || complete || !canAct}
-            readOnly={complete}
-            rows={2}
-            placeholder={`Add ${title} remark...`}
-            onChange={(event) => setRemarkDraft(event.target.value)}
-            className="w-full resize-none rounded-lg border border-zinc-200 px-2.5 py-2 text-[11px] outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 disabled:bg-zinc-100"
-          />
-          {complete && remarkAudit && (
-            <p className="text-[10px] text-zinc-500">
-              Updated by{" "}
-              <span className="font-medium text-zinc-800">
-                {remarkAudit.updatedBy}
-              </span>{" "}
-              · {formatImportAuditDate(remarkAudit.updatedAt)}
-            </p>
-          )}
-          {pending && canAct && (
-            <button
-              type="button"
-              disabled={
-                busy ||
-                remarkDraft.trim() === getImportStageRemark(item, section).trim()
-              }
-              onClick={() => void onRemark(item, section, remarkDraft)}
-              className="rounded-lg bg-zinc-900 px-2.5 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
-            >
-              Save remark
-            </button>
-          )}
-        </div>
+      {(section === "movement" || section === "igm") && (
+        <ImportSectionRemarks
+          remarks={[
+            ...(savedRemark.trim()
+              ? [
+                  {
+                    text: savedRemark,
+                    updatedBy: remarkAudit?.updatedBy ?? "—",
+                    updatedAt: remarkAudit?.updatedAt,
+                  },
+                ]
+              : []),
+            ...((section === "movement"
+              ? item.importMovementRemarks
+              : item.importIgmRemarks) ?? []),
+          ]}
+          busy={busy}
+          canAct={canAct && !locked}
+          onAdd={(text) => onSectionRemark?.(item, section, text)}
+        />
       )}
 
       {section === "do" && (

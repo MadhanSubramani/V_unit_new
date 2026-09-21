@@ -38,8 +38,25 @@ export function canUnlockImportTTypeSection(item: FreightForward) {
   return canTakeTTypeAction(item) && isImportBoeOutInwardOccDone(item);
 }
 
+export const T_TYPE_CLEARANCE_OPTIONS: {
+  value: NonNullable<FreightForward["importTTypeBoeClearanceStatus"]>;
+  label: string;
+}[] = [
+  { value: "open", label: "Open" },
+  { value: "rms", label: "RMS" },
+  { value: "ins", label: "INS" },
+  { value: "psc", label: "PSC" },
+  { value: "sup", label: "SUP" },
+  { value: "ooc", label: "OOC" },
+];
+
 export function canUnlockImportDutySection(item: FreightForward) {
   return isImportTTypeBoeSaved(item);
+}
+
+export function isImportTTypeOocCompleted(item: FreightForward) {
+  if (item.importTTypeBoeClearanceStatus !== "ooc") return true;
+  return item.importTTypeOocCompleted === true;
 }
 
 export function canUnlockImportEwaySection(item: FreightForward) {

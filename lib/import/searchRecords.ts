@@ -30,8 +30,11 @@ export function buildImportSearchHaystack(
       item.ezRefNumber,
       item.consignmentName,
       item.clientName,
+      item.descriptionOfGoods,
+      item.importDoPlaceOfDelivery,
       item.mbl,
       item.hbl,
+      ...(item.hblEntries ?? []).map((entry) => entry.number),
       item.vesselName,
       item.liner,
       item.agent,
@@ -93,6 +96,21 @@ export function buildImportSearchHaystack(
   });
 
   return parts.join(" ").toLowerCase();
+}
+
+export function matchesImportDateRange(
+  item: FreightForward,
+  dateFrom?: string,
+  dateTo?: string
+) {
+  const from = dateFrom?.trim().slice(0, 10);
+  const to = dateTo?.trim().slice(0, 10);
+  if (!from && !to) return true;
+  const eta = (item.eta ?? item.etaSort ?? item.ezDate ?? "").slice(0, 10);
+  if (!eta) return false;
+  if (from && eta < from) return false;
+  if (to && eta > to) return false;
+  return true;
 }
 
 export function matchesImportSearch(

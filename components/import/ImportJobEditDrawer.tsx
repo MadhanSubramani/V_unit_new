@@ -4,7 +4,12 @@ import { useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
 import FileInputWithClip from "@/components/import/FileInputWithClip";
 import {
+  HblDraft,
+  ImportJobShipmentBlock,
+} from "@/components/import/ImportJobShipmentBlock";
+import {
   appendImportOtherDocuments,
+  setImportOtherDocuments,
   updateFreightForward,
 } from "@/lib/freightForward/freightForward";
 import {
@@ -28,6 +33,12 @@ import {
 } from "@/types/freightForward";
 import { Kyc } from "@/types/kyc";
 import { Sez } from "@/types/sez";
+import {
+  getHblEntries,
+  getLoadType,
+  getShipmentMode,
+  serializeHblEntries,
+} from "@/lib/import/hbl";
 
 type OtherDocDraft = {
   name: string;
@@ -54,10 +65,14 @@ export default function ImportJobEditDrawer({
     ezRefNumber: item.ezRefNumber ?? "",
     consignmentName: item.consignmentName ?? "",
     clientName: item.clientName ?? "",
+    descriptionOfGoods: item.descriptionOfGoods ?? "",
     tradeTerms: item.tradeTerms ?? "",
     blType: item.blType ?? "",
     mbl: item.mbl ?? "",
     hbl: item.hbl ?? "",
+    shipmentMode: getShipmentMode(item),
+    loadType: getLoadType(item),
+    ezDate: item.ezDate ?? "",
     vesselName: item.vesselName ?? "",
     eta: item.eta ?? "",
     locationType: item.locationType ?? "cfs",
@@ -71,16 +86,22 @@ export default function ImportJobEditDrawer({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [mblFile, setMblFile] = useState<File | null>(null);
-  const [hblFile, setHblFile] = useState<File | null>(null);
   const [mblDoc, setMblDoc] = useState<FreightForwardDocument | undefined>(
     item.mblUrl
   );
-  const [hblDoc, setHblDoc] = useState<FreightForwardDocument | undefined>(
-    item.hblUrl
+  const [hblDrafts, setHblDrafts] = useState<HblDraft[]>(() =>
+    getHblEntries(item).map((entry) => ({
+      number: entry.number,
+      file: null,
+      existing: entry.file,
+    }))
   );
   const [otherDocs, setOtherDocs] = useState<OtherDocDraft[]>([
     { name: "", file: null },
   ]);
+  const [existingOtherDocs, setExistingOtherDocs] = useState(
+    item.otherDocuments ?? []
+  );
 
   const [cfsList, setCfsList] = useState<Cfs[]>([]);
   const [sezList, setSezList] = useState<Sez[]>([]);
@@ -92,9 +113,14 @@ export default function ImportJobEditDrawer({
 
   useEffect(() => {
     setMblFile(null);
-    setHblFile(null);
     setMblDoc(item.mblUrl);
-    setHblDoc(item.hblUrl);
+    setHblDrafts(
+      getHblEntries(item).map((entry) => ({
+        number: entry.number,
+        file: null,
+        existing: entry.file,
+      }))
+    );
   }, [item]);
 
   useEffect(() => {
@@ -199,7 +225,6 @@ export default function ImportJobEditDrawer({
       next.consignmentName = "Consignee is required.";
     }
     if (!form.mbl?.trim()) next.mbl = "MBL is required.";
-    if (!form.hbl?.trim()) next.hbl = "HBL is required.";
     if (!form.eta?.trim()) next.eta = "ETA is required.";
     if (form.locationType === "cfs" && !form.cfs?.trim()) {
       next.location = "CFS is required.";
@@ -233,19 +258,28 @@ export default function ImportJobEditDrawer({
         return uploadDocument(file, folder);
       };
 
-      const [mblUrl, hblUrl] = await Promise.all([
-        uploadIfNeeded(mblFile, "freight-forward/mbl", mblDoc),
-        uploadIfNeeded(hblFile, "freight-forward/hbl", hblDoc),
-      ]);
+      const mblUrl = await uploadIfNeeded(mblFile, "freight-forward/mbl", mblDoc);
+      const uploadedHbls = [];
+      for (const draft of hblDrafts) {
+        if (!draft.number.trim() && !draft.file && !draft.existing) continue;
+        const file = draft.file
+          ? await uploadDocument(draft.file, "freight-forward/hbl")
+          : draft.existing;
+        uploadedHbls.push({ number: draft.number.trim(), file });
+      }
+      const hblPayload = serializeHblEntries(uploadedHbls);
 
       const payload: Partial<FreightForwardFormData> = {
         ezRefNumber: form.ezRefNumber?.trim() ?? "",
         consignmentName: form.consignmentName!.trim(),
         clientName: form.clientName?.trim() ?? "",
+        descriptionOfGoods: form.descriptionOfGoods?.trim() ?? "",
         tradeTerms: form.tradeTerms ?? "",
         blType: form.blType ?? "",
         mbl: form.mbl!.trim(),
-        hbl: form.hbl!.trim(),
+        ...hblPayload,
+        shipmentMode: getShipmentMode(form),
+        loadType: getLoadType(form),
         vesselName: form.vesselName?.trim() ?? "",
         eta: form.eta!.trim(),
         locationType: form.locationType ?? "cfs",
@@ -263,7 +297,7 @@ export default function ImportJobEditDrawer({
         liner: form.liner?.trim() ?? "",
         agent: form.agent?.trim() ?? "",
         mblUrl,
-        hblUrl,
+        hblUrl: hblPayload.hblUrl,
       };
 
       await updateFreightForward(item.id, payload, username || "Unknown");
@@ -278,21 +312,18 @@ export default function ImportJobEditDrawer({
         uploaded.push({ name: draft.name.trim(), url: file.url });
       }
 
-      let otherDocuments = item.otherDocuments ?? [];
-      if (uploaded.length) {
-        const updated = await appendImportOtherDocuments(
-          item.id,
-          uploaded,
-          username || "Unknown"
-        );
-        otherDocuments = updated.otherDocuments ?? otherDocuments;
-      }
+      const otherDocuments = [...existingOtherDocs, ...uploaded];
+      await setImportOtherDocuments(
+        item.id,
+        otherDocuments,
+        username || "Unknown"
+      );
 
       onSaved({
         ...item,
         ...payload,
         mblUrl,
-        hblUrl,
+        hblUrl: hblPayload.hblUrl,
         otherDocuments,
         updatedBy: username || "Unknown",
       });
@@ -541,152 +572,101 @@ export default function ImportJobEditDrawer({
             </label>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5 text-xs">
-              <span className="font-medium text-zinc-700">
-                MBL <span className="text-red-500">*</span>
-              </span>
-              <input
-                value={form.mbl ?? ""}
-                onChange={(e) => {
-                  setForm({ ...form, mbl: e.target.value });
-                  clearError("mbl");
-                }}
-                className={fieldClass("mbl")}
-              />
-              <DocumentSlot
-                label="MBL Document"
-                doc={mblDoc}
-                file={mblFile}
-                readOnly={readOnly}
-                onFileChange={(file) => {
-                  setMblFile(file);
-                  if (file) setMblDoc(undefined);
-                }}
-                onClearExisting={() => setMblDoc(undefined)}
-              />
-              {errors.mbl && (
-                <span className="text-[11px] text-red-500">{errors.mbl}</span>
-              )}
-            </div>
-            <div className="space-y-1.5 text-xs">
-              <span className="font-medium text-zinc-700">
-                HBL <span className="text-red-500">*</span>
-              </span>
-              <input
-                value={form.hbl ?? ""}
-                onChange={(e) => {
-                  setForm({ ...form, hbl: e.target.value });
-                  clearError("hbl");
-                }}
-                className={fieldClass("hbl")}
-              />
-              <DocumentSlot
-                label="HBL Document"
-                doc={hblDoc}
-                file={hblFile}
-                readOnly={readOnly}
-                onFileChange={(file) => {
-                  setHblFile(file);
-                  if (file) setHblDoc(undefined);
-                }}
-                onClearExisting={() => setHblDoc(undefined)}
-              />
-              {errors.hbl && (
-                <span className="text-[11px] text-red-500">{errors.hbl}</span>
-              )}
-            </div>
-          </div>
+          <label className="block space-y-1.5 text-xs">
+            <span className="font-medium text-zinc-700">Description of goods</span>
+            <textarea
+              rows={2}
+              value={form.descriptionOfGoods ?? ""}
+              disabled={readOnly}
+              onChange={(e) =>
+                setForm({ ...form, descriptionOfGoods: e.target.value })
+              }
+              className={fieldClass("descriptionOfGoods")}
+            />
+          </label>
 
-          <div className="space-y-2 rounded-xl border border-zinc-200 p-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-medium text-zinc-700">
-                Containers <span className="text-red-500">*</span>
-              </p>
-              {!readOnly && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setForm({
-                      ...form,
-                      containers: [...containers, emptyContainer()],
-                    })
-                  }
-                  className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-[11px] text-zinc-600"
-                >
-                  <Plus size={12} />
-                  Add
-                </button>
-              )}
-            </div>
-            {containers.map((entry, index) => (
-              <div key={index} className="space-y-1">
-                <div className="grid grid-cols-3 gap-2">
-                  <input
-                    value={entry.containerNumber}
-                    placeholder="ABCD1234567"
-                    maxLength={11}
-                    onChange={(e) =>
-                      updateContainer(index, "containerNumber", e.target.value)
-                    }
-                    onBlur={() =>
-                      setContainerError(index, entry.containerNumber)
-                    }
-                    className={fieldClass(`containers.${index}.containerNumber`)}
-                  />
-                  <select
-                    value={entry.containerSize ?? ""}
-                    onChange={(e) =>
-                      updateContainer(index, "containerSize", e.target.value)
-                    }
-                    className={fieldClass("containerSize")}
-                  >
-                    <option value="">Size</option>
-                    {containerSizes.map((size) => (
-                      <option key={size.id} value={size.value}>
-                        {size.value}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={entry.containerType ?? ""}
-                    onChange={(e) =>
-                      updateContainer(index, "containerType", e.target.value)
-                    }
-                    className={fieldClass("containerType")}
-                  >
-                    <option value="">Type</option>
-                    {containerTypes.map((type) => (
-                      <option key={type.id} value={type.value}>
-                        {type.value}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {errors[`containers.${index}.containerNumber`] && (
-                  <p className="text-[11px] text-red-500">
-                    {errors[`containers.${index}.containerNumber`]}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
+          <ImportJobShipmentBlock
+            mode={getShipmentMode(form)}
+            loadType={getLoadType(form)}
+            mbl={form.mbl ?? ""}
+            mblFile={mblFile}
+            mblDoc={mblDoc}
+            hblDrafts={hblDrafts}
+            containers={containers}
+            containerSizes={containerSizes}
+            containerTypes={containerTypes}
+            errors={errors}
+            fieldClass={fieldClass}
+            readOnly={readOnly}
+            onModeChange={(shipmentMode) => setForm({ ...form, shipmentMode })}
+            onLoadTypeChange={(loadType) => setForm({ ...form, loadType })}
+            onMblChange={(value) => {
+              setForm({ ...form, mbl: value });
+              clearError("mbl");
+            }}
+            onMblFileChange={(file) => {
+              setMblFile(file);
+              if (file) setMblDoc(undefined);
+            }}
+            onClearMblDoc={() => setMblDoc(undefined)}
+            onHblChange={(index, next) => {
+              const items = [...hblDrafts];
+              items[index] = next;
+              setHblDrafts(items);
+            }}
+            onAddHbl={() =>
+              setHblDrafts((current) => [...current, { number: "", file: null }])
+            }
+            onRemoveHbl={(index) =>
+              setHblDrafts((current) => current.filter((_, i) => i !== index))
+            }
+            onContainerChange={updateContainer}
+            onAddContainer={() =>
+              setForm({
+                ...form,
+                containers: [...containers, emptyContainer()],
+              })
+            }
+            onRemoveContainer={(index) => {
+              const items = containers.filter((_, i) => i !== index);
+              setForm({
+                ...form,
+                containers: items.length ? items : [emptyContainer()],
+                containerNumber: items[0]?.containerNumber ?? "",
+              });
+            }}
+            onContainerBlur={(index, value) => setContainerError(index, value)}
+          />
 
-          {(item.otherDocuments ?? []).length > 0 && (
+          {existingOtherDocs.length > 0 && (
             <div className="space-y-2 rounded-xl border border-zinc-200 p-3">
               <p className="text-xs font-medium text-zinc-700">
-                Existing other documents
+                Supporting documents
               </p>
-              {(item.otherDocuments ?? []).map((doc, index) => (
-                <a
-                  key={`${doc.url}-${index}`}
-                  href={doc.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="block truncate text-[11px] text-zinc-700 underline"
-                >
-                  {doc.name || `Document ${index + 1}`}
-                </a>
+              {existingOtherDocs.map((doc, index) => (
+                <div key={`${doc.url}-${index}`} className="flex items-center gap-2">
+                  <a
+                    href={doc.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block min-w-0 flex-1 truncate text-[11px] text-zinc-700 underline"
+                  >
+                    {doc.name || `Document ${index + 1}`}
+                  </a>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExistingOtherDocs((current) =>
+                          current.filter((_, i) => i !== index)
+                        )
+                      }
+                      className="rounded-lg border border-zinc-200 px-2 py-1 text-[11px] text-zinc-500"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           )}

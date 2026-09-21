@@ -24,4 +24,6 @@ export interface ImportSessionUser {
   username?: string;
   role?: string;
   importRoles?: ImportModuleKey[];
+  /** CFS names this user may see in Import. Empty = all CFS (legacy). */
+  importCfsNames?: string[];
 }

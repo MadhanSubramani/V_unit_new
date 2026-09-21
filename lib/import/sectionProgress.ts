@@ -58,25 +58,36 @@ export function getImportModuleProgressSteps(
       "ztype",
       "Z type BE",
       isImportBoeInCompleted(item),
-      item.importBoeInCompleteAudit ?? item.importBoeInInwardSaveAudit
+      item.importBoeInCompleteAudit ??
+        item.importBoeInOocCompleteAudit ??
+        item.importBoeInInwardSaveAudit ??
+        item.importBoeChecklistAudit
     ),
     toStep(
       "transport",
       "Transport",
       isImportTransportCompleted(item),
-      item.importTransportCompleteAudit
+      item.importTransportCompleteAudit ??
+        item.importCfsReachedAudit ??
+        item.importPortDirectionAudit
     ),
     toStep(
       "ttype",
       "T type BE",
       isImportBoeOutDispatched(item),
-      item.importBoeOutDispatchAudit
+      item.importBoeOutDispatchAudit ??
+        item.importTTypeOocCompleteAudit ??
+        item.importTTypeBoeSaveAudit ??
+        item.importBoeOutDutyAudit ??
+        item.importEwayBillAudit
     ),
     toStep(
       "accounts",
       "Accounts",
       isImportAccountsCompleted(item),
-      item.importAccountsCompleteAudit
+      item.importAccountsCompleteAudit ??
+        item.importAccountsPaymentAudit ??
+        item.importAccountsBillingAudit
     ),
   ];
 }

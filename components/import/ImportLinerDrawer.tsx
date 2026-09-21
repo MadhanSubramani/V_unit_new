@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
 import FileInputWithClip from "@/components/import/FileInputWithClip";
+import {
+  HblDraft,
+  ImportJobShipmentBlock,
+} from "@/components/import/ImportJobShipmentBlock";
 import { createImportLinerJob } from "@/lib/freightForward/freightForward";
 import {
   emptyContainer,
@@ -24,6 +28,12 @@ import {
 } from "@/types/freightForward";
 import { Kyc } from "@/types/kyc";
 import { Sez } from "@/types/sez";
+import {
+  getLoadType,
+  getShipmentMode,
+  serializeHblEntries,
+  todayIsoDate,
+} from "@/lib/import/hbl";
 
 type OtherDocDraft = {
   name: string;
@@ -44,6 +54,10 @@ const emptyForm = (): Partial<FreightForwardFormData> => ({
   blType: "",
   mbl: "",
   hbl: "",
+  shipmentMode: "sea",
+  loadType: "icl",
+  hblEntries: [],
+  ezDate: todayIsoDate(),
   vesselName: "",
   eta: "",
   locationType: "cfs",
@@ -65,7 +79,7 @@ export default function ImportLinerDrawer({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [mblFile, setMblFile] = useState<File | null>(null);
-  const [hblFile, setHblFile] = useState<File | null>(null);
+  const [hblDrafts, setHblDrafts] = useState<HblDraft[]>([]);
   const [otherDocs, setOtherDocs] = useState<OtherDocDraft[]>([
     { name: "", file: null },
   ]);
@@ -178,9 +192,7 @@ export default function ImportLinerDrawer({
       next.consignmentName = "Consignee is required.";
     }
     if (!form.mbl?.trim()) next.mbl = "MBL is required.";
-    if (!form.hbl?.trim()) next.hbl = "HBL is required.";
     if (!mblFile) next.mblFile = "MBL file is required.";
-    if (!hblFile) next.hblFile = "HBL file is required.";
     if (!form.eta?.trim()) next.eta = "ETA is required.";
     if (form.locationType === "cfs" && !form.cfs?.trim()) {
       next.location = "CFS is required.";
@@ -205,9 +217,18 @@ export default function ImportLinerDrawer({
     if (!validate()) return;
     setSaving(true);
     try {
-      const [mblUrl, hblUrl] = await Promise.all([
+      const uploadedHbls = [];
+      for (const draft of hblDrafts) {
+        if (!draft.number.trim() && !draft.file) continue;
+        const file = draft.file
+          ? await uploadDocument(draft.file, "freight-forward/hbl")
+          : undefined;
+        uploadedHbls.push({ number: draft.number.trim(), file });
+      }
+      const hblPayload = serializeHblEntries(uploadedHbls);
+
+      const [mblUrl] = await Promise.all([
         uploadDocument(mblFile!, "freight-forward/mbl"),
-        uploadDocument(hblFile!, "freight-forward/hbl"),
       ]);
 
       const otherDocuments: FreightForwardDocument[] = [];
@@ -227,7 +248,10 @@ export default function ImportLinerDrawer({
         ...(form as FreightForwardFormData),
         consignmentName: form.consignmentName!.trim(),
         mbl: form.mbl!.trim(),
-        hbl: form.hbl!.trim(),
+        ...hblPayload,
+        shipmentMode: getShipmentMode(form),
+        loadType: getLoadType(form),
+        ezDate: form.ezDate || todayIsoDate(),
         containerNumber: normalizeContainerNumber(
           containers[0]?.containerNumber
         ),
@@ -236,7 +260,7 @@ export default function ImportLinerDrawer({
           containerNumber: normalizeContainerNumber(item.containerNumber),
         })),
         mblUrl,
-        hblUrl,
+        hblUrl: hblPayload.hblUrl,
         otherDocuments,
         useForImport: true,
         createdFrom: "import",
@@ -474,128 +498,68 @@ export default function ImportLinerDrawer({
             </label>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block space-y-1.5 text-xs">
-              <span className="font-medium text-zinc-700">
-                MBL <span className="text-red-500">*</span>
-              </span>
-              <input
-                value={form.mbl ?? ""}
-                onChange={(e) => {
-                  setForm({ ...form, mbl: e.target.value });
-                  clearError("mbl");
-                }}
-                className={fieldClass("mbl")}
-              />
-              <FileInputWithClip
-                onChange={(file) => {
-                  setMblFile(file);
-                  clearError("mblFile");
-                }}
-              />
-              {(errors.mbl || errors.mblFile) && (
-                <span className="text-[11px] text-red-500">
-                  {errors.mbl || errors.mblFile}
-                </span>
-              )}
-            </label>
-            <label className="block space-y-1.5 text-xs">
-              <span className="font-medium text-zinc-700">
-                HBL <span className="text-red-500">*</span>
-              </span>
-              <input
-                value={form.hbl ?? ""}
-                onChange={(e) => {
-                  setForm({ ...form, hbl: e.target.value });
-                  clearError("hbl");
-                }}
-                className={fieldClass("hbl")}
-              />
-              <FileInputWithClip
-                onChange={(file) => {
-                  setHblFile(file);
-                  clearError("hblFile");
-                }}
-              />
-              {(errors.hbl || errors.hblFile) && (
-                <span className="text-[11px] text-red-500">
-                  {errors.hbl || errors.hblFile}
-                </span>
-              )}
-            </label>
-          </div>
+          <label className="block space-y-1.5 text-xs">
+            <span className="font-medium text-zinc-700">Description of goods</span>
+            <textarea
+              rows={2}
+              value={form.descriptionOfGoods ?? ""}
+              onChange={(e) =>
+                setForm({ ...form, descriptionOfGoods: e.target.value })
+              }
+              className={fieldClass("descriptionOfGoods")}
+            />
+          </label>
 
-          <div className="space-y-2 rounded-xl border border-zinc-200 p-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-medium text-zinc-700">
-                Containers <span className="text-red-500">*</span>
-              </p>
-              <button
-                type="button"
-                onClick={() =>
-                  setForm({
-                    ...form,
-                    containers: [...containers, emptyContainer()],
-                  })
-                }
-                className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-[11px] text-zinc-600"
-              >
-                <Plus size={12} />
-                Add
-              </button>
-            </div>
-            {containers.map((item, index) => (
-              <div key={index} className="space-y-1">
-                <div className="grid grid-cols-3 gap-2">
-                  <input
-                    value={item.containerNumber}
-                    placeholder="ABCD1234567"
-                    maxLength={11}
-                    onChange={(e) =>
-                      updateContainer(index, "containerNumber", e.target.value)
-                    }
-                    onBlur={() =>
-                      setContainerError(index, item.containerNumber)
-                    }
-                    className={fieldClass(`containers.${index}.containerNumber`)}
-                  />
-                  <select
-                    value={item.containerSize ?? ""}
-                    onChange={(e) =>
-                      updateContainer(index, "containerSize", e.target.value)
-                    }
-                    className={fieldClass("containerSize")}
-                  >
-                    <option value="">Size</option>
-                    {containerSizes.map((size) => (
-                      <option key={size.id} value={size.value}>
-                        {size.value}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={item.containerType ?? ""}
-                    onChange={(e) =>
-                      updateContainer(index, "containerType", e.target.value)
-                    }
-                    className={fieldClass("containerType")}
-                  >
-                    <option value="">Type</option>
-                    {containerTypes.map((type) => (
-                      <option key={type.id} value={type.value}>
-                        {type.value}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {errors[`containers.${index}.containerNumber`] && (
-                  <p className="text-[11px] text-red-500">
-                    {errors[`containers.${index}.containerNumber`]}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
+          <ImportJobShipmentBlock
+            mode={getShipmentMode(form)}
+            loadType={getLoadType(form)}
+            mbl={form.mbl ?? ""}
+            mblFile={mblFile}
+            hblDrafts={hblDrafts}
+            containers={containers}
+            containerSizes={containerSizes}
+            containerTypes={containerTypes}
+            errors={errors}
+            fieldClass={fieldClass}
+            requireMblFile
+            onModeChange={(shipmentMode) => setForm({ ...form, shipmentMode })}
+            onLoadTypeChange={(loadType) => setForm({ ...form, loadType })}
+            onMblChange={(value) => {
+              setForm({ ...form, mbl: value });
+              clearError("mbl");
+            }}
+            onMblFileChange={(file) => {
+              setMblFile(file);
+              clearError("mblFile");
+            }}
+            onHblChange={(index, next) => {
+              const items = [...hblDrafts];
+              items[index] = next;
+              setHblDrafts(items);
+            }}
+            onAddHbl={() =>
+              setHblDrafts((current) => [...current, { number: "", file: null }])
+            }
+            onRemoveHbl={(index) =>
+              setHblDrafts((current) => current.filter((_, i) => i !== index))
+            }
+            onContainerChange={updateContainer}
+            onAddContainer={() =>
+              setForm({
+                ...form,
+                containers: [...containers, emptyContainer()],
+              })
+            }
+            onRemoveContainer={(index) => {
+              const items = containers.filter((_, i) => i !== index);
+              setForm({
+                ...form,
+                containers: items.length ? items : [emptyContainer()],
+                containerNumber: items[0]?.containerNumber ?? "",
+              });
+            }}
+            onContainerBlur={(index, value) => setContainerError(index, value)}
+          />
 
           <div className="space-y-2 rounded-xl border border-zinc-200 p-3">
             <div className="flex items-center justify-between">

@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { createUser, getUsers, deleteUserData, updateUserData, User } from "@/lib/auth";
 import { IMPORT_MODULE_OPTIONS } from "@/types/importRoles";
 import type { ImportModuleKey } from "@/types/importRoles";
+import { getCfsList } from "@/lib/cfs/cfs";
+import { Cfs } from "@/types/cfs";
 import { Eye, EyeOff, Pencil, Trash2 ,MoreHorizontal} from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import ModuleHeader from "@/components/ModuleHeader";
@@ -34,7 +36,10 @@ export default function UsersPage() {
         password: "",
         role: "user",
         importRoles: [],
+        importCfsNames: [],
     });
+
+    const [cfsList, setCfsList] = useState<Cfs[]>([]);
 
     const toggleImportRole = (role: ImportModuleKey) => {
         setForm((current) => {
@@ -46,6 +51,16 @@ export default function UsersPage() {
         });
     };
 
+    const toggleImportCfs = (name: string) => {
+        setForm((current) => {
+            const existing = current.importCfsNames ?? [];
+            const next = existing.includes(name)
+                ? existing.filter((entry) => entry !== name)
+                : [...existing, name];
+            return { ...current, importCfsNames: next };
+        });
+    };
+
     const loadUsers = async () => {
         const data = await getUsers();
         setUsers(data);
@@ -53,6 +68,7 @@ export default function UsersPage() {
 
     useEffect(() => {
         loadUsers();
+        void getCfsList().then(setCfsList);
     }, []);
 
     const validate = (): boolean => {
@@ -98,7 +114,7 @@ export default function UsersPage() {
                 await createUser(form);
             }
 
-            setForm({ username: "", email: "", password: "", role: "user", importRoles: [] });
+            setForm({ username: "", email: "", password: "", role: "user", importRoles: [], importCfsNames: [] });
             setErrors({});
             setDrawerOpen(false);
             setSelectedUser(null);
@@ -116,7 +132,7 @@ export default function UsersPage() {
 
     const openAddDrawer = () => {
         setSelectedUser(null);
-        setForm({ username: "", email: "", password: "", role: "user", importRoles: [] });
+        setForm({ username: "", email: "", password: "", role: "user", importRoles: [], importCfsNames: [] });
         setErrors({});
         setSubmitError("");
         setDrawerOpen(true);
@@ -130,6 +146,7 @@ export default function UsersPage() {
             password: user.password,
             role: user.role,
             importRoles: user.importRoles ?? [],
+            importCfsNames: user.importCfsNames ?? [],
         });
         setErrors({});
         setSubmitError("");
@@ -516,6 +533,35 @@ export default function UsersPage() {
                                 })}
                             </div>
                         </div>
+
+                        {(form.importRoles ?? []).length > 0 && (
+                            <div>
+                                <label className="mb-2 block text-[11px] font-medium text-zinc-600">
+                                    Import CFS zones
+                                </label>
+                                <p className="mb-2 text-[10px] text-zinc-500">
+                                    Selected CFS locations limit Import counts and job lists for this user. Leave all unchecked to see every CFS.
+                                </p>
+                                <div className="grid max-h-40 grid-cols-1 gap-2 overflow-y-auto">
+                                    {cfsList.map((cfs) => {
+                                        const checked = (form.importCfsNames ?? []).includes(cfs.name);
+                                        return (
+                                            <label
+                                                key={cfs.id ?? cfs.name}
+                                                className="flex items-center gap-2 rounded-lg border border-zinc-200 px-2.5 py-2 text-[11px] text-zinc-700"
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={checked}
+                                                    onChange={() => toggleImportCfs(cfs.name)}
+                                                />
+                                                {cfs.code ? `${cfs.code} — ${cfs.name}` : cfs.name}
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
 
                         <button
                             onClick={handleSave}

@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import { FreightForward } from "@/types/freightForward";
+import { formatHblDisplay } from "@/lib/import/hbl";
 import { formatContainersDisplay } from "@/lib/freightForward/containers";
 import { Cfs } from "@/types/cfs";
 import { Sez } from "@/types/sez";
@@ -21,6 +22,7 @@ export function buildImportTableExportRows(
   return records.map((item) => ({
     "Job No": item.jobNumber ?? "",
     "EZ No": item.ezRefNumber ?? "",
+    "EZ Date": item.ezDate ?? "",
     "BL Type": item.blType ?? "",
     "Trade Terms": item.tradeTerms ?? "",
     Vessel: item.vesselName ?? "",
@@ -28,12 +30,17 @@ export function buildImportTableExportRows(
     Location: resolveImportLocationCode(item, cfsList, sezList),
     Consignee: item.consignmentName ?? "",
     Client: item.clientName ?? "",
+    "Desc of goods": item.descriptionOfGoods ?? "",
     "DO Status": getImportDoStatusLabel(item),
+    "Place of delivery": item.importDoPlaceOfDelivery ?? "",
     Port: getImportDoPortDisplay(item),
     Empty: getImportDoEmptyDisplay(item),
-    "Inward BOE No": item.inwardBoeNo ?? "",
+    "Z type BE No": item.inwardBoeNo ?? "",
+    "Z type BE Date": item.inwardBoeDate ?? "",
+    "T type BE No": item.importTTypeBoeNo ?? "",
+    "T type BE Date": item.importTTypeBoeDate ?? "",
     MBL: item.mbl ?? "",
-    HBL: item.hbl ?? "",
+    HBL: formatHblDisplay(item) === "—" ? "" : formatHblDisplay(item),
     Containers: formatContainersDisplay(item),
     ...(extraColumns ? extraColumns(item) : {}),
   }));

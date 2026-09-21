@@ -1,4 +1,4 @@
-import { KycDocument } from "@/types/kyc";
+import { KycDocument, KycRemark } from "@/types/kyc";
 import { stripUndefined } from "@/lib/kyc/stripUndefined";
 
 export type KycSavePayload = {
@@ -25,6 +25,7 @@ export type KycSavePayload = {
   directorAadhar: KycDocument[];
   directorPan: KycDocument[];
   supportingDocuments: KycDocument[];
+  remarks?: KycRemark[];
 };
 
 /** Build a Firestore-safe KYC document — never includes `undefined` optional fields. */
@@ -47,6 +48,7 @@ export function buildKycFirestoreData(input: KycSavePayload): Record<string, unk
     directorAadhar: input.directorAadhar,
     directorPan: input.directorPan,
     supportingDocuments: input.supportingDocuments,
+    remarks: input.remarks ?? [],
     ...(input.gstStatus ? { gstStatus: input.gstStatus } : {}),
     ...(input.gstinDocument ? { gstinDocument: input.gstinDocument } : {}),
     ...(input.panDocument ? { panDocument: input.panDocument } : {}),

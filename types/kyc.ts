@@ -3,6 +3,12 @@ export interface KycDocument {
   url: string;
 }
 
+export interface KycRemark {
+  text: string;
+  updatedBy: string;
+  updatedAt?: unknown;
+}
+
 export interface Kyc {
   id?: string;
   fileNo?: string;
@@ -38,6 +44,7 @@ export interface Kyc {
   directorAadhar?: KycDocument[];
   directorPan?: KycDocument[];
   supportingDocuments?: KycDocument[];
+  remarks?: KycRemark[];
 
   /** @deprecated use branchAddresses */
   deliveryAddress?: string;

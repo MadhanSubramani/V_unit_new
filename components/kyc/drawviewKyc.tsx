@@ -109,6 +109,25 @@ export default function KycViewDrawer({ open, onClose, kyc }: Props) {
             <MultiDocField label="Director Aadhaar" docs={aadharDocs} />
             <MultiDocField label="Director PAN" docs={panDocs} />
             <MultiDocField label="Supporting Documents" docs={supportingDocs} />
+
+            <div>
+              <p className="mb-1 text-xs font-medium text-zinc-500">Remarks</p>
+              {(kyc.remarks ?? []).length === 0 ? (
+                <p className="text-[11px] text-zinc-400">No remarks yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {(kyc.remarks ?? []).map((entry, index) => (
+                    <div
+                      key={`${entry.text}-${index}`}
+                      className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs"
+                    >
+                      <p className="font-medium text-zinc-800">{entry.text}</p>
+                      <p className="mt-0.5 text-zinc-500">{entry.updatedBy}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
