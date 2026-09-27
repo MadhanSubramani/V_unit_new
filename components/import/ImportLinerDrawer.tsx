@@ -55,7 +55,7 @@ const emptyForm = (): Partial<FreightForwardFormData> => ({
   mbl: "",
   hbl: "",
   shipmentMode: "sea",
-  loadType: "icl",
+  loadType: "lcl",
   hblEntries: [],
   ezDate: todayIsoDate(),
   vesselName: "",
@@ -200,7 +200,9 @@ export default function ImportLinerDrawer({
     if (form.locationType === "sez" && !form.sez?.trim()) {
       next.location = "SEZ is required.";
     }
-    Object.assign(next, validateFreightContainers(containers));
+    if (getShipmentMode(form) !== "air") {
+      Object.assign(next, validateFreightContainers(containers));
+    }
     otherDocs.forEach((doc, index) => {
       if (doc.file && !doc.name.trim()) {
         next[`otherDocs.${index}`] = "Document name is required.";
@@ -252,13 +254,17 @@ export default function ImportLinerDrawer({
         shipmentMode: getShipmentMode(form),
         loadType: getLoadType(form),
         ezDate: form.ezDate || todayIsoDate(),
-        containerNumber: normalizeContainerNumber(
-          containers[0]?.containerNumber
-        ),
-        containers: containers.map((item) => ({
-          ...item,
-          containerNumber: normalizeContainerNumber(item.containerNumber),
-        })),
+        containers:
+          getShipmentMode(form) === "air"
+            ? []
+            : containers.map((item) => ({
+                ...item,
+                containerNumber: normalizeContainerNumber(item.containerNumber),
+              })),
+        containerNumber:
+          getShipmentMode(form) === "air"
+            ? ""
+            : normalizeContainerNumber(containers[0]?.containerNumber),
         mblUrl,
         hblUrl: hblPayload.hblUrl,
         otherDocuments,

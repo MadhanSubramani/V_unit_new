@@ -36,13 +36,21 @@ export function ImportDoTableCells({ item }: { item: FreightForward }) {
       <td className="px-3 py-3">
         <span className="block text-[11px]">{getImportDoPortDisplay(item)}</span>
         {item.importDoPortAttachment?.url ? (
-          <ImportDocumentLink label="Port file" doc={item.importDoPortAttachment} />
+          <ImportDocumentLink
+            label="Port file"
+            doc={item.importDoPortAttachment}
+            variant="icon"
+          />
         ) : null}
       </td>
       <td className="px-3 py-3">
         <span className="block text-[11px]">{getImportDoEmptyDisplay(item)}</span>
         {item.importDoEmptyAttachment?.url ? (
-          <ImportDocumentLink label="Empty file" doc={item.importDoEmptyAttachment} />
+          <ImportDocumentLink
+            label="Empty file"
+            doc={item.importDoEmptyAttachment}
+            variant="icon"
+          />
         ) : null}
       </td>
     </>

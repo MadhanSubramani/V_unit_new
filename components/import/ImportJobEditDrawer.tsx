@@ -22,6 +22,7 @@ import { getCfsList } from "@/lib/cfs/cfs";
 import { getSezList } from "@/lib/sez/sez";
 import { getConfigByCategory } from "@/lib/configurations/configurations";
 import { getKyc } from "@/lib/kyc/getKyc";
+import { deleteStorageFileByUrl } from "@/lib/freightForward/deleteStorage";
 import { uploadDocument } from "@/lib/kyc/uploadDocument";
 import { Cfs } from "@/types/cfs";
 import { ConfigItem } from "@/types/configuration";
@@ -232,7 +233,9 @@ export default function ImportJobEditDrawer({
     if (form.locationType === "sez" && !form.sez?.trim()) {
       next.location = "SEZ is required.";
     }
-    Object.assign(next, validateFreightContainers(containers));
+    if (getShipmentMode(form) !== "air") {
+      Object.assign(next, validateFreightContainers(containers));
+    }
     otherDocs.forEach((doc, index) => {
       if (doc.file && !doc.name.trim()) {
         next[`otherDocs.${index}`] = "Document name is required.";
@@ -285,13 +288,17 @@ export default function ImportJobEditDrawer({
         locationType: form.locationType ?? "cfs",
         cfs: form.cfs ?? "",
         sez: form.sez ?? "",
-        containers: containers.map((entry) => ({
-          ...entry,
-          containerNumber: normalizeContainerNumber(entry.containerNumber),
-        })),
-        containerNumber: normalizeContainerNumber(
-          containers[0]?.containerNumber
-        ),
+        containers:
+          getShipmentMode(form) === "air"
+            ? []
+            : containers.map((entry) => ({
+                ...entry,
+                containerNumber: normalizeContainerNumber(entry.containerNumber),
+              })),
+        containerNumber:
+          getShipmentMode(form) === "air"
+            ? ""
+            : normalizeContainerNumber(containers[0]?.containerNumber),
         containerSize: containers[0]?.containerSize ?? "",
         containerType: containers[0]?.containerType ?? "",
         liner: form.liner?.trim() ?? "",
@@ -608,7 +615,10 @@ export default function ImportJobEditDrawer({
               setMblFile(file);
               if (file) setMblDoc(undefined);
             }}
-            onClearMblDoc={() => setMblDoc(undefined)}
+            onClearMblDoc={() => {
+              void deleteStorageFileByUrl(mblDoc?.url);
+              setMblDoc(undefined);
+            }}
             onHblChange={(index, next) => {
               const items = [...hblDrafts];
               items[index] = next;
@@ -620,6 +630,12 @@ export default function ImportJobEditDrawer({
             onRemoveHbl={(index) =>
               setHblDrafts((current) => current.filter((_, i) => i !== index))
             }
+            onClearHblFile={(index) => {
+              const items = [...hblDrafts];
+              void deleteStorageFileByUrl(items[index]?.existing?.url);
+              items[index] = { ...items[index], existing: undefined, file: null };
+              setHblDrafts(items);
+            }}
             onContainerChange={updateContainer}
             onAddContainer={() =>
               setForm({
@@ -656,11 +672,13 @@ export default function ImportJobEditDrawer({
                   {!readOnly && (
                     <button
                       type="button"
-                      onClick={() =>
+                      onClick={() => {
+                        const target = existingOtherDocs[index];
+                        void deleteStorageFileByUrl(target?.url);
                         setExistingOtherDocs((current) =>
                           current.filter((_, i) => i !== index)
-                        )
-                      }
+                        );
+                      }}
                       className="rounded-lg border border-zinc-200 px-2 py-1 text-[11px] text-zinc-500"
                     >
                       <X size={12} />

@@ -34,6 +34,7 @@ import {
   completeImportTransport,
   addImportSectionRemark,
   getImportLinerRecords,
+  saveImportTransportDraft,
   updateImportTransportCfsReached,
   updateImportTransportPortDirection,
 } from "@/lib/freightForward/freightForward";
@@ -43,6 +44,7 @@ import {
   canTakeTransportAction,
   computeImportTransportCounts,
   getImportTransportRecords,
+  getImportTruckDetails,
   ImportTransportCard,
   isImportTransportCompleted,
   matchesImportTransportCard,
@@ -58,7 +60,7 @@ import {
   ImportSortKey,
   toggleImportSort,
 } from "@/lib/import/sortImportRecords";
-import { FreightForward, ImportCfsReachedStatus, ImportPortDirection } from "@/types/freightForward";
+import { FreightForward, ImportCfsReachedStatus, ImportPortDirection, ImportScanningResult, ImportTruckDetail } from "@/types/freightForward";
 
 const PAGE_SIZE = 10;
 
@@ -126,7 +128,7 @@ export default function ImportTransportPage() {
     label: string;
     value: number;
   }[] = [
-    { key: "incomplete", label: "Incomplete", value: counts.incomplete },
+    { key: "incomplete", label: "Joblist", value: counts.incomplete },
     { key: "boeFiled", label: "BOE Filed", value: counts.boeFiled },
     { key: "boeUnfiled", label: "BOE Unfiled", value: counts.boeUnfiled },
     { key: "completed", label: "Completed", value: counts.completed },
@@ -461,45 +463,43 @@ function TruckDetailCard({
   onUpdated: (item: FreightForward) => void;
 }) {
   const editable = actionable && canAct && !completed;
-  const [stash, setStash] = useState<boolean>(
-    typeof item.importTruckStash === "boolean" ? item.importTruckStash : false
+  const [trucks, setTrucks] = useState<ImportTruckDetail[]>(() =>
+    getImportTruckDetails(item)
   );
-  const [transporter, setTransporter] = useState(item.importTransporter ?? "");
-  const [vehicleNo, setVehicleNo] = useState(item.importVehicleNo ?? "");
-  const [driverName, setDriverName] = useState(item.importDriverName ?? "");
-  const [phone, setPhone] = useState(item.importDriverPhone ?? "");
-  const [scanning, setScanning] = useState(item.importScanningEnabled === true);
 
   useEffect(() => {
-    setStash(
-      typeof item.importTruckStash === "boolean" ? item.importTruckStash : false
-    );
-    setTransporter(item.importTransporter ?? "");
-    setVehicleNo(item.importVehicleNo ?? "");
-    setDriverName(item.importDriverName ?? "");
-    setPhone(item.importDriverPhone ?? "");
-    setScanning(item.importScanningEnabled === true);
+    setTrucks(getImportTruckDetails(item));
   }, [item]);
+
+  const updateTruck = (index: number, patch: Partial<ImportTruckDetail>) => {
+    setTrucks((current) =>
+      current.map((truck, i) => (i === index ? { ...truck, ...patch } : truck))
+    );
+  };
+
+  const saveDraft = async () => {
+    if (!item.id) return;
+    onBusy(item.id);
+    onError("");
+    try {
+      onUpdated(await saveImportTransportDraft(item.id, trucks, username));
+    } catch (updateError) {
+      onError(
+        updateError instanceof Error
+          ? updateError.message
+          : "Unable to save Transport."
+      );
+    } finally {
+      onBusy(null);
+    }
+  };
 
   const complete = async () => {
     if (!item.id) return;
     onBusy(item.id);
     onError("");
     try {
-      onUpdated(
-        await completeImportTransport(
-          item.id,
-          {
-            importTransporter: transporter,
-            importTruckStash: stash,
-            importVehicleNo: vehicleNo,
-            importDriverName: driverName,
-            importDriverPhone: phone,
-            importScanningEnabled: scanning,
-          },
-          username
-        )
-      );
+      onUpdated(await completeImportTransport(item.id, trucks, username));
     } catch (updateError) {
       onError(
         updateError instanceof Error
@@ -510,6 +510,15 @@ function TruckDetailCard({
       onBusy(null);
     }
   };
+
+  const allTrucksReady = trucks.every(
+    (truck) =>
+      Boolean(truck.importTransporter?.trim()) &&
+      Boolean(truck.importVehicleNo?.trim()) &&
+      Boolean(truck.importDriverName?.trim()) &&
+      Boolean(truck.importDriverPhone?.trim()) &&
+      (!truck.importScanningEnabled || Boolean(truck.importScanningResult))
+  );
 
   return (
     <div className="min-w-0 overflow-hidden rounded-xl border border-zinc-200 bg-white">
@@ -522,7 +531,7 @@ function TruckDetailCard({
         </h3>
       </div>
       <section
-        className="max-w-xl p-4"
+        className="max-w-xl space-y-3 p-4"
         onClick={(event) => event.stopPropagation()}
       >
         {!actionable && !completed && (
@@ -537,109 +546,156 @@ function TruckDetailCard({
           </span>
           <h3 className="text-sm font-semibold text-zinc-900">Truck status</h3>
         </div>
-        <div className="mt-3 flex gap-4 text-xs">
-          <label className="inline-flex items-center gap-1.5">
-            <input
-              type="radio"
-              name={`stash-${item.id}`}
-              checked={stash === true}
-              disabled={busy || !editable}
-              onChange={() => setStash(true)}
-            />
-            Yes
-          </label>
-          <label className="inline-flex items-center gap-1.5">
-            <input
-              type="radio"
-              name={`stash-${item.id}`}
-              checked={stash === false}
-              disabled={busy || !editable}
-              onChange={() => setStash(false)}
-            />
-            No
-          </label>
-        </div>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          <label className="block text-xs sm:col-span-2">
-            <span className="font-medium text-zinc-700">Transporter</span>
-            <input
-              value={transporter}
-              disabled={busy || !editable}
-              onChange={(event) => setTransporter(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
-            />
-          </label>
-          <label className="block text-xs">
-            <span className="font-medium text-zinc-700">Vehicle No</span>
-            <input
-              value={vehicleNo}
-              disabled={busy || !editable}
-              onChange={(event) => setVehicleNo(event.target.value.toUpperCase())}
-              className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
-            />
-          </label>
-          <label className="block text-xs">
-            <span className="font-medium text-zinc-700">Driver name</span>
-            <input
-              value={driverName}
-              disabled={busy || !editable}
-              onChange={(event) => setDriverName(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
-            />
-          </label>
-          <label className="block text-xs sm:col-span-2">
-            <span className="font-medium text-zinc-700">Ph no</span>
-            <input
-              value={phone}
-              disabled={busy || !editable}
-              onChange={(event) =>
-                setPhone(event.target.value.replace(/\D/g, "").slice(0, 10))
-              }
-              placeholder="10 digits"
-              className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
-            />
-          </label>
-        </div>
-        <div className="mt-3 space-y-1.5 text-xs">
-          <p className="font-medium text-zinc-700">Scanning</p>
-          <div className="flex gap-4">
-            <label className="inline-flex items-center gap-1.5">
-              <input
-                type="radio"
-                name={`scan-${item.id}`}
-                checked={scanning === true}
-                disabled={busy || !editable}
-                onChange={() => setScanning(true)}
-              />
-              Yes
-            </label>
-            <label className="inline-flex items-center gap-1.5">
-              <input
-                type="radio"
-                name={`scan-${item.id}`}
-                checked={scanning === false}
-                disabled={busy || !editable}
-                onChange={() => setScanning(false)}
-              />
-              No
-            </label>
+        {trucks.map((truck, index) => (
+          <div key={index} className="rounded-lg border border-zinc-200 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+              Truck {index + 1}
+              {truck.containerNumber ? ` — ${truck.containerNumber}` : ""}
+            </p>
+            <div className="mt-3 flex gap-4 text-xs">
+              <span className="font-medium text-zinc-700">Stash</span>
+              <label className="inline-flex items-center gap-1.5">
+                <input
+                  type="radio"
+                  name={`stash-${item.id}-${index}`}
+                  checked={truck.importTruckStash === true}
+                  disabled={busy || !editable}
+                  onChange={() => updateTruck(index, { importTruckStash: true })}
+                />
+                Yes
+              </label>
+              <label className="inline-flex items-center gap-1.5">
+                <input
+                  type="radio"
+                  name={`stash-${item.id}-${index}`}
+                  checked={truck.importTruckStash !== true}
+                  disabled={busy || !editable}
+                  onChange={() => updateTruck(index, { importTruckStash: false })}
+                />
+                No
+              </label>
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <label className="block text-xs sm:col-span-2">
+                <span className="font-medium text-zinc-700">Transporter</span>
+                <input
+                  value={truck.importTransporter ?? ""}
+                  disabled={busy || !editable}
+                  onChange={(event) =>
+                    updateTruck(index, { importTransporter: event.target.value })
+                  }
+                  className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
+                />
+              </label>
+              <label className="block text-xs">
+                <span className="font-medium text-zinc-700">Vehicle No</span>
+                <input
+                  value={truck.importVehicleNo ?? ""}
+                  disabled={busy || !editable}
+                  onChange={(event) =>
+                    updateTruck(index, {
+                      importVehicleNo: event.target.value.toUpperCase(),
+                    })
+                  }
+                  className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
+                />
+              </label>
+              <label className="block text-xs">
+                <span className="font-medium text-zinc-700">Driver name</span>
+                <input
+                  value={truck.importDriverName ?? ""}
+                  disabled={busy || !editable}
+                  onChange={(event) =>
+                    updateTruck(index, { importDriverName: event.target.value })
+                  }
+                  className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
+                />
+              </label>
+              <label className="block text-xs sm:col-span-2">
+                <span className="font-medium text-zinc-700">Ph no</span>
+                <input
+                  value={truck.importDriverPhone ?? ""}
+                  disabled={busy || !editable}
+                  onChange={(event) =>
+                    updateTruck(index, {
+                      importDriverPhone: event.target.value.replace(/\D/g, "").slice(0, 10),
+                    })
+                  }
+                  placeholder="10 digits"
+                  className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
+                />
+              </label>
+            </div>
+            <div className="mt-3 space-y-1.5 text-xs">
+              <p className="font-medium text-zinc-700">Scanning</p>
+              <div className="flex gap-4">
+                <label className="inline-flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    name={`scan-${item.id}-${index}`}
+                    checked={truck.importScanningEnabled === true}
+                    disabled={busy || !editable}
+                    onChange={() => updateTruck(index, { importScanningEnabled: true })}
+                  />
+                  Yes
+                </label>
+                <label className="inline-flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    name={`scan-${item.id}-${index}`}
+                    checked={truck.importScanningEnabled !== true}
+                    disabled={busy || !editable}
+                    onChange={() =>
+                      updateTruck(index, {
+                        importScanningEnabled: false,
+                        importScanningResult: undefined,
+                      })
+                    }
+                  />
+                  No
+                </label>
+              </div>
+              {truck.importScanningEnabled && (
+                <label className="mt-2 block text-xs">
+                  <span className="font-medium text-zinc-700">Scanning result</span>
+                  <select
+                    value={truck.importScanningResult ?? ""}
+                    disabled={busy || !editable}
+                    onChange={(event) =>
+                      updateTruck(index, {
+                        importScanningResult: event.target.value as ImportScanningResult,
+                      })
+                    }
+                    className="mt-1 w-full max-w-xs rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
+                  >
+                    <option value="">Select</option>
+                    <option value="clean">Clean</option>
+                    <option value="mismatch">Mismatch</option>
+                  </select>
+                </label>
+              )}
+            </div>
           </div>
-        </div>
+        ))}
         {!completed && editable && (
-          <button
-            type="button"
-            disabled={
-              busy ||
-              !transporter.trim() ||
-              !vehicleNo.trim() ||
-              !driverName.trim() ||
-              !phone.trim()
-            }
-            onClick={() => void complete()}
-            className="mt-3 rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
-          >
-            Complete
-          </button>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void saveDraft()}
+              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-[10px] font-semibold text-zinc-700 disabled:opacity-40"
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              disabled={busy || !allTrucksReady}
+              onClick={() => void complete()}
+              className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
+            >
+              Complete
+            </button>
+          </div>
         )}
         <ImportAuditLine audit={item.importTransportCompleteAudit} />
       </section>

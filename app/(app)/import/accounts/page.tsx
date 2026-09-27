@@ -128,7 +128,7 @@ export default function ImportAccountsPage() {
     label: string;
     value: number;
   }[] = [
-    { key: "inProcess", label: "In Process", value: counts.inProcess },
+    { key: "inProcess", label: "Joblist", value: counts.inProcess },
     {
       key: "billingPending",
       label: "Billing Pending",

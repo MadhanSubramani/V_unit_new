@@ -43,6 +43,7 @@ import {
   revertImportBoeInAdmin,
   saveImportBoeInInward,
   saveImportNamedAttachment,
+  clearImportNamedAttachment,
   updateImportBoeChecklist,
   updateImportBoeFiling,
 } from "@/lib/freightForward/freightForward";
@@ -140,7 +141,7 @@ export default function ImportBoeInPage() {
     label: string;
     value: string | number;
   }[] = [
-    { key: "inProcess", label: "In Process", value: counts.inProcess },
+    { key: "inProcess", label: "Joblist", value: counts.inProcess },
     {
       key: "pendingChecklist",
       label: "Pending Checklist",
@@ -638,6 +639,17 @@ function BoeExpansion({
                 <ImportDocumentLink
                   label="Checklist file"
                   doc={item.importBoeChecklistAttachment}
+                  removeDisabled={busy || readOnly}
+                  onRemove={() => {
+                    if (!item.id || readOnly) return;
+                    void run(() =>
+                      clearImportNamedAttachment(
+                        item.id!,
+                        "importBoeChecklistAttachment",
+                        username
+                      )
+                    );
+                  }}
                 />
               ) : (
                 <FileInputWithClip

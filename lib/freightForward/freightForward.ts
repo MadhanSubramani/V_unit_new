@@ -30,6 +30,9 @@ import {
   ImportBoeOutDutyStatus,
   ImportBoeOutInwardOccStatus,
   ImportCfsReachedStatus,
+  ImportTTypeEntry,
+  ImportTruckDetail,
+  ImportVehicleChange,
   ImportDoRemarkCategory,
   ImportDoStatus,
   ImportFreeRemark,
@@ -83,7 +86,12 @@ import {
   isBoeChecklistComplete,
   isImportBoeInCompleted,
 } from "@/lib/import/boeInWorkflow";
-import { isImportTransportCompleted } from "@/lib/import/transportWorkflow";
+import {
+  getImportTruckDetails,
+  getImportVehicleChanges,
+  isImportTransportCompleted,
+  isVehicleChangeComplete,
+} from "@/lib/import/transportWorkflow";
 import {
   canUnlockImportDutySection,
   canUnlockImportEwaySection,
@@ -92,7 +100,11 @@ import {
   isImportBoeOutDispatched,
   isImportBoeOutInwardOccDone,
   isImportTTypeBoeSaved,
+  isImportTTypeSectionCompleted,
+  isTTypeEntryCompleted,
+  T_TYPE_CLEARANCE_VALUES,
 } from "@/lib/import/boeOutWorkflow";
+import { deleteStorageFileByUrl } from "@/lib/freightForward/deleteStorage";
 
 const REF = () => collection(db, "freightForward");
 
@@ -392,6 +404,8 @@ export async function updateFreightForward(
   Object.assign(patch, buildFreightSearchIndex(mergedForSearch));
 
   const cleaned: Record<string, unknown> = stripUndefined(patch);
+  if ("mblUrl" in data && !data.mblUrl) cleaned.mblUrl = deleteField();
+  if ("hblUrl" in data && !data.hblUrl) cleaned.hblUrl = deleteField();
 
   // When switching CFS ↔ SEZ, clear the unused field. Omitting it leaves the
   // old value in Firestore, so view/list keep showing the previous location.
@@ -1211,16 +1225,93 @@ export async function updateImportTransportCfsReached(
   } as FreightForward;
 }
 
+function normalizeOneTruck(
+  data: ImportTruckDetail,
+  requireComplete: boolean,
+  index: number
+): ImportTruckDetail {
+  const importVehicleNo = (data.importVehicleNo ?? "").trim();
+  const importDriverName = (data.importDriverName ?? "").trim();
+  const importDriverPhone = (data.importDriverPhone ?? "").trim();
+  const importTransporter = (data.importTransporter ?? "").trim();
+  const importScanningEnabled = data.importScanningEnabled ?? false;
+  const importScanningResult = importScanningEnabled
+    ? data.importScanningResult === "clean" || data.importScanningResult === "mismatch"
+      ? data.importScanningResult
+      : undefined
+    : undefined;
+
+  if (requireComplete) {
+    const label = `Truck ${index + 1}`;
+    if (!importTransporter) throw new Error(`${label}: Transporter is required.`);
+    if (!importVehicleNo) throw new Error(`${label}: Vehicle No is required.`);
+    if (!importDriverName) throw new Error(`${label}: Driver name is required.`);
+    if (!importDriverPhone) throw new Error(`${label}: Phone number is required.`);
+    if (importScanningEnabled && !importScanningResult) {
+      throw new Error(`${label}: Select Clean or Mismatch for scanning.`);
+    }
+  }
+
+  return {
+    containerNumber: data.containerNumber ?? "",
+    importTransporter,
+    importTruckStash: data.importTruckStash ?? false,
+    importVehicleNo,
+    importDriverName,
+    importDriverPhone,
+    importScanningEnabled,
+    importScanningResult,
+  };
+}
+
+function trucksToLegacyPatch(trucks: ImportTruckDetail[]) {
+  const first = trucks[0] ?? {};
+  return {
+    importTruckDetails: trucks,
+    importTransporter: first.importTransporter ?? "",
+    importTruckStash: first.importTruckStash ?? false,
+    importVehicleNo: first.importVehicleNo ?? "",
+    importDriverName: first.importDriverName ?? "",
+    importDriverPhone: first.importDriverPhone ?? "",
+    importScanningEnabled: first.importScanningEnabled ?? false,
+    importScanningResult: first.importScanningResult,
+  };
+}
+
+export async function saveImportTransportDraft(
+  id: string,
+  trucks: ImportTruckDetail[],
+  updatedBy: string
+) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  if (!isImportBoeInCompleted(before)) {
+    throw new Error("Complete BOE In before updating Transport.");
+  }
+  if (isImportTransportCompleted(before)) {
+    throw new Error("Transport is already completed.");
+  }
+
+  const normalized = trucks.map((truck, index) =>
+    normalizeOneTruck(truck, false, index)
+  );
+  const patch = trucksToLegacyPatch(normalized);
+  await updateDoc(docRef, {
+    ...patch,
+    importScanningResult: patch.importScanningResult ?? deleteField(),
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+  return {
+    ...before,
+    ...patch,
+    updatedBy,
+  } as FreightForward;
+}
+
 export async function completeImportTransport(
   id: string,
-  data: {
-    importTransporter?: string;
-    importTruckStash: boolean;
-    importVehicleNo: string;
-    importDriverName: string;
-    importDriverPhone: string;
-    importScanningEnabled?: boolean;
-  },
+  trucks: ImportTruckDetail[],
   updatedBy: string
 ) {
   const { docRef, before } = await loadActiveImportJob(id);
@@ -1228,24 +1319,14 @@ export async function completeImportTransport(
     throw new Error("Complete BOE In before updating Transport.");
   }
 
-  const importVehicleNo = data.importVehicleNo.trim();
-  const importDriverName = data.importDriverName.trim();
-  const importDriverPhone = data.importDriverPhone.trim();
-  const importTransporter = data.importTransporter?.trim() ?? "";
-  if (!importTransporter) throw new Error("Transporter is required.");
-  if (!importVehicleNo) throw new Error("Vehicle No is required.");
-  if (!importDriverName) throw new Error("Driver name is required.");
-  if (!importDriverPhone) throw new Error("Phone number is required.");
-
+  const normalized = trucks.map((truck, index) =>
+    normalizeOneTruck(truck, true, index)
+  );
+  const patch = trucksToLegacyPatch(normalized);
   const audit = stamp(updatedBy);
-  const importScanningEnabled = data.importScanningEnabled ?? false;
   await updateDoc(docRef, {
-    importTransporter,
-    importTruckStash: data.importTruckStash,
-    importVehicleNo,
-    importDriverName,
-    importDriverPhone,
-    importScanningEnabled,
+    ...patch,
+    importScanningResult: patch.importScanningResult ?? deleteField(),
     importTransportCompleted: true,
     importTransportCompleteAudit: audit,
     updatedBy,
@@ -1255,12 +1336,7 @@ export async function completeImportTransport(
 
   return {
     ...before,
-    importTransporter,
-    importTruckStash: data.importTruckStash,
-    importVehicleNo,
-    importDriverName,
-    importDriverPhone,
-    importScanningEnabled,
+    ...patch,
     importTransportCompleted: true,
     importTransportCompleteAudit: audit,
     updatedBy,
@@ -1310,11 +1386,7 @@ export async function updateImportBoeOutInwardOcc(
 
 export async function saveImportTTypeBoe(
   id: string,
-  data: {
-    importTTypeBoeNo: string;
-    importTTypeBoeDate: string;
-    importTTypeBoeClearanceStatus: ImportBoeClearanceStatus;
-  },
+  entries: ImportTTypeEntry[],
   updatedBy: string
 ) {
   const { docRef, before } = await loadActiveImportJob(id);
@@ -1326,26 +1398,65 @@ export async function saveImportTTypeBoe(
     throw new Error("Mark Inward OCC before saving T type BE.");
   }
 
-  const importTTypeBoeNo = data.importTTypeBoeNo.trim();
-  if (!INWARD_BOE_NO_REGEX.test(importTTypeBoeNo)) {
-    throw new Error("T type No must be 7 digits.");
-  }
-  const importTTypeBoeDate = data.importTTypeBoeDate.trim().slice(0, 10);
-  if (!importTTypeBoeDate) throw new Error("Date is required.");
-  const allowed = ["rms", "open", "ins", "psc", "sup", "ooc"];
-  if (!allowed.includes(data.importTTypeBoeClearanceStatus)) {
-    throw new Error("Select a valid T type status.");
+  const cleaned: ImportTTypeEntry[] = [];
+  for (const entry of entries) {
+    const boeNo = entry.boeNo.trim();
+    const boeDate = entry.boeDate.trim().slice(0, 10);
+    const weight = entry.weight?.trim() ?? "";
+    const packages = entry.packages?.trim() ?? "";
+    const statuses = (entry.statuses ?? []).map((row) => {
+      const status =
+        row.status === "psc" ? "pcv" : row.status;
+      if (!(T_TYPE_CLEARANCE_VALUES as readonly string[]).includes(status)) {
+        throw new Error("Select a valid T type status.");
+      }
+      return {
+        status,
+        date: (row.date || boeDate).trim().slice(0, 10),
+        updatedBy: row.updatedBy || updatedBy,
+        updatedAt: row.updatedAt,
+      };
+    });
+    if (!boeNo && !boeDate && !weight && !packages && !statuses.length) {
+      continue;
+    }
+    if (!INWARD_BOE_NO_REGEX.test(boeNo)) {
+      throw new Error("T type No must be 7 digits.");
+    }
+    if (!boeDate) throw new Error("Date is required.");
+    const completed = isTTypeEntryCompleted({
+      ...entry,
+      boeNo,
+      boeDate,
+      statuses,
+    });
+    cleaned.push({
+      id: entry.id || `tt-${Date.now().toString(36)}`,
+      boeNo,
+      boeDate,
+      weight,
+      packages,
+      statuses,
+      completed,
+    });
   }
 
+  if (!cleaned.length) {
+    throw new Error("Add at least one T type BE.");
+  }
+
+  const first = cleaned[0];
+  const lastStatus = first.statuses.at(-1)?.status;
+  const allCompleted = cleaned.every(isTTypeEntryCompleted);
   const audit = stamp(updatedBy);
   await updateDoc(docRef, {
-    importTTypeBoeNo,
-    importTTypeBoeDate,
-    importTTypeBoeClearanceStatus: data.importTTypeBoeClearanceStatus,
+    importTTypeEntries: cleaned,
+    importTTypeBoeNo: first.boeNo,
+    importTTypeBoeDate: first.boeDate,
+    importTTypeBoeClearanceStatus: lastStatus ?? deleteField(),
     importTTypeBoeSaved: true,
     importTTypeBoeSaveAudit: audit,
-    importTTypeOocCompleted:
-      data.importTTypeBoeClearanceStatus === "ooc" ? false : deleteField(),
+    importTTypeOocCompleted: allCompleted ? true : deleteField(),
     updatedBy,
     updatedAt: serverTimestamp(),
   });
@@ -1353,13 +1464,13 @@ export async function saveImportTTypeBoe(
 
   return {
     ...before,
-    importTTypeBoeNo,
-    importTTypeBoeDate,
-    importTTypeBoeClearanceStatus: data.importTTypeBoeClearanceStatus,
+    importTTypeEntries: cleaned,
+    importTTypeBoeNo: first.boeNo,
+    importTTypeBoeDate: first.boeDate,
+    importTTypeBoeClearanceStatus: lastStatus,
     importTTypeBoeSaved: true,
     importTTypeBoeSaveAudit: audit,
-    importTTypeOocCompleted:
-      data.importTTypeBoeClearanceStatus === "ooc" ? false : before.importTTypeOocCompleted,
+    importTTypeOocCompleted: allCompleted ? true : undefined,
     updatedBy,
   } as FreightForward;
 }
@@ -1463,7 +1574,8 @@ export async function addImportSectionRemark(
 export async function updateImportBoeOutDuty(
   id: string,
   status: ImportBoeOutDutyStatus,
-  updatedBy: string
+  updatedBy: string,
+  extras?: { accValue?: string; dutyAmt?: string }
 ) {
   const { docRef, before } = await loadActiveImportJob(id);
   requireImportTransportCompleted(before);
@@ -1471,16 +1583,24 @@ export async function updateImportBoeOutDuty(
     throw new Error("T type BE job is already dispatched.");
   }
   if (!canUnlockImportDutySection(before)) {
-    throw new Error("Save T type BE before updating duty.");
+    throw new Error("Complete all T type BEs before updating duty.");
   }
   if (!["pending", "paid", "final"].includes(status)) {
     throw new Error("Invalid duty status.");
+  }
+
+  const accValue = (extras?.accValue ?? before.importBoeOutDutyAccValue ?? "").trim();
+  const dutyAmt = (extras?.dutyAmt ?? before.importBoeOutDutyAmt ?? "").trim();
+  if (status === "final" && (!accValue || !dutyAmt)) {
+    throw new Error("Enter Acc value and Duty amt before marking Final.");
   }
 
   const audit = stamp(updatedBy);
   await updateDoc(docRef, {
     importBoeOutDutyStatus: status,
     importBoeOutDutyAudit: audit,
+    importBoeOutDutyAccValue: accValue || deleteField(),
+    importBoeOutDutyAmt: dutyAmt || deleteField(),
     updatedBy,
     updatedAt: serverTimestamp(),
   });
@@ -1490,6 +1610,8 @@ export async function updateImportBoeOutDuty(
     ...before,
     importBoeOutDutyStatus: status,
     importBoeOutDutyAudit: audit,
+    importBoeOutDutyAccValue: accValue || undefined,
+    importBoeOutDutyAmt: dutyAmt || undefined,
     updatedBy,
   } as FreightForward;
 }
@@ -1506,18 +1628,33 @@ export async function changeImportBoeOutVehicle(id: string, updatedBy: string) {
   if (before.importBoeOutVehicleChanged) {
     throw new Error("Vehicle change is allowed only once.");
   }
-  if (!before.importVehicleNo?.trim()) {
+  const trucks = getImportTruckDetails(before);
+  if (!trucks.some((truck) => truck.importVehicleNo?.trim())) {
     throw new Error("Transport vehicle details are missing.");
   }
+
+  const changes: ImportVehicleChange[] = trucks.map((truck) => ({
+    containerNumber: truck.containerNumber ?? "",
+    oldTransporter: truck.importTransporter ?? "",
+    oldVehicleNo: truck.importVehicleNo ?? "",
+    oldDriverName: truck.importDriverName ?? "",
+    oldDriverPhone: truck.importDriverPhone ?? "",
+    newTransporter: "",
+    newVehicleNo: "",
+    newDriverName: "",
+    newDriverPhone: "",
+  }));
+  const first = changes[0];
 
   const audit = stamp(updatedBy);
   await updateDoc(docRef, {
     importBoeOutVehicleChanged: true,
     importBoeOutVehicleChangeAudit: audit,
-    importBoeOutOldTransporter: before.importTransporter ?? "",
-    importBoeOutOldVehicleNo: before.importVehicleNo ?? "",
-    importBoeOutOldDriverName: before.importDriverName ?? "",
-    importBoeOutOldDriverPhone: before.importDriverPhone ?? "",
+    importBoeOutVehicleChanges: changes,
+    importBoeOutOldTransporter: first?.oldTransporter ?? "",
+    importBoeOutOldVehicleNo: first?.oldVehicleNo ?? "",
+    importBoeOutOldDriverName: first?.oldDriverName ?? "",
+    importBoeOutOldDriverPhone: first?.oldDriverPhone ?? "",
     importBoeOutNewTransporter: "",
     importBoeOutNewVehicleNo: "",
     importBoeOutNewDriverName: "",
@@ -1536,12 +1673,7 @@ export async function changeImportBoeOutVehicle(id: string, updatedBy: string) {
 
 export async function updateImportBoeOutNewVehicle(
   id: string,
-  data: {
-    importBoeOutNewTransporter: string;
-    importBoeOutNewVehicleNo: string;
-    importBoeOutNewDriverName: string;
-    importBoeOutNewDriverPhone: string;
-  },
+  changes: ImportVehicleChange[],
   updatedBy: string
 ) {
   const { docRef, before } = await loadActiveImportJob(id);
@@ -1553,20 +1685,31 @@ export async function updateImportBoeOutNewVehicle(
     throw new Error("Start vehicle change first.");
   }
 
-  const importBoeOutNewTransporter = data.importBoeOutNewTransporter.trim();
-  const importBoeOutNewVehicleNo = data.importBoeOutNewVehicleNo.trim();
-  const importBoeOutNewDriverName = data.importBoeOutNewDriverName.trim();
-  const importBoeOutNewDriverPhone = data.importBoeOutNewDriverPhone.trim();
-  if (!importBoeOutNewTransporter) throw new Error("Transporter is required.");
-  if (!importBoeOutNewVehicleNo) throw new Error("Vehicle No is required.");
-  if (!importBoeOutNewDriverName) throw new Error("Driver name is required.");
-  if (!importBoeOutNewDriverPhone) throw new Error("Phone number is required.");
+  const cleaned = changes.map((change, index) => {
+    const row: ImportVehicleChange = {
+      containerNumber: change.containerNumber ?? "",
+      oldTransporter: change.oldTransporter ?? "",
+      oldVehicleNo: change.oldVehicleNo ?? "",
+      oldDriverName: change.oldDriverName ?? "",
+      oldDriverPhone: change.oldDriverPhone ?? "",
+      newTransporter: (change.newTransporter ?? "").trim(),
+      newVehicleNo: (change.newVehicleNo ?? "").trim(),
+      newDriverName: (change.newDriverName ?? "").trim(),
+      newDriverPhone: (change.newDriverPhone ?? "").trim(),
+    };
+    if (!isVehicleChangeComplete(row)) {
+      throw new Error(`Vehicle ${index + 1}: complete new vehicle details.`);
+    }
+    return row;
+  });
+  const first = cleaned[0];
 
   await updateDoc(docRef, {
-    importBoeOutNewTransporter,
-    importBoeOutNewVehicleNo,
-    importBoeOutNewDriverName,
-    importBoeOutNewDriverPhone,
+    importBoeOutVehicleChanges: cleaned,
+    importBoeOutNewTransporter: first?.newTransporter ?? "",
+    importBoeOutNewVehicleNo: first?.newVehicleNo ?? "",
+    importBoeOutNewDriverName: first?.newDriverName ?? "",
+    importBoeOutNewDriverPhone: first?.newDriverPhone ?? "",
     updatedBy,
     updatedAt: serverTimestamp(),
   });
@@ -1574,10 +1717,11 @@ export async function updateImportBoeOutNewVehicle(
 
   return {
     ...before,
-    importBoeOutNewTransporter,
-    importBoeOutNewVehicleNo,
-    importBoeOutNewDriverName,
-    importBoeOutNewDriverPhone,
+    importBoeOutVehicleChanges: cleaned,
+    importBoeOutNewTransporter: first?.newTransporter ?? "",
+    importBoeOutNewVehicleNo: first?.newVehicleNo ?? "",
+    importBoeOutNewDriverName: first?.newDriverName ?? "",
+    importBoeOutNewDriverPhone: first?.newDriverPhone ?? "",
     updatedBy,
   } as FreightForward;
 }
@@ -1591,18 +1735,15 @@ export async function dispatchImportBoeOut(id: string, updatedBy: string) {
   if (!isImportBoeOutInwardOccDone(before)) {
     throw new Error("Complete Inward OCC before dispatch.");
   }
-  if (!isImportTTypeBoeSaved(before)) {
-    throw new Error("Save T type BE before dispatch.");
+  if (!isImportTTypeSectionCompleted(before)) {
+    throw new Error("Complete all T type BEs before dispatch.");
   }
   if (getImportBoeOutDutyStatus(before) !== "final") {
     throw new Error("Mark duty as Final before dispatch.");
   }
   if (
     before.importBoeOutVehicleChanged &&
-    (!before.importBoeOutNewVehicleNo?.trim() ||
-      !before.importBoeOutNewDriverName?.trim() ||
-      !before.importBoeOutNewDriverPhone?.trim() ||
-      !before.importBoeOutNewTransporter?.trim())
+    !getImportVehicleChanges(before).every(isVehicleChangeComplete)
   ) {
     throw new Error("Complete new vehicle details before dispatch.");
   }
@@ -1791,6 +1932,27 @@ export async function setImportOtherDocuments(
   });
   invalidateFreightForwardListCache();
   return { ...before, otherDocuments: documents, updatedBy };
+}
+
+export async function clearImportNamedAttachment(
+  id: string,
+  field:
+    | "importIgmAttachment"
+    | "importDoEmptyAttachment"
+    | "importDoPortAttachment"
+    | "importBoeChecklistAttachment",
+  updatedBy: string
+) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  const existing = before[field];
+  await deleteStorageFileByUrl(existing?.url);
+  await updateDoc(docRef, {
+    [field]: deleteField(),
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+  return { ...before, [field]: undefined, updatedBy } as FreightForward;
 }
 
 export async function saveImportNamedAttachment(

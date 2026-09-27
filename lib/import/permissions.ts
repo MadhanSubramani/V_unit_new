@@ -1,10 +1,11 @@
 import type {
+  AppModuleKey,
   ImportModuleKey,
   ImportSessionUser,
 } from "@/types/importRoles";
 
-export type { ImportModuleKey, ImportSessionUser } from "@/types/importRoles";
-export { IMPORT_MODULE_OPTIONS } from "@/types/importRoles";
+export type { AppModuleKey, ImportModuleKey, ImportSessionUser } from "@/types/importRoles";
+export { APP_MODULE_OPTIONS, IMPORT_MODULE_OPTIONS } from "@/types/importRoles";
 
 export function parseImportSessionUser(): ImportSessionUser | null {
   if (typeof window === "undefined") return null;
@@ -31,6 +32,17 @@ export function hasImportModuleAccess(
   const roles = user.importRoles;
   if (!roles?.length) return true;
   return roles.includes(module);
+}
+
+export function hasAppModuleAccess(
+  user: ImportSessionUser | null,
+  module: AppModuleKey
+) {
+  if (!user) return false;
+  if (isImportAdmin(user)) return true;
+  const modules = user.appModules;
+  if (!modules?.length) return true;
+  return modules.includes(module);
 }
 
 export function canExpandImportRow(

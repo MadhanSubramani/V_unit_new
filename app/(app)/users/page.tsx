@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { createUser, getUsers, deleteUserData, updateUserData, User } from "@/lib/auth";
-import { IMPORT_MODULE_OPTIONS } from "@/types/importRoles";
-import type { ImportModuleKey } from "@/types/importRoles";
+import { APP_MODULE_OPTIONS, IMPORT_MODULE_OPTIONS } from "@/types/importRoles";
+import type { AppModuleKey, ImportModuleKey } from "@/types/importRoles";
 import { getCfsList } from "@/lib/cfs/cfs";
 import { Cfs } from "@/types/cfs";
 import { Eye, EyeOff, Pencil, Trash2 ,MoreHorizontal} from "lucide-react";
@@ -36,10 +36,21 @@ export default function UsersPage() {
         password: "",
         role: "user",
         importRoles: [],
+        appModules: [],
         importCfsNames: [],
     });
 
     const [cfsList, setCfsList] = useState<Cfs[]>([]);
+
+    const toggleAppModule = (role: AppModuleKey) => {
+        setForm((current) => {
+            const existing = current.appModules ?? [];
+            const next = existing.includes(role)
+                ? existing.filter((entry) => entry !== role)
+                : [...existing, role];
+            return { ...current, appModules: next };
+        });
+    };
 
     const toggleImportRole = (role: ImportModuleKey) => {
         setForm((current) => {
@@ -114,7 +125,7 @@ export default function UsersPage() {
                 await createUser(form);
             }
 
-            setForm({ username: "", email: "", password: "", role: "user", importRoles: [], importCfsNames: [] });
+            setForm({ username: "", email: "", password: "", role: "user", importRoles: [], appModules: [], importCfsNames: [] });
             setErrors({});
             setDrawerOpen(false);
             setSelectedUser(null);
@@ -132,7 +143,7 @@ export default function UsersPage() {
 
     const openAddDrawer = () => {
         setSelectedUser(null);
-        setForm({ username: "", email: "", password: "", role: "user", importRoles: [], importCfsNames: [] });
+        setForm({ username: "", email: "", password: "", role: "user", importRoles: [], appModules: [], importCfsNames: [] });
         setErrors({});
         setSubmitError("");
         setDrawerOpen(true);
@@ -146,6 +157,7 @@ export default function UsersPage() {
             password: user.password,
             role: user.role,
             importRoles: user.importRoles ?? [],
+            appModules: user.appModules ?? [],
             importCfsNames: user.importCfsNames ?? [],
         });
         setErrors({});
@@ -509,10 +521,40 @@ export default function UsersPage() {
 
                         <div>
                             <label className="mb-2 block text-[11px] font-medium text-zinc-600">
-                                Import module access
+                                Module access
                             </label>
                             <p className="mb-2 text-[10px] text-zinc-500">
-                                Leave all unchecked for full Import access (legacy). Selected modules allow row expand and actions on that page only.
+                                Leave a group unchecked for full access to that group (legacy). Checking items limits the user to those modules.
+                            </p>
+                            {["Core", "Operations", "Freight Forward"].map((group) => (
+                                <div key={group} className="mb-3">
+                                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                                        {group}
+                                    </p>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {APP_MODULE_OPTIONS.filter((option) => option.group === group).map(
+                                            (option) => {
+                                                const checked = (form.appModules ?? []).includes(option.value);
+                                                return (
+                                                    <label
+                                                        key={option.value}
+                                                        className="flex items-center gap-2 rounded-lg border border-zinc-200 px-2.5 py-2 text-[11px] text-zinc-700"
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={checked}
+                                                            onChange={() => toggleAppModule(option.value)}
+                                                        />
+                                                        {option.label}
+                                                    </label>
+                                                );
+                                            }
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                                Import
                             </p>
                             <div className="grid grid-cols-2 gap-2">
                                 {IMPORT_MODULE_OPTIONS.map((option) => {

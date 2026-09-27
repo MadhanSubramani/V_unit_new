@@ -40,6 +40,7 @@ export function ImportJobShipmentBlock({
   onHblChange,
   onAddHbl,
   onRemoveHbl,
+  onClearHblFile,
   onContainerChange,
   onAddContainer,
   onRemoveContainer,
@@ -66,6 +67,7 @@ export function ImportJobShipmentBlock({
   onHblChange: (index: number, next: HblDraft) => void;
   onAddHbl: () => void;
   onRemoveHbl: (index: number) => void;
+  onClearHblFile?: (index: number) => void;
   onContainerChange: (
     index: number,
     field: keyof FreightContainer,
@@ -135,11 +137,11 @@ export function ImportJobShipmentBlock({
       <div className="space-y-2 rounded-xl border border-zinc-200 p-3">
         <p className="text-xs font-medium text-zinc-700">Load type</p>
         <div className="flex gap-4 text-xs">
-          {(["icl", "fcl"] as const).map((value) => (
+          {(["lcl", "fcl"] as const).map((value) => (
             <label key={value} className="flex items-center gap-2 uppercase">
               <input
                 type="radio"
-                checked={loadType === value}
+                checked={loadType === value || (value === "lcl" && loadType === "icl")}
                 disabled={readOnly}
                 onChange={() => onLoadTypeChange(value)}
               />
@@ -196,14 +198,26 @@ export function ImportJobShipmentBlock({
               />
             )}
             {draft.existing && (
-              <a
-                href={draft.existing.url}
-                target="_blank"
-                rel="noreferrer"
-                className="block truncate text-[11px] underline"
-              >
-                {draft.existing.name || "Current file"}
-              </a>
+              <div className="flex items-center gap-2">
+                <a
+                  href={draft.existing.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block min-w-0 flex-1 truncate text-[11px] underline"
+                >
+                  {draft.existing.name || "Current file"}
+                </a>
+                {onClearHblFile && !readOnly && (
+                  <button
+                    type="button"
+                    title="Remove file"
+                    onClick={() => onClearHblFile(index)}
+                    className="rounded-lg border border-zinc-200 p-1 text-zinc-500"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
             )}
             {draft.file && (
               <p className="text-[11px] text-zinc-500">{draft.file.name}</p>
@@ -212,94 +226,96 @@ export function ImportJobShipmentBlock({
         ))}
       </div>
 
-      <div className="space-y-2 rounded-xl border border-zinc-200 p-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-medium text-zinc-700">
-            Containers <span className="text-red-500">*</span>
-          </p>
-          {!readOnly && (
+      {mode !== "air" && (
+        <div className="space-y-2 rounded-xl border border-zinc-200 p-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-zinc-700">
+              Containers <span className="text-red-500">*</span>
+            </p>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={onAddContainer}
+                className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-[11px] text-zinc-600"
+              >
+                <Plus size={12} />
+                Add
+              </button>
+            )}
+          </div>
+          {containers.map((item, index) => (
+            <div key={index} className="space-y-1">
+              <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2">
+                <input
+                  value={item.containerNumber}
+                  placeholder="ABCD1234567"
+                  maxLength={11}
+                  disabled={readOnly}
+                  onChange={(event) =>
+                    onContainerChange(index, "containerNumber", event.target.value)
+                  }
+                  onBlur={() => onContainerBlur(index, item.containerNumber)}
+                  className={fieldClass(`containers.${index}.containerNumber`)}
+                />
+                <select
+                  value={item.containerSize ?? ""}
+                  disabled={readOnly}
+                  onChange={(event) =>
+                    onContainerChange(index, "containerSize", event.target.value)
+                  }
+                  className={fieldClass("containerSize")}
+                >
+                  <option value="">Size</option>
+                  {containerSizes.map((size) => (
+                    <option key={size.id} value={size.value}>
+                      {size.value}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={item.containerType ?? ""}
+                  disabled={readOnly}
+                  onChange={(event) =>
+                    onContainerChange(index, "containerType", event.target.value)
+                  }
+                  className={fieldClass("containerType")}
+                >
+                  <option value="">Type</option>
+                  {containerTypes.map((type) => (
+                    <option key={type.id} value={type.value}>
+                      {type.value}
+                    </option>
+                  ))}
+                </select>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={() => onRemoveContainer(index)}
+                    className="rounded-lg border border-zinc-200 px-2 text-zinc-500"
+                    title="Remove container"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+              {errors[`containers.${index}.containerNumber`] && (
+                <p className="text-[11px] text-red-500">
+                  {errors[`containers.${index}.containerNumber`]}
+                </p>
+              )}
+            </div>
+          ))}
+          {containers.length === 0 && (
             <button
               type="button"
               onClick={onAddContainer}
-              className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-[11px] text-zinc-600"
+              className="text-[11px] text-zinc-500 underline"
             >
-              <Plus size={12} />
-              Add
+              Add a container
             </button>
           )}
         </div>
-        {containers.map((item, index) => (
-          <div key={index} className="space-y-1">
-            <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2">
-              <input
-                value={item.containerNumber}
-                placeholder="ABCD1234567"
-                maxLength={11}
-                disabled={readOnly}
-                onChange={(event) =>
-                  onContainerChange(index, "containerNumber", event.target.value)
-                }
-                onBlur={() => onContainerBlur(index, item.containerNumber)}
-                className={fieldClass(`containers.${index}.containerNumber`)}
-              />
-              <select
-                value={item.containerSize ?? ""}
-                disabled={readOnly}
-                onChange={(event) =>
-                  onContainerChange(index, "containerSize", event.target.value)
-                }
-                className={fieldClass("containerSize")}
-              >
-                <option value="">Size</option>
-                {containerSizes.map((size) => (
-                  <option key={size.id} value={size.value}>
-                    {size.value}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={item.containerType ?? ""}
-                disabled={readOnly}
-                onChange={(event) =>
-                  onContainerChange(index, "containerType", event.target.value)
-                }
-                className={fieldClass("containerType")}
-              >
-                <option value="">Type</option>
-                {containerTypes.map((type) => (
-                  <option key={type.id} value={type.value}>
-                    {type.value}
-                  </option>
-                ))}
-              </select>
-              {!readOnly && (
-                <button
-                  type="button"
-                  onClick={() => onRemoveContainer(index)}
-                  className="rounded-lg border border-zinc-200 px-2 text-zinc-500"
-                  title="Remove container"
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-            {errors[`containers.${index}.containerNumber`] && (
-              <p className="text-[11px] text-red-500">
-                {errors[`containers.${index}.containerNumber`]}
-              </p>
-            )}
-          </div>
-        ))}
-        {containers.length === 0 && (
-          <button
-            type="button"
-            onClick={onAddContainer}
-            className="text-[11px] text-zinc-500 underline"
-          >
-            Add a container
-          </button>
-        )}
-      </div>
+      )}
     </>
   );
 }

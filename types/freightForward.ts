@@ -42,7 +42,7 @@ export interface FreightContainer {
 }
 
 export type ImportShipmentMode = "air" | "sea";
-export type ImportLoadType = "icl" | "fcl";
+export type ImportLoadType = "lcl" | "fcl" | "icl";
 export type ImportYesNo = "yes" | "no";
 
 export interface ImportHblEntry {
@@ -62,8 +62,27 @@ export type ImportBoeClearanceStatus =
   | "open"
   | "ooc"
   | "ins"
+  | "pcv"
   | "psc"
   | "sup";
+export type ImportScanningResult = "clean" | "mismatch";
+
+export interface ImportTTypeStatusEntry {
+  status: ImportBoeClearanceStatus;
+  date: string;
+  updatedBy?: string;
+  updatedAt?: Timestamp | Date | unknown;
+}
+
+export interface ImportTTypeEntry {
+  id: string;
+  boeNo: string;
+  boeDate: string;
+  weight?: string;
+  packages?: string;
+  statuses: ImportTTypeStatusEntry[];
+  completed?: boolean;
+}
 export type ImportAccountsBillingStatus = "pending" | "completed";
 export type ImportAccountsPaymentStatus = "pending" | "received";
 export type ImportDoRemarkCategory =
@@ -73,6 +92,28 @@ export type ImportDoRemarkCategory =
   | "payment_done";
 export type ImportPortDirection = "port_in" | "port_out";
 export type ImportCfsReachedStatus = "reached" | "not_reached";
+export interface ImportTruckDetail {
+  containerNumber?: string;
+  importTransporter?: string;
+  importTruckStash?: boolean;
+  importVehicleNo?: string;
+  importDriverName?: string;
+  importDriverPhone?: string;
+  importScanningEnabled?: boolean;
+  importScanningResult?: ImportScanningResult;
+}
+
+export interface ImportVehicleChange {
+  containerNumber?: string;
+  oldTransporter?: string;
+  oldVehicleNo?: string;
+  oldDriverName?: string;
+  oldDriverPhone?: string;
+  newTransporter?: string;
+  newVehicleNo?: string;
+  newDriverName?: string;
+  newDriverPhone?: string;
+}
 export type ImportBoeOutInwardOccStatus = "pending" | "occ";
 export type ImportBoeOutDutyStatus = "pending" | "paid" | "final";
 
@@ -265,6 +306,8 @@ export interface FreightForward {
   importDriverName?: string;
   importDriverPhone?: string;
   importScanningEnabled?: boolean;
+  importScanningResult?: ImportScanningResult;
+  importTruckDetails?: ImportTruckDetail[];
   importPortDirection?: ImportPortDirection;
   importPortDirectionAudit?: ImportAuditStamp;
   importCfsReached?: ImportCfsReachedStatus;
@@ -281,6 +324,9 @@ export interface FreightForward {
   importTTypeBoeSaveAudit?: ImportAuditStamp;
   importTTypeOocCompleted?: boolean;
   importTTypeOocCompleteAudit?: ImportAuditStamp;
+  importTTypeEntries?: ImportTTypeEntry[];
+  importBoeOutDutyAccValue?: string;
+  importBoeOutDutyAmt?: string;
   importEwayBill?: ImportYesNo;
   importEwayBillAudit?: ImportAuditStamp;
   importBoeOutDutyStatus?: ImportBoeOutDutyStatus;
@@ -295,6 +341,7 @@ export interface FreightForward {
   importBoeOutNewVehicleNo?: string;
   importBoeOutNewDriverName?: string;
   importBoeOutNewDriverPhone?: string;
+  importBoeOutVehicleChanges?: ImportVehicleChange[];
   importBoeOutDispatched?: boolean;
   importBoeOutCompleted?: boolean;
   importBoeOutDispatchAudit?: ImportAuditStamp;

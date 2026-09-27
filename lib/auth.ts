@@ -17,7 +17,7 @@ export interface LoginResult {
   error?: string;
 }
 
-import { ImportModuleKey } from "@/types/importRoles";
+import { ImportModuleKey, AppModuleKey } from "@/types/importRoles";
 
 export interface User {
   id?: string;
@@ -26,6 +26,7 @@ export interface User {
   password: string;
   role: "admin" | "user" | "accountant";
   importRoles?: ImportModuleKey[];
+  appModules?: AppModuleKey[];
   importCfsNames?: string[];
 }
 
@@ -70,6 +71,7 @@ export async function createUser(user: User) {
     password: user.password,
     role: user.role,
     importRoles: user.importRoles ?? [],
+    appModules: user.appModules ?? [],
     importCfsNames: user.importCfsNames ?? [],
     createdAt: new Date(),
   });

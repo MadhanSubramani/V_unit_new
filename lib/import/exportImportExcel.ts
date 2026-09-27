@@ -10,6 +10,7 @@ import {
   getImportDoPortDisplay,
   getImportDoStatusLabel,
 } from "@/lib/import/linerWorkflow";
+import { getTTypeBoeDateDisplay, getTTypeBoeNoDisplay } from "@/lib/import/boeOutWorkflow";
 
 export type ImportTableExportRow = Record<string, string>;
 
@@ -37,8 +38,8 @@ export function buildImportTableExportRows(
     Empty: getImportDoEmptyDisplay(item),
     "Z type BE No": item.inwardBoeNo ?? "",
     "Z type BE Date": item.inwardBoeDate ?? "",
-    "T type BE No": item.importTTypeBoeNo ?? "",
-    "T type BE Date": item.importTTypeBoeDate ?? "",
+    "T type BE No": getTTypeBoeNoDisplay(item) === "—" ? "" : getTTypeBoeNoDisplay(item),
+    "T type BE Date": getTTypeBoeDateDisplay(item) === "—" ? "" : getTTypeBoeDateDisplay(item),
     MBL: item.mbl ?? "",
     HBL: formatHblDisplay(item) === "—" ? "" : formatHblDisplay(item),
     Containers: formatContainersDisplay(item),

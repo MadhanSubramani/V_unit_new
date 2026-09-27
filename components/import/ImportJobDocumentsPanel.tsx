@@ -13,6 +13,8 @@ import {
   setImportOtherDocuments,
 } from "@/lib/freightForward/freightForward";
 import { uploadDocument } from "@/lib/kyc/uploadDocument";
+import ConfirmDialog from "@/components/shared/ConfirmDialog";
+import { deleteStorageFileByUrl } from "@/lib/freightForward/deleteStorage";
 import { FreightForward, FreightForwardDocument } from "@/types/freightForward";
 
 export default function ImportJobDocumentsPanel({
@@ -31,7 +33,7 @@ export default function ImportJobDocumentsPanel({
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-
+  const [confirmIndex, setConfirmIndex] = useState<number | null>(null);
   const supporting = item.otherDocuments ?? [];
 
   const addDoc = async () => {
@@ -57,9 +59,11 @@ export default function ImportJobDocumentsPanel({
 
   const removeSupporting = async (index: number) => {
     if (!item.id) return;
+    const target = supporting[index];
     setBusy(true);
     setError("");
     try {
+      await deleteStorageFileByUrl(target?.url);
       const next = supporting.filter((_, i) => i !== index);
       const updated = await setImportOtherDocuments(item.id, next, username);
       onUpdated?.(updated);
@@ -69,6 +73,7 @@ export default function ImportJobDocumentsPanel({
       );
     } finally {
       setBusy(false);
+      setConfirmIndex(null);
     }
   };
 
@@ -108,7 +113,7 @@ export default function ImportJobDocumentsPanel({
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => void removeSupporting(index)}
+                onClick={() => setConfirmIndex(index)}
                 className="rounded-lg border border-zinc-200 p-1 text-zinc-500"
               >
                 <X size={12} />
@@ -136,6 +141,16 @@ export default function ImportJobDocumentsPanel({
           {error && <p className="text-[10px] text-red-500">{error}</p>}
         </div>
       )}
+      <ConfirmDialog
+        open={confirmIndex !== null}
+        title="Remove supporting document"
+        message="Remove this document from the job and delete the file from storage?"
+        confirmLabel="Remove"
+        onCancel={() => setConfirmIndex(null)}
+        onConfirm={() => {
+          if (confirmIndex !== null) void removeSupporting(confirmIndex);
+        }}
+      />
     </div>
   );
 }

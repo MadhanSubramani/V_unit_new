@@ -33,7 +33,7 @@ export function getShipmentMode(item: Pick<FreightForward, "shipmentMode">) {
 }
 
 export function getLoadType(item: Pick<FreightForward, "loadType">) {
-  return item.loadType === "fcl" ? "fcl" : "icl";
+  return item.loadType === "fcl" ? "fcl" : "lcl";
 }
 
 export function masterBlLabel(mode: ImportShipmentMode) {

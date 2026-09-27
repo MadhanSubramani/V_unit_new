@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  hasAppModuleAccess,
   hasImportModuleAccess,
   isImportAdmin,
   parseImportSessionUser,
@@ -30,15 +31,15 @@ import {
 import type { ImportModuleKey } from "@/types/importRoles";
 
 const OPERATIONS_SUB = [
-  { href: "/operations/cfs", label: "CFS Master", icon: Warehouse },
-  { href: "/operations/sez", label: "SEZ Master", icon: Warehouse },
-  { href: "/operations/configurations", label: "Configurations", icon: Settings },
+  { href: "/operations/cfs", label: "CFS Master", icon: Warehouse, module: "operations_cfs" as const },
+  { href: "/operations/sez", label: "SEZ Master", icon: Warehouse, module: "operations_sez" as const },
+  { href: "/operations/configurations", label: "Configurations", icon: Settings, module: "operations_config" as const },
 ] as const;
 
 const FREIGHT_FORWARD_SUB = [
-  { href: "/freight-forward/eta-updater", label: "ETA Updater", icon: CalendarClock, adminOnly: false },
-  { href: "/freight-forward", label: "Job List", icon: Ship, adminOnly: false },
-  { href: "/freight-forward/trash", label: "Trash", icon: Trash2, adminOnly: true },
+  { href: "/freight-forward/eta-updater", label: "ETA Updater", icon: CalendarClock, adminOnly: false, module: "freight_eta" as const },
+  { href: "/freight-forward", label: "Job List", icon: Ship, adminOnly: false, module: "freight_forward" as const },
+  { href: "/freight-forward/trash", label: "Trash", icon: Trash2, adminOnly: true, module: "freight_forward" as const },
 ] as const;
 
 const IMPORT_SUB: {
@@ -117,8 +118,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const isFreightActive = pathname.startsWith("/freight-forward");
   const isImportActive = pathname.startsWith("/import");
   const freightSubItems = FREIGHT_FORWARD_SUB.filter(
-    (item) => !item.adminOnly || isAdmin
+    (item) =>
+      (!item.adminOnly || isAdmin) &&
+      hasAppModuleAccess(user, item.module)
   );
+  const operationsSubItems = OPERATIONS_SUB.filter((item) =>
+    hasAppModuleAccess(user, item.module)
+  );
+  const showKyc = hasAppModuleAccess(user, "kyc");
+  const showExport = hasAppModuleAccess(user, "export");
+  const showNotepad = hasAppModuleAccess(user, "notepad");
+  const showImport = IMPORT_SUB.some((item) => {
+    if (item.module === "trash") return isImportAdmin(user);
+    if (!item.module) return true;
+    return hasImportModuleAccess(user, item.module);
+  });
 
   const flatNavClass = (active: boolean) =>
     `flex items-center transition-all duration-200 ${
@@ -197,6 +211,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-3">
+        {operationsSubItems.length > 0 && (
         <div>
           <button
             onClick={() => {
@@ -224,7 +239,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
           {!collapsed && operationsOpen && (
             <div className="my-2 ml-5 space-y-1 border-l border-zinc-200 py-1.5 pl-2">
-              {OPERATIONS_SUB.map(({ href, label, icon: Icon }) => {
+              {operationsSubItems.map(({ href, label, icon: Icon }) => {
                 const active = pathname === href;
                 return (
                   <Link key={href} href={href} className={subNavClass(active)}>
@@ -236,7 +251,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           )}
         </div>
+        )}
 
+        {freightSubItems.length > 0 && (
         <div>
           <button
             onClick={() => {
@@ -276,7 +293,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           )}
         </div>
+        )}
 
+        {showImport && (
         <div>
           <button
             onClick={() => {
@@ -332,8 +351,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           )}
         </div>
+        )}
 
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+        {NAV_ITEMS.filter((item) =>
+          item.href === "/kyc" ? showKyc : item.href === "/export" ? showExport : true
+        ).map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
             <Link key={href} href={href} className={flatNavClass(active)}>
@@ -353,6 +375,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
         )}
 
+        {showNotepad && (
         <Link
           href="/notepad"
           className={flatNavClass(pathname === "/notepad" || pathname.startsWith("/notepad/"))}
@@ -360,6 +383,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <StickyNote size={collapsed ? 16 : 15} />
           {!collapsed && <span className="text-xs font-medium">Notepad</span>}
         </Link>
+        )}
       </nav>
 
       <div className="shrink-0 border-t border-zinc-200/80 p-3">

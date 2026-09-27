@@ -33,6 +33,7 @@ import {
   getImportLinerRecords,
   addImportDoRemark,
   addImportSectionRemark,
+  clearImportNamedAttachment,
   saveImportNamedAttachment,
   updateImportLinerRemark,
   updateImportLinerStage,
@@ -217,7 +218,7 @@ export default function ImportLinerPage() {
     label: string;
     value: string | number;
   }[] = [
-    { key: "inProcess", label: "In Process", value: counts.inProcess },
+    { key: "inProcess", label: "Joblist", value: counts.inProcess },
     { key: "next7Days", label: "Next 7 Days", value: counts.next7Days },
     { key: "movement", label: "Movement", value: counts.movement },
     { key: "do", label: "DO incomplete", value: counts.do },
@@ -861,6 +862,7 @@ function StageCard({
   const [doDateError, setDoDateError] = useState("");
   const [doRemarkCategory, setDoRemarkCategory] =
     useState<ImportDoRemarkCategory>("invoice_pending");
+  const igmUsername = parseImportSessionUser()?.username ?? "Unknown";
 
   useEffect(() => {
     setRemarkDraft(getImportStageRemark(item, section));
@@ -996,7 +998,22 @@ function StageCard({
             IGM attachment
           </p>
           {item.importIgmAttachment?.url ? (
-            <ImportDocumentLink label="IGM file" doc={item.importIgmAttachment} />
+            <ImportDocumentLink
+              label="IGM file"
+              doc={item.importIgmAttachment}
+              removeDisabled={busy || !canAct}
+              onRemove={() => {
+                if (!item.id || !canAct) return;
+                void (async () => {
+                  const updated = await clearImportNamedAttachment(
+                    item.id!,
+                    "importIgmAttachment",
+                    igmUsername
+                  );
+                  onJobUpdated?.(updated);
+                })();
+              }}
+            />
           ) : (
             <FileInputWithClip
               disabled={busy || !canAct}
@@ -1008,7 +1025,7 @@ function StageCard({
                     item.id!,
                     "importIgmAttachment",
                     { name: file.name, url: uploaded.url },
-                    "Unknown"
+                    igmUsername
                   );
                   onJobUpdated?.(updated);
                 })();
@@ -1064,7 +1081,22 @@ function StageCard({
           <div className="text-xs">
             <p className="font-medium text-zinc-700">Port attachment</p>
             {item.importDoPortAttachment?.url ? (
-              <ImportDocumentLink label="Port file" doc={item.importDoPortAttachment} />
+              <ImportDocumentLink
+                label="Port file"
+                doc={item.importDoPortAttachment}
+                removeDisabled={busy || complete || !canAct}
+                onRemove={() => {
+                  if (!item.id || !canAct) return;
+                  void (async () => {
+                    const updated = await clearImportNamedAttachment(
+                      item.id!,
+                      "importDoPortAttachment",
+                      igmUsername
+                    );
+                    onJobUpdated?.(updated);
+                  })();
+                }}
+              />
             ) : (
               <FileInputWithClip
                 disabled={busy || complete || !canAct}
@@ -1087,7 +1119,22 @@ function StageCard({
           <div className="text-xs">
             <p className="font-medium text-zinc-700">Empty attachment</p>
             {item.importDoEmptyAttachment?.url ? (
-              <ImportDocumentLink label="Empty file" doc={item.importDoEmptyAttachment} />
+              <ImportDocumentLink
+                label="Empty file"
+                doc={item.importDoEmptyAttachment}
+                removeDisabled={busy || complete || !canAct}
+                onRemove={() => {
+                  if (!item.id || !canAct) return;
+                  void (async () => {
+                    const updated = await clearImportNamedAttachment(
+                      item.id!,
+                      "importDoEmptyAttachment",
+                      igmUsername
+                    );
+                    onJobUpdated?.(updated);
+                  })();
+                }}
+              />
             ) : (
               <FileInputWithClip
                 disabled={busy || complete || !canAct}

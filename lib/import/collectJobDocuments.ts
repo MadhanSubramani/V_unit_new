@@ -16,8 +16,6 @@ export function collectJobDocuments(item: FreightForward): FreightForwardDocumen
   push(docs, item.hblUrl);
   (item.hblDocs ?? []).forEach((doc) => push(docs, doc));
   getHblEntries(item).forEach((entry) => push(docs, entry.file));
-  push(docs, item.importDoPortAttachment);
-  push(docs, item.importDoEmptyAttachment);
   push(docs, item.importBoeChecklistAttachment);
   (item.otherDocuments ?? []).forEach((doc) => push(docs, doc));
 
