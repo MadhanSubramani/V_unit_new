@@ -23,8 +23,8 @@ import {
   X,
 } from "lucide-react";
 import {
+  canViewImportSection,
   hasAppModuleAccess,
-  hasImportModuleAccess,
   isImportAdmin,
   parseImportSessionUser,
 } from "@/lib/import/permissions";
@@ -128,11 +128,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const showKyc = hasAppModuleAccess(user, "kyc");
   const showExport = hasAppModuleAccess(user, "export");
   const showNotepad = hasAppModuleAccess(user, "notepad");
-  const showImport = IMPORT_SUB.some((item) => {
-    if (item.module === "trash") return isImportAdmin(user);
-    if (!item.module) return true;
-    return hasImportModuleAccess(user, item.module);
-  });
+  const showImport = canViewImportSection(user);
 
   const flatNavClass = (active: boolean) =>
     `flex items-center transition-all duration-200 ${
@@ -328,8 +324,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <div className="my-2 ml-5 space-y-1 border-l border-zinc-200 py-1.5 pl-2">
               {IMPORT_SUB.filter((item) => {
                 if (item.module === "trash") return isImportAdmin(user);
-                if (!item.module) return true;
-                return hasImportModuleAccess(user, item.module);
+                return true;
               }).map(({ href, label, icon: Icon, enabled }) => {
                 const active = pathname === href;
                 return enabled ? (

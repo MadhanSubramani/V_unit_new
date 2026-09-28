@@ -1993,9 +1993,14 @@ export async function findImportJobsByVesselName(vesselName: string) {
 export async function updateImportEtaByVesselName(
   vesselName: string,
   eta: string,
-  updatedBy: string
+  updatedBy: string,
+  jobIds?: string[]
 ) {
-  const matches = await findImportJobsByVesselName(vesselName);
+  let matches = await findImportJobsByVesselName(vesselName);
+  if (jobIds?.length) {
+    const allowed = new Set(jobIds);
+    matches = matches.filter((item) => item.id && allowed.has(item.id));
+  }
   if (!matches.length) return { updated: 0 };
 
   const etaValue = eta.trim().slice(0, 10);

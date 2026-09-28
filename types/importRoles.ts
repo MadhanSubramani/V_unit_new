@@ -50,6 +50,8 @@ export interface ImportSessionUser {
   role?: string;
   importRoles?: ImportModuleKey[];
   appModules?: AppModuleKey[];
-  /** CFS names this user may see in Import. Empty = all CFS (legacy). */
+  /** CFS names this user may act on in Import. Empty = all CFS (legacy). */
   importCfsNames?: string[];
+  /** SEZ names this user may act on in Import. Empty = all SEZ (legacy). */
+  importSezNames?: string[];
 }

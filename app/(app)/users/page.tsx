@@ -6,6 +6,8 @@ import { APP_MODULE_OPTIONS, IMPORT_MODULE_OPTIONS } from "@/types/importRoles";
 import type { AppModuleKey, ImportModuleKey } from "@/types/importRoles";
 import { getCfsList } from "@/lib/cfs/cfs";
 import { Cfs } from "@/types/cfs";
+import { getSezList } from "@/lib/sez/sez";
+import { Sez } from "@/types/sez";
 import { Eye, EyeOff, Pencil, Trash2 ,MoreHorizontal} from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import ModuleHeader from "@/components/ModuleHeader";
@@ -15,6 +17,17 @@ type FormErrors = {
     email?: string;
     password?: string;
 };
+
+const emptyUserForm = (): User => ({
+    username: "",
+    email: "",
+    password: "",
+    role: "user",
+    importRoles: [],
+    appModules: [],
+    importCfsNames: [],
+    importSezNames: [],
+});
 
 export default function UsersPage() {
     const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -30,17 +43,10 @@ export default function UsersPage() {
     const [roleFilter, setRoleFilter] = useState("all");
     const rowsPerPage = 5;
 
-    const [form, setForm] = useState<User>({
-        username: "",
-        email: "",
-        password: "",
-        role: "user",
-        importRoles: [],
-        appModules: [],
-        importCfsNames: [],
-    });
+    const [form, setForm] = useState<User>(emptyUserForm());
 
     const [cfsList, setCfsList] = useState<Cfs[]>([]);
+    const [sezList, setSezList] = useState<Sez[]>([]);
 
     const toggleAppModule = (role: AppModuleKey) => {
         setForm((current) => {
@@ -72,6 +78,16 @@ export default function UsersPage() {
         });
     };
 
+    const toggleImportSez = (name: string) => {
+        setForm((current) => {
+            const existing = current.importSezNames ?? [];
+            const next = existing.includes(name)
+                ? existing.filter((entry) => entry !== name)
+                : [...existing, name];
+            return { ...current, importSezNames: next };
+        });
+    };
+
     const loadUsers = async () => {
         const data = await getUsers();
         setUsers(data);
@@ -80,6 +96,7 @@ export default function UsersPage() {
     useEffect(() => {
         loadUsers();
         void getCfsList().then(setCfsList);
+        void getSezList().then(setSezList);
     }, []);
 
     const validate = (): boolean => {
@@ -125,7 +142,7 @@ export default function UsersPage() {
                 await createUser(form);
             }
 
-            setForm({ username: "", email: "", password: "", role: "user", importRoles: [], appModules: [], importCfsNames: [] });
+            setForm(emptyUserForm());
             setErrors({});
             setDrawerOpen(false);
             setSelectedUser(null);
@@ -143,7 +160,7 @@ export default function UsersPage() {
 
     const openAddDrawer = () => {
         setSelectedUser(null);
-        setForm({ username: "", email: "", password: "", role: "user", importRoles: [], appModules: [], importCfsNames: [] });
+        setForm(emptyUserForm());
         setErrors({});
         setSubmitError("");
         setDrawerOpen(true);
@@ -159,6 +176,7 @@ export default function UsersPage() {
             importRoles: user.importRoles ?? [],
             appModules: user.appModules ?? [],
             importCfsNames: user.importCfsNames ?? [],
+            importSezNames: user.importSezNames ?? [],
         });
         setErrors({});
         setSubmitError("");
@@ -577,30 +595,58 @@ export default function UsersPage() {
                         </div>
 
                         {(form.importRoles ?? []).length > 0 && (
-                            <div>
-                                <label className="mb-2 block text-[11px] font-medium text-zinc-600">
-                                    Import CFS zones
-                                </label>
-                                <p className="mb-2 text-[10px] text-zinc-500">
-                                    Selected CFS locations limit Import counts and job lists for this user. Leave all unchecked to see every CFS.
-                                </p>
-                                <div className="grid max-h-40 grid-cols-1 gap-2 overflow-y-auto">
-                                    {cfsList.map((cfs) => {
-                                        const checked = (form.importCfsNames ?? []).includes(cfs.name);
-                                        return (
-                                            <label
-                                                key={cfs.id ?? cfs.name}
-                                                className="flex items-center gap-2 rounded-lg border border-zinc-200 px-2.5 py-2 text-[11px] text-zinc-700"
-                                            >
-                                                <input
-                                                    type="checkbox"
-                                                    checked={checked}
-                                                    onChange={() => toggleImportCfs(cfs.name)}
-                                                />
-                                                {cfs.code ? `${cfs.code} — ${cfs.name}` : cfs.name}
-                                            </label>
-                                        );
-                                    })}
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="mb-2 block text-[11px] font-medium text-zinc-600">
+                                        Import CFS zones
+                                    </label>
+                                    <p className="mb-2 text-[10px] text-zinc-500">
+                                        Leave both CFS and SEZ unchecked to include every location. If you check any zone, the user only sees and acts on the selected CFS and SEZ names.
+                                    </p>
+                                    <div className="grid max-h-40 grid-cols-1 gap-2 overflow-y-auto">
+                                        {cfsList.map((cfs) => {
+                                            const checked = (form.importCfsNames ?? []).includes(cfs.name);
+                                            return (
+                                                <label
+                                                    key={cfs.id ?? cfs.name}
+                                                    className="flex items-center gap-2 rounded-lg border border-zinc-200 px-2.5 py-2 text-[11px] text-zinc-700"
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={checked}
+                                                        onChange={() => toggleImportCfs(cfs.name)}
+                                                    />
+                                                    {cfs.code ? `${cfs.code} — ${cfs.name}` : cfs.name}
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="mb-2 block text-[11px] font-medium text-zinc-600">
+                                        Import SEZ zones
+                                    </label>
+                                    <p className="mb-2 text-[10px] text-zinc-500">
+                                        Check SEZ locations this user may act on, along with CFS above.
+                                    </p>
+                                    <div className="grid max-h-40 grid-cols-1 gap-2 overflow-y-auto">
+                                        {sezList.map((sez) => {
+                                            const checked = (form.importSezNames ?? []).includes(sez.name);
+                                            return (
+                                                <label
+                                                    key={sez.id ?? sez.name}
+                                                    className="flex items-center gap-2 rounded-lg border border-zinc-200 px-2.5 py-2 text-[11px] text-zinc-700"
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={checked}
+                                                        onChange={() => toggleImportSez(sez.name)}
+                                                    />
+                                                    {sez.code ? `${sez.code} — ${sez.name}` : sez.name}
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
                             </div>
                         )}

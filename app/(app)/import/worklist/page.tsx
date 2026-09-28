@@ -123,15 +123,16 @@ export default function ImportWorklistPage() {
           title="Import — Job List"
           description="All IMP sequence jobs and Freight Forward jobs enabled for Import."
         />
+        {canAct ? (
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
-          disabled={!canAct}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-zinc-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-40"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-zinc-900 px-3 py-2 text-xs font-medium text-white"
         >
           <Plus size={14} />
           Add
         </button>
+        ) : null}
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-2">
@@ -279,13 +280,14 @@ export default function ImportWorklistPage() {
                     <td className="px-3 py-3 text-center">
                       <ActionMenu
                         showDelete={canDelete}
+                        showEdit={canAct}
                         onView={() => {
                           setActiveItem(item);
                           setDrawerMode("view");
                         }}
                         onEdit={() => {
                           setActiveItem(item);
-                          setDrawerMode(canAct ? "edit" : "view");
+                          setDrawerMode("edit");
                         }}
                         onDelete={() => setDeleteId(item.id ?? null)}
                       />

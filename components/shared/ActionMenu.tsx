@@ -9,6 +9,7 @@ interface ActionMenuProps {
   onDelete: () => void;
   showDelete?: boolean;
   showView?: boolean;
+  showEdit?: boolean;
 }
 
 export default function ActionMenu({
@@ -17,6 +18,7 @@ export default function ActionMenu({
   onDelete,
   showDelete = true,
   showView = true,
+  showEdit = true,
 }: ActionMenuProps) {
   return (
     <DropdownMenu.Root>
@@ -42,13 +44,15 @@ export default function ActionMenu({
             </DropdownMenu.Item>
           )}
 
-          <DropdownMenu.Item
-            onClick={onEdit}
-            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-xs outline-none hover:bg-zinc-100"
-          >
-            <Pencil size={14} />
-            Edit
-          </DropdownMenu.Item>
+          {showEdit && (
+            <DropdownMenu.Item
+              onClick={onEdit}
+              className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-xs outline-none hover:bg-zinc-100"
+            >
+              <Pencil size={14} />
+              Edit
+            </DropdownMenu.Item>
+          )}
 
           {showDelete && (
             <DropdownMenu.Item

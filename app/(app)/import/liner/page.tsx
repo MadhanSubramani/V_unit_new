@@ -60,7 +60,6 @@ import { getImportModuleProgressSteps } from "@/lib/import/sectionProgress";
 import {
   canActOnImportModule,
   canExpandImportRow,
-  canManageImportSupportingDocs,
   parseImportSessionUser,
 } from "@/lib/import/permissions";
 import {
@@ -775,7 +774,7 @@ function Row({
 
                 <ImportJobDocumentsPanel
                   item={item}
-                  canManage={canManageImportSupportingDocs(parseImportSessionUser())}
+                  canManage={canAct}
                   username={parseImportSessionUser()?.username ?? "Unknown"}
                   onUpdated={onJobUpdated}
                 />

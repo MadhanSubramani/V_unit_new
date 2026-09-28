@@ -9,7 +9,11 @@ import {
 } from "@/lib/freightForward/freightForward";
 import { formatContainersDisplay } from "@/lib/freightForward/containers";
 import { FreightForward } from "@/types/freightForward";
-import { filterImportRecordsByUserCfs } from "@/lib/import/permissions";
+import {
+  canActOnImportModule,
+  filterImportRecordsByUserZones,
+  parseImportSessionUser,
+} from "@/lib/import/permissions";
 
 export default function ImportEtaUpdaterPage() {
   const [vesselName, setVesselName] = useState("");
@@ -19,11 +23,8 @@ export default function ImportEtaUpdaterPage() {
   const [updating, setUpdating] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [user, setUser] = useState<{
-    username?: string;
-    role?: string;
-    importCfsNames?: string[];
-  } | null>(null);
+  const [user, setUser] = useState<ReturnType<typeof parseImportSessionUser>>(null);
+  const canAct = canActOnImportModule(user, "eta");
 
   useEffect(() => {
     const stored = sessionStorage.getItem("user");
@@ -47,7 +48,7 @@ export default function ImportEtaUpdaterPage() {
     setSearching(true);
     try {
       const rows = await findImportJobsByVesselName(trimmed);
-      setMatches(filterImportRecordsByUserCfs(rows, user));
+      setMatches(filterImportRecordsByUserZones(rows, user));
     } catch {
       setError("Unable to search Import jobs for this vessel.");
       setMatches([]);
@@ -68,6 +69,10 @@ export default function ImportEtaUpdaterPage() {
     setError("");
     const name = vesselName.trim();
     const eta = etaDate.trim();
+    if (!canAct) {
+      setError("You do not have access to update ETA.");
+      return;
+    }
     if (!name) {
       setError("Enter a vessel name.");
       return;
@@ -86,11 +91,12 @@ export default function ImportEtaUpdaterPage() {
       const result = await updateImportEtaByVesselName(
         name,
         eta,
-        user?.username ?? "unknown"
+        user?.username ?? "unknown",
+        matches.map((item) => item.id).filter((id): id is string => Boolean(id))
       );
       setMessage(`Updated ETA to ${eta} on ${result.updated} Import job(s).`);
       const rows = await findImportJobsByVesselName(name);
-      setMatches(rows);
+      setMatches(filterImportRecordsByUserZones(rows, user));
     } catch {
       setError("Unable to update ETA. Please try again.");
     } finally {
@@ -135,7 +141,7 @@ export default function ImportEtaUpdaterPage() {
         <button
           type="button"
           onClick={() => void handleUpdate()}
-          disabled={updating || !vesselName.trim() || !etaDate || !matches.length}
+          disabled={updating || !canAct || !vesselName.trim() || !etaDate || !matches.length}
           className="inline-flex items-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
         >
           <CalendarClock size={14} />

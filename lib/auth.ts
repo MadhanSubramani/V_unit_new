@@ -28,6 +28,7 @@ export interface User {
   importRoles?: ImportModuleKey[];
   appModules?: AppModuleKey[];
   importCfsNames?: string[];
+  importSezNames?: string[];
 }
 
 /**
@@ -73,6 +74,7 @@ export async function createUser(user: User) {
     importRoles: user.importRoles ?? [],
     appModules: user.appModules ?? [],
     importCfsNames: user.importCfsNames ?? [],
+    importSezNames: user.importSezNames ?? [],
     createdAt: new Date(),
   });
 }

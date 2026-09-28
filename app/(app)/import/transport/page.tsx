@@ -732,7 +732,12 @@ function TruckDetailCard({
         }}
       />
       <ImportDoStatusPanel item={item} />
-      <ImportJobDocumentsPanel item={item} />
+      <ImportJobDocumentsPanel
+        item={item}
+        canManage={canAct}
+        username={username}
+        onUpdated={onUpdated}
+      />
       <ImportSectionProgress steps={getImportModuleProgressSteps(item)} />
     </div>
   );
