@@ -724,6 +724,7 @@ function AccountsExpansion({
         </section>
       </div>
       <ImportSectionRemarks
+        className="px-4"
         remarks={item.importAccountsRemarks ?? []}
         busy={busy}
         canAct={canAct}

@@ -1030,7 +1030,9 @@ export async function saveImportBoeInInward(
     throw new Error("Select RMS, Open, or OOC.");
   }
 
-  const complete = data.importBoeClearanceStatus === "rms";
+  const complete =
+    data.importBoeClearanceStatus === "rms" ||
+    data.importBoeClearanceStatus === "ooc";
   const saveAudit = stamp(updatedBy);
   const search = buildFreightSearchIndex({ ...before, inwardBoeNo });
   const patch: Record<string, unknown> = {
@@ -1045,6 +1047,10 @@ export async function saveImportBoeInInward(
   if (complete) {
     patch.importBoeInCompleteAudit = saveAudit;
     patch.importBoeInInwardSaveAudit = deleteField();
+    if (data.importBoeClearanceStatus === "ooc") {
+      patch.importBoeInOocCompleted = true;
+      patch.importBoeInOocCompleteAudit = saveAudit;
+    }
   } else {
     patch.importBoeInInwardSaveAudit = saveAudit;
     if (before.importBoeInCompleted) {
@@ -1064,6 +1070,12 @@ export async function saveImportBoeInInward(
     importBoeInCompleted: complete,
     importBoeInCompleteAudit: complete ? saveAudit : undefined,
     importBoeInInwardSaveAudit: complete ? undefined : saveAudit,
+    importBoeInOocCompleted:
+      complete && data.importBoeClearanceStatus === "ooc" ? true : before.importBoeInOocCompleted,
+    importBoeInOocCompleteAudit:
+      complete && data.importBoeClearanceStatus === "ooc"
+        ? saveAudit
+        : before.importBoeInOocCompleteAudit,
     updatedBy,
   } as FreightForward;
 }
@@ -1108,8 +1120,11 @@ export async function completeImportBoeIn(
   updatedBy: string,
   options?: { allowCompletedEdit?: boolean }
 ) {
-  if (data.importBoeClearanceStatus !== "rms") {
-    throw new Error("Use Save for Open status. Complete is only for RMS.");
+  if (
+    data.importBoeClearanceStatus !== "rms" &&
+    data.importBoeClearanceStatus !== "ooc"
+  ) {
+    throw new Error("Use Save for Open status. Complete is for RMS or OOC.");
   }
   return saveImportBoeInInward(id, data, updatedBy, options);
 }
@@ -1252,7 +1267,7 @@ function normalizeOneTruck(
     }
   }
 
-  return {
+  const truck: ImportTruckDetail = {
     containerNumber: data.containerNumber ?? "",
     importTransporter,
     importTruckStash: data.importTruckStash ?? false,
@@ -1260,14 +1275,19 @@ function normalizeOneTruck(
     importDriverName,
     importDriverPhone,
     importScanningEnabled,
-    importScanningResult,
   };
+  if (importScanningResult) {
+    truck.importScanningResult = importScanningResult;
+  }
+  return truck;
 }
 
 function trucksToLegacyPatch(trucks: ImportTruckDetail[]) {
   const first = trucks[0] ?? {};
   return {
-    importTruckDetails: trucks,
+    importTruckDetails: trucks.map(
+      (truck) => stripUndefinedDeep(truck) as ImportTruckDetail
+    ),
     importTransporter: first.importTransporter ?? "",
     importTruckStash: first.importTruckStash ?? false,
     importVehicleNo: first.importVehicleNo ?? "",
@@ -1410,12 +1430,13 @@ export async function saveImportTTypeBoe(
       if (!(T_TYPE_CLEARANCE_VALUES as readonly string[]).includes(status)) {
         throw new Error("Select a valid T type status.");
       }
-      return {
+      const rowPatch: Record<string, unknown> = {
         status,
         date: (row.date || boeDate).trim().slice(0, 10),
         updatedBy: row.updatedBy || updatedBy,
-        updatedAt: row.updatedAt,
+        updatedAt: row.updatedAt ?? Timestamp.now(),
       };
+      return stripUndefinedDeep(rowPatch) as ImportTTypeEntry["statuses"][number];
     });
     if (!boeNo && !boeDate && !weight && !packages && !statuses.length) {
       continue;
@@ -1449,17 +1470,28 @@ export async function saveImportTTypeBoe(
   const lastStatus = first.statuses.at(-1)?.status;
   const allCompleted = cleaned.every(isTTypeEntryCompleted);
   const audit = stamp(updatedBy);
-  await updateDoc(docRef, {
+  const payload = stripUndefinedDeep({
     importTTypeEntries: cleaned,
     importTTypeBoeNo: first.boeNo,
     importTTypeBoeDate: first.boeDate,
-    importTTypeBoeClearanceStatus: lastStatus ?? deleteField(),
     importTTypeBoeSaved: true,
     importTTypeBoeSaveAudit: audit,
-    importTTypeOocCompleted: allCompleted ? true : deleteField(),
     updatedBy,
     updatedAt: serverTimestamp(),
-  });
+  }) as Record<string, unknown>;
+  if (lastStatus) {
+    payload.importTTypeBoeClearanceStatus = lastStatus;
+  } else {
+    payload.importTTypeBoeClearanceStatus = deleteField();
+  }
+  if (allCompleted) {
+    payload.importTTypeOocCompleted = true;
+    payload.importTTypeOocCompleteAudit = audit;
+  } else {
+    payload.importTTypeOocCompleted = deleteField();
+  }
+
+  await updateDoc(docRef, payload);
   invalidateFreightForwardListCache();
 
   return {

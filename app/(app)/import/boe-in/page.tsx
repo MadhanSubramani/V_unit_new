@@ -37,7 +37,6 @@ import { formatImportAuditDate } from "@/lib/import/auditDisplay";
 import { ImportTableCell } from "@/components/import/ImportJobTableCells";
 import {
   completeImportBoeIn,
-  completeImportBoeInOoc,
   addImportSectionRemark,
   getImportLinerRecords,
   revertImportBoeInAdmin,
@@ -822,20 +821,7 @@ function BoeExpansion({
               </label>
               {(!readOnly || (isAdmin && adminEdit)) && canAct && (
                 <div className="flex flex-wrap gap-2">
-                  {clearance === "rms" ? (
-                    <button
-                      type="button"
-                      disabled={
-                        busy ||
-                        !INWARD_BOE_NO_REGEX.test(inwardNo.trim()) ||
-                        !inwardDate
-                      }
-                      onClick={complete}
-                      className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
-                    >
-                      Complete
-                    </button>
-                  ) : (
+                  {clearance === "open" ? (
                     <button
                       type="button"
                       disabled={
@@ -848,23 +834,20 @@ function BoeExpansion({
                     >
                       Save
                     </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={
+                        busy ||
+                        !INWARD_BOE_NO_REGEX.test(inwardNo.trim()) ||
+                        !inwardDate
+                      }
+                      onClick={complete}
+                      className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
+                    >
+                      Complete
+                    </button>
                   )}
-                  {clearance === "ooc" &&
-                    !item.importBoeInOocCompleted &&
-                    !!item.inwardBoeNo && (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() =>
-                          void run(() =>
-                            completeImportBoeInOoc(item.id!, username)
-                          )
-                        }
-                        className="rounded-lg border border-zinc-300 px-3 py-1.5 text-[10px] font-semibold text-zinc-700 disabled:opacity-40"
-                      >
-                        OOC Complete
-                      </button>
-                    )}
                   {item.importBoeInOocCompleted && (
                     <p className="text-[11px] font-medium text-zinc-700">
                       OOC completed

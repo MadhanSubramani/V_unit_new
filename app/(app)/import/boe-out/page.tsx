@@ -67,6 +67,7 @@ import {
   isImportTTypeSectionCompleted,
   isTTypeEntryCompleted,
   matchesImportBoeOutCard,
+  normalizeTTypeClearance,
   T_TYPE_CLEARANCE_OPTIONS,
 } from "@/lib/import/boeOutWorkflow";
 import { getImportModuleProgressSteps } from "@/lib/import/sectionProgress";
@@ -531,6 +532,37 @@ function BoeOutExpansion({
     void run(() => saveImportTTypeBoe(item.id!, tTypeEntries, username));
   };
 
+  const completeTType = () => {
+    const today = new Date();
+    const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const next = tTypeEntries.map((entry) => {
+      const pick = statusPick[entry.id] ?? "open";
+      let statuses = [...(entry.statuses ?? [])];
+      if (
+        pick === "ooc" &&
+        !statuses.some((row) => normalizeTTypeClearance(row.status) === "ooc")
+      ) {
+        statuses = [
+          ...statuses,
+          { status: "ooc", date, updatedBy: username },
+        ];
+      }
+      return {
+        ...entry,
+        statuses,
+        completed: statuses.some(
+          (row) => normalizeTTypeClearance(row.status) === "ooc"
+        ),
+      };
+    });
+    setTTypeEntries(next);
+    void run(() => saveImportTTypeBoe(item.id!, next, username));
+  };
+
+  const tTypeShowsComplete = tTypeEntries.some(
+    (entry) => (statusPick[entry.id] ?? "open") === "ooc"
+  );
+
   const updateEntry = (id: string, patch: Partial<ImportTTypeEntry>) => {
     setTTypeEntries((current) =>
       current.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry))
@@ -804,10 +836,10 @@ function BoeOutExpansion({
                         Boolean(entry.boeDate)
                     )
                   }
-                  onClick={saveTType}
+                  onClick={tTypeShowsComplete ? completeTType : saveTType}
                   className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
                 >
-                  Save
+                  {tTypeShowsComplete ? "Complete" : "Save"}
                 </button>
               )}
               {tTypeCompleted && (
@@ -844,7 +876,7 @@ function BoeOutExpansion({
           {!dutyUnlocked ? (
             <p className="mt-3 flex items-center gap-1.5 text-[11px] font-medium text-zinc-500">
               <LockKeyhole size={12} />
-              Save T type first (OOC on all T types)
+              Complete T type first (OOC on all T types)
             </p>
           ) : (
             <div

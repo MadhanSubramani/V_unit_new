@@ -709,6 +709,7 @@ function TruckDetailCard({
         onUpdated={onUpdated}
       />
       <ImportSectionRemarks
+        className="px-4"
         remarks={item.importTransportRemarks ?? []}
         busy={busy}
         canAct={canAct}

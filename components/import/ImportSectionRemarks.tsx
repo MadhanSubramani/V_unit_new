@@ -10,18 +10,20 @@ export default function ImportSectionRemarks({
   busy,
   canAct,
   onAdd,
+  className = "",
 }: {
   title?: string;
   remarks: ImportFreeRemark[];
   busy: boolean;
   canAct: boolean;
   onAdd: (text: string) => Promise<void> | void;
+  className?: string;
 }) {
   const [draft, setDraft] = useState("");
 
   return (
     <div
-      className="mt-3 space-y-2"
+      className={`mt-3 space-y-2 ${className}`}
       onClick={(event) => event.stopPropagation()}
     >
       <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
