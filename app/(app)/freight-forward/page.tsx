@@ -17,6 +17,7 @@ import {
 import { DocumentSnapshot, Timestamp } from "firebase/firestore";
 import ModuleHeader from "@/components/ModuleHeader";
 import ActionMenu from "@/components/shared/ActionMenu";
+import HorizontalDragScroll from "@/components/shared/HorizontalDragScroll";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import { getCfsList } from "@/lib/cfs/cfs";
 import { getConfigByCategory } from "@/lib/configurations/configurations";
@@ -2435,7 +2436,7 @@ const handleStatusUpdate = async (
         </div>
         {/* Table */}
         <div className="mt-6 overflow-hidden rounded-2xl border border-zinc-200">
-          <div className="overflow-x-auto">
+          <HorizontalDragScroll className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-zinc-200 bg-slate-50">
@@ -2528,7 +2529,7 @@ const handleStatusUpdate = async (
                 )}
               </tbody>
             </table>
-          </div>
+          </HorizontalDragScroll>
         </div>
 
         {/* Pagination — keyset-based, total from server count */}

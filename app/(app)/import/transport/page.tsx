@@ -9,25 +9,20 @@ import {
   ScanLine,
 } from "lucide-react";
 import ModuleHeader from "@/components/ModuleHeader";
+import HorizontalDragScroll from "@/components/shared/HorizontalDragScroll";
 import ImportAuditLine from "@/components/import/ImportAuditLine";
 import ImportDoStatusPanel from "@/components/import/ImportDoStatusPanel";
 import ImportJobDocumentsPanel from "@/components/import/ImportJobDocumentsPanel";
 import ImportSectionProgress from "@/components/import/ImportSectionProgress";
-import { ImportLocationCell } from "@/components/import/ImportLocationCell";
-import ImportSortableHeader from "@/components/import/ImportSortableHeader";
 import {
   ImportCurrentStatusCell,
   useCfsScopedImportRecords,
   useImportTableRows,
 } from "@/components/import/ImportTableState";
-import { ImportEzCell } from "@/components/import/ImportEzCell";
 import ImportSectionRemarks from "@/components/import/ImportSectionRemarks";
-import { formatHblDisplay } from "@/lib/import/hbl";
-import { ImportTableCell } from "@/components/import/ImportJobTableCells";
 import {
-  ImportDoTableCells,
-  ImportGoodsAndBeHeaders,
-  ImportGoodsAndBeCells,
+  ImportCoreTableCells,
+  ImportCoreTableHeaders,
   ImportSearchDownloadBar,
 } from "@/components/import/ImportTableExtras";
 import {
@@ -38,7 +33,6 @@ import {
   updateImportTransportCfsReached,
   updateImportTransportPortDirection,
 } from "@/lib/freightForward/freightForward";
-import { formatContainersDisplay } from "@/lib/freightForward/containers";
 import { getInwardBoeNoDisplay } from "@/lib/import/linerWorkflow";
 import {
   canTakeTransportAction,
@@ -214,42 +208,19 @@ export default function ImportTransportPage() {
         </p>
       )}
 
-      <div
-        ref={tableScrollRef}
+      <HorizontalDragScroll
+        scrollRef={tableScrollRef}
         className="mt-4 overflow-x-auto rounded-xl border border-zinc-200"
       >
         <table className="min-w-[1280px] w-full text-left text-xs">
           <thead className="bg-zinc-50 text-[10px] uppercase tracking-wide text-zinc-500">
             <tr>
               <th className="w-9 px-2 py-3" />
-              <ImportSortableHeader
-                label="Job No"
-                sortKey="jobNumber"
-                activeSortKey={sortKey}
+              <ImportCoreTableHeaders
+                sortKey={sortKey}
                 sortDir={sortDir}
                 onSort={handleColumnSort}
               />
-              <th className="px-3 py-3 font-semibold">EZ No</th>
-              <th className="px-3 py-3 font-semibold">BL Type</th>
-              <th className="px-3 py-3 font-semibold">Trade Terms</th>
-              <th className="px-3 py-3 font-semibold">Vessel</th>
-              <ImportSortableHeader
-                label="ETA"
-                sortKey="eta"
-                activeSortKey={sortKey}
-                sortDir={sortDir}
-                onSort={handleColumnSort}
-              />
-              <th className="px-3 py-3 font-semibold">Location</th>
-              <th className="px-3 py-3 font-semibold">Consignee</th>
-              <th className="px-3 py-3 font-semibold">Client</th>
-              <ImportGoodsAndBeHeaders />
-              <th className="px-3 py-3 font-semibold">DO Status</th>
-              <th className="px-3 py-3 font-semibold">Port</th>
-              <th className="px-3 py-3 font-semibold">Empty</th>
-              <th className="px-3 py-3 font-semibold">MBL</th>
-              <th className="px-3 py-3 font-semibold">HBL</th>
-              <th className="px-3 py-3 font-semibold">Containers</th>
               <th className="px-3 py-3 font-semibold">Current Status</th>
               <th className="px-3 py-3 font-semibold">Status</th>
             </tr>
@@ -257,13 +228,13 @@ export default function ImportTransportPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={19} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={25} className="px-4 py-10 text-center text-zinc-400">
                   Loading Transport jobs...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={19} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={25} className="px-4 py-10 text-center text-zinc-400">
                   No import jobs found.
                 </td>
               </tr>
@@ -297,7 +268,7 @@ export default function ImportTransportPage() {
             )}
           </tbody>
         </table>
-      </div>
+      </HorizontalDragScroll>
 
       <div className="mt-4 flex items-center justify-end gap-2 text-xs">
         <button
@@ -371,20 +342,7 @@ function TransportRow({
             )
           ) : null}
         </td>
-        <ImportTableCell value={item.jobNumber} width={105} className="font-medium text-zinc-900" />
-        <ImportEzCell item={item} />
-        <ImportTableCell value={item.blType} width={90} />
-        <ImportTableCell value={item.tradeTerms} width={110} />
-        <ImportTableCell value={item.vesselName} />
-        <ImportTableCell value={item.eta} width={100} />
-        <ImportLocationCell item={item} />
-        <ImportTableCell value={item.consignmentName} />
-        <ImportTableCell value={item.clientName} />
-        <ImportGoodsAndBeCells item={item} />
-        <ImportDoTableCells item={item} />
-        <ImportTableCell value={item.mbl} width={130} />
-        <ImportTableCell value={formatHblDisplay(item)} width={130} />
-        <ImportTableCell value={formatContainersDisplay(item)} width={170} />
+        <ImportCoreTableCells item={item} />
         <ImportCurrentStatusCell item={item} module="transport" />
         <td className="px-3 py-3">
           {busy ? (
@@ -417,7 +375,7 @@ function TransportRow({
       </tr>
       {canExpand && expanded && (
         <tr className="border-t border-zinc-100 bg-zinc-100/70">
-          <td colSpan={19} className="p-0">
+          <td colSpan={25} className="p-0">
             <div
               className="sticky left-0 min-w-0 p-3"
               style={panelWidth ? { width: panelWidth } : undefined}
@@ -677,11 +635,11 @@ function TruckDetailCard({
             </div>
           </div>
         ))}
-        {!completed && editable && (
+        {!completed && canAct && (
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || !actionable}
               onClick={() => void saveDraft()}
               className="rounded-lg border border-zinc-300 px-3 py-1.5 text-[10px] font-semibold text-zinc-700 disabled:opacity-40"
             >
@@ -689,7 +647,7 @@ function TruckDetailCard({
             </button>
             <button
               type="button"
-              disabled={busy || !allTrucksReady}
+              disabled={busy || !editable || !allTrucksReady}
               onClick={() => void complete()}
               className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
             >

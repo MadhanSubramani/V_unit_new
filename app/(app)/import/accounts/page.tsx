@@ -9,26 +9,21 @@ import {
   LockKeyhole,
 } from "lucide-react";
 import ModuleHeader from "@/components/ModuleHeader";
+import HorizontalDragScroll from "@/components/shared/HorizontalDragScroll";
 import ImportAuditLine from "@/components/import/ImportAuditLine";
 import ImportJobDocumentsPanel from "@/components/import/ImportJobDocumentsPanel";
 import ImportSectionProgress from "@/components/import/ImportSectionProgress";
 import {
-  ImportDoTableCells,
-  ImportGoodsAndBeHeaders,
-  ImportGoodsAndBeCells,
+  ImportCoreTableCells,
+  ImportCoreTableHeaders,
   ImportSearchDownloadBar,
 } from "@/components/import/ImportTableExtras";
-import { ImportLocationCell } from "@/components/import/ImportLocationCell";
-import ImportSortableHeader from "@/components/import/ImportSortableHeader";
 import {
   ImportCurrentStatusCell,
   useCfsScopedImportRecords,
   useImportTableRows,
 } from "@/components/import/ImportTableState";
-import { ImportEzCell } from "@/components/import/ImportEzCell";
 import ImportSectionRemarks from "@/components/import/ImportSectionRemarks";
-import { formatHblDisplay } from "@/lib/import/hbl";
-import { ImportTableCell } from "@/components/import/ImportJobTableCells";
 import {
   completeImportAccounts,
   addImportSectionRemark,
@@ -36,7 +31,6 @@ import {
   updateImportAccountsBilling,
   updateImportAccountsPayment,
 } from "@/lib/freightForward/freightForward";
-import { formatContainersDisplay } from "@/lib/freightForward/containers";
 import {
   canTakeAccountsAction,
   computeImportAccountsCounts,
@@ -228,42 +222,19 @@ export default function ImportAccountsPage() {
         </p>
       )}
 
-      <div
-        ref={tableScrollRef}
+      <HorizontalDragScroll
+        scrollRef={tableScrollRef}
         className="mt-4 overflow-x-auto rounded-xl border border-zinc-200"
       >
         <table className="min-w-[1280px] w-full text-left text-xs">
           <thead className="bg-zinc-50 text-[10px] uppercase tracking-wide text-zinc-500">
             <tr>
               <th className="w-9 px-2 py-3" />
-              <ImportSortableHeader
-                label="Job No"
-                sortKey="jobNumber"
-                activeSortKey={sortKey}
+              <ImportCoreTableHeaders
+                sortKey={sortKey}
                 sortDir={sortDir}
                 onSort={handleColumnSort}
               />
-              <th className="px-3 py-3 font-semibold">EZ No</th>
-              <th className="px-3 py-3 font-semibold">BL Type</th>
-              <th className="px-3 py-3 font-semibold">Trade Terms</th>
-              <th className="px-3 py-3 font-semibold">Vessel</th>
-              <ImportSortableHeader
-                label="ETA"
-                sortKey="eta"
-                activeSortKey={sortKey}
-                sortDir={sortDir}
-                onSort={handleColumnSort}
-              />
-              <th className="px-3 py-3 font-semibold">Location</th>
-              <th className="px-3 py-3 font-semibold">Consignee</th>
-              <th className="px-3 py-3 font-semibold">Client</th>
-              <ImportGoodsAndBeHeaders />
-              <th className="px-3 py-3 font-semibold">DO Status</th>
-              <th className="px-3 py-3 font-semibold">Port</th>
-              <th className="px-3 py-3 font-semibold">Empty</th>
-              <th className="px-3 py-3 font-semibold">MBL</th>
-              <th className="px-3 py-3 font-semibold">HBL</th>
-              <th className="px-3 py-3 font-semibold">Containers</th>
               <th className="px-3 py-3 font-semibold">Current Status</th>
               <th className="px-3 py-3 font-semibold">Status</th>
             </tr>
@@ -271,13 +242,13 @@ export default function ImportAccountsPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={19} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={25} className="px-4 py-10 text-center text-zinc-400">
                   Loading Accounts jobs...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={19} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={25} className="px-4 py-10 text-center text-zinc-400">
                   No import jobs found.
                 </td>
               </tr>
@@ -305,7 +276,7 @@ export default function ImportAccountsPage() {
             )}
           </tbody>
         </table>
-      </div>
+      </HorizontalDragScroll>
 
       <div className="mt-4 flex items-center justify-end gap-2 text-xs">
         <button
@@ -378,24 +349,7 @@ function AccountsRow({
             )
           ) : null}
         </td>
-        <ImportTableCell
-          value={item.jobNumber}
-          width={105}
-          className="font-medium text-zinc-900"
-        />
-        <ImportEzCell item={item} />
-        <ImportTableCell value={item.blType} width={90} />
-        <ImportTableCell value={item.tradeTerms} width={110} />
-        <ImportTableCell value={item.vesselName} />
-        <ImportTableCell value={item.eta} width={100} />
-        <ImportLocationCell item={item} />
-        <ImportTableCell value={item.consignmentName} />
-        <ImportTableCell value={item.clientName} />
-        <ImportGoodsAndBeCells item={item} />
-        <ImportDoTableCells item={item} />
-        <ImportTableCell value={item.mbl} width={130} />
-        <ImportTableCell value={formatHblDisplay(item)} width={130} />
-        <ImportTableCell value={formatContainersDisplay(item)} width={170} />
+        <ImportCoreTableCells item={item} />
         <ImportCurrentStatusCell item={item} module="accounts" />
         <td className="px-3 py-3">
           {busy ? (
@@ -418,7 +372,7 @@ function AccountsRow({
       </tr>
       {canExpand && expanded && (
         <tr className="border-t border-zinc-100 bg-zinc-100/70">
-          <td colSpan={19} className="p-0">
+          <td colSpan={25} className="p-0">
             <div
               className="sticky left-0 min-w-0 p-3"
               style={panelWidth ? { width: panelWidth } : undefined}

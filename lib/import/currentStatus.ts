@@ -33,8 +33,8 @@ export function getImportLinerCurrentStatus(item: FreightForward) {
   if (isImportDoCompleted(item)) return "DO Received";
   if (getImportIgmStatus(item) === "inward") return "IGM Inward";
   if (getImportIgmStatus(item) === "posted") return "IGM Posted";
-  if (getImportMovementStatus(item) === "completed") return "Movement Complete";
-  if (getImportMovementStatus(item) === "accepted") return "Movement Accepted";
+  if (getImportMovementStatus(item) === "completed") return "Movement Accepted";
+  if (getImportMovementStatus(item) === "accepted") return "Movement Requested";
   return "Movement Pending";
 }
 

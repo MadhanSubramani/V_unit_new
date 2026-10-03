@@ -10,6 +10,7 @@ import {
 } from "@/lib/import/mergeDocuments";
 import {
   appendImportOtherDocuments,
+  removeImportJobDocument,
   setImportOtherDocuments,
 } from "@/lib/freightForward/freightForward";
 import { uploadDocument } from "@/lib/kyc/uploadDocument";
@@ -57,6 +58,23 @@ export default function ImportJobDocumentsPanel({
     }
   };
 
+  const removeListed = async (url: string) => {
+    if (!item.id) return;
+    setBusy(true);
+    setError("");
+    try {
+      const updated = await removeImportJobDocument(item.id, url, username);
+      onUpdated?.(updated);
+    } catch (removeError) {
+      setError(
+        removeError instanceof Error ? removeError.message : "Unable to delete document."
+      );
+    } finally {
+      setBusy(false);
+      setConfirmIndex(null);
+    }
+  };
+
   const removeSupporting = async (index: number) => {
     if (!item.id) return;
     const target = supporting[index];
@@ -94,6 +112,14 @@ export default function ImportJobDocumentsPanel({
               key={`${doc.url}-${index}`}
               label={doc.name || `Document ${index + 1}`}
               doc={doc}
+              removeDisabled={busy || !canManage}
+              onRemove={
+                canManage
+                  ? () => {
+                      void removeListed(doc.url);
+                    }
+                  : undefined
+              }
             />
           ))
         )}
@@ -144,7 +170,7 @@ export default function ImportJobDocumentsPanel({
       <ConfirmDialog
         open={confirmIndex !== null}
         title="Remove supporting document"
-        message="Remove this document from the job and delete the file from storage?"
+        message="Remove this file from the job and delete it from storage?"
         confirmLabel="Remove"
         onCancel={() => setConfirmIndex(null)}
         onConfirm={() => {

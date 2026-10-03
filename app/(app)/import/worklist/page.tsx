@@ -6,25 +6,19 @@ import ModuleHeader from "@/components/ModuleHeader";
 import ImportJobEditDrawer from "@/components/import/ImportJobEditDrawer";
 import ImportLinerDrawer from "@/components/import/ImportLinerDrawer";
 import ActionMenu from "@/components/shared/ActionMenu";
+import HorizontalDragScroll from "@/components/shared/HorizontalDragScroll";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import {
   getImportLinerRecords,
   softDeleteFreightForward,
 } from "@/lib/freightForward/freightForward";
-import { formatContainersDisplay } from "@/lib/freightForward/containers";
 import { isImportAccountsCompleted } from "@/lib/import/accountsWorkflow";
-import { formatHblDisplay } from "@/lib/import/hbl";
-import { ImportEzCell } from "@/components/import/ImportEzCell";
+import { getImportCompletionCount } from "@/lib/import/linerWorkflow";
 import {
-  getImportCompletionCount,
-  getImportDoEmptyDisplay,
-  getImportDoPortDisplay,
-  getImportDoStatusLabel,
-  getInwardBoeNoDisplay,
-} from "@/lib/import/linerWorkflow";
-import { ImportLocationCell } from "@/components/import/ImportLocationCell";
-import ImportSortableHeader from "@/components/import/ImportSortableHeader";
-import { ImportSearchDownloadBar, ImportDoTableCells, ImportGoodsAndBeHeaders, ImportGoodsAndBeCells } from "@/components/import/ImportTableExtras";
+  ImportCoreTableCells,
+  ImportCoreTableHeaders,
+  ImportSearchDownloadBar,
+} from "@/components/import/ImportTableExtras";
 import {
   ImportCurrentStatusCell,
   useCfsScopedImportRecords,
@@ -176,38 +170,15 @@ export default function ImportWorklistPage() {
         </p>
       )}
 
-      <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-200">
+      <HorizontalDragScroll className="mt-4 overflow-x-auto rounded-xl border border-zinc-200">
         <table className="min-w-[1100px] w-full text-left text-xs">
           <thead className="bg-zinc-50 text-[10px] uppercase tracking-wide text-zinc-500">
             <tr>
-              <ImportSortableHeader
-                label="Job No"
-                sortKey="jobNumber"
-                activeSortKey={sortKey}
+              <ImportCoreTableHeaders
+                sortKey={sortKey}
                 sortDir={sortDir}
                 onSort={handleColumnSort}
               />
-              <th className="px-3 py-3 font-semibold">EZ No</th>
-              <th className="px-3 py-3 font-semibold">BL Type</th>
-              <th className="px-3 py-3 font-semibold">Trade Terms</th>
-              <th className="px-3 py-3 font-semibold">Vessel</th>
-              <ImportSortableHeader
-                label="ETA"
-                sortKey="eta"
-                activeSortKey={sortKey}
-                sortDir={sortDir}
-                onSort={handleColumnSort}
-              />
-              <th className="px-3 py-3 font-semibold">Location</th>
-              <th className="px-3 py-3 font-semibold">Consignee</th>
-              <th className="px-3 py-3 font-semibold">Client</th>
-              <ImportGoodsAndBeHeaders />
-              <th className="px-3 py-3 font-semibold">DO Status</th>
-              <th className="px-3 py-3 font-semibold">Port</th>
-              <th className="px-3 py-3 font-semibold">Empty</th>
-              <th className="px-3 py-3 font-semibold">MBL</th>
-              <th className="px-3 py-3 font-semibold">HBL</th>
-              <th className="px-3 py-3 font-semibold">Containers</th>
               <th className="px-3 py-3 font-semibold">Completion</th>
               <th className="px-3 py-3 font-semibold">Current Status</th>
               <th className="px-3 py-3 font-semibold">Status</th>
@@ -217,13 +188,13 @@ export default function ImportWorklistPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={20} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={26} className="px-4 py-10 text-center text-zinc-400">
                   Loading job list...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={20} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={26} className="px-4 py-10 text-center text-zinc-400">
                   No jobs found. Use Add, or enable “Use this job for Import” in
                   Freight Forward.
                 </td>
@@ -234,36 +205,7 @@ export default function ImportWorklistPage() {
                 const jobCompleted = isImportAccountsCompleted(item);
                 return (
                   <tr key={item.id} className="border-t border-zinc-100">
-                    <td className="px-3 py-3 font-medium text-zinc-900">
-                      {item.jobNumber || "—"}
-                    </td>
-                    <ImportEzCell item={item} />
-                    <td className="px-3 py-3 text-zinc-700">
-                      {item.blType || "—"}
-                    </td>
-                    <td className="px-3 py-3 text-zinc-700">
-                      {item.tradeTerms || "—"}
-                    </td>
-                    <td className="px-3 py-3 text-zinc-700">
-                      {item.vesselName || "—"}
-                    </td>
-                    <td className="px-3 py-3 text-zinc-700">{item.eta || "—"}</td>
-                    <ImportLocationCell item={item} />
-                    <td className="px-3 py-3 text-zinc-700">
-                      {item.consignmentName || "—"}
-                    </td>
-                    <td className="px-3 py-3 text-zinc-700">
-                      {item.clientName || "—"}
-                    </td>
-                    <ImportGoodsAndBeCells item={item} />
-                    <ImportDoTableCells item={item} />
-                    <td className="px-3 py-3 text-zinc-700">{item.mbl || "—"}</td>
-                    <td className="px-3 py-3 text-zinc-700">
-                      {formatHblDisplay(item)}
-                    </td>
-                    <td className="px-3 py-3 text-zinc-700">
-                      {formatContainersDisplay(item)}
-                    </td>
+                    <ImportCoreTableCells item={item} />
                     <td className="px-3 py-3 text-zinc-700">{done} / 3</td>
                     <ImportCurrentStatusCell item={item} module="worklist" />
                     <td className="px-3 py-3">
@@ -298,7 +240,7 @@ export default function ImportWorklistPage() {
             )}
           </tbody>
         </table>
-      </div>
+      </HorizontalDragScroll>
 
       <div className="mt-4 flex items-center justify-end gap-2 text-xs">
         <button

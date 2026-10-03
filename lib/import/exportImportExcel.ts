@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import { FreightForward } from "@/types/freightForward";
-import { formatHblDisplay } from "@/lib/import/hbl";
+import { formatEzDate, formatHblDisplay } from "@/lib/import/hbl";
 import { formatContainersDisplay } from "@/lib/freightForward/containers";
 import { Cfs } from "@/types/cfs";
 import { Sez } from "@/types/sez";
@@ -23,26 +23,26 @@ export function buildImportTableExportRows(
   return records.map((item) => ({
     "Job No": item.jobNumber ?? "",
     "EZ No": item.ezRefNumber ?? "",
-    "EZ Date": item.ezDate ?? "",
+    "EZ Date": formatEzDate(item),
     "BL Type": item.blType ?? "",
     "Trade Terms": item.tradeTerms ?? "",
+    Location: resolveImportLocationCode(item, cfsList, sezList),
     Vessel: item.vesselName ?? "",
     ETA: item.eta ?? "",
-    Location: resolveImportLocationCode(item, cfsList, sezList),
     Consignee: item.consignmentName ?? "",
     Client: item.clientName ?? "",
-    "Desc of goods": item.descriptionOfGoods ?? "",
+    MBL: item.mbl ?? "",
+    HBL: formatHblDisplay(item) === "—" ? "" : formatHblDisplay(item),
+    Containers: formatContainersDisplay(item),
     "DO Status": getImportDoStatusLabel(item),
-    "Place of delivery": item.importDoPlaceOfDelivery ?? "",
     Port: getImportDoPortDisplay(item),
     Empty: getImportDoEmptyDisplay(item),
+    "Place of delivery": item.importDoPlaceOfDelivery ?? "",
     "Z type BE No": item.inwardBoeNo ?? "",
     "Z type BE Date": item.inwardBoeDate ?? "",
     "T type BE No": getTTypeBoeNoDisplay(item) === "—" ? "" : getTTypeBoeNoDisplay(item),
     "T type BE Date": getTTypeBoeDateDisplay(item) === "—" ? "" : getTTypeBoeDateDisplay(item),
-    MBL: item.mbl ?? "",
-    HBL: formatHblDisplay(item) === "—" ? "" : formatHblDisplay(item),
-    Containers: formatContainersDisplay(item),
+    "Desc of goods": item.descriptionOfGoods ?? "",
     ...(extraColumns ? extraColumns(item) : {}),
   }));
 }

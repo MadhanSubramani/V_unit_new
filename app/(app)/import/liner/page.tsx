@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import {
   Check,
   ChevronDown,
@@ -10,23 +9,20 @@ import {
   LockKeyhole,
 } from "lucide-react";
 import ModuleHeader from "@/components/ModuleHeader";
+import HorizontalDragScroll from "@/components/shared/HorizontalDragScroll";
 import ImportJobEditDrawer from "@/components/import/ImportJobEditDrawer";
-import { ImportLocationCell } from "@/components/import/ImportLocationCell";
-import ImportSortableHeader from "@/components/import/ImportSortableHeader";
 import ImportJobDocumentsPanel from "@/components/import/ImportJobDocumentsPanel";
 import FileInputWithClip from "@/components/import/FileInputWithClip";
 import ImportDocumentLink from "@/components/import/ImportDocumentLink";
 import { uploadDocument } from "@/lib/kyc/uploadDocument";
 import ImportSectionProgress from "@/components/import/ImportSectionProgress";
 import ImportSectionRemarks from "@/components/import/ImportSectionRemarks";
-import { ImportSearchDownloadBar, ImportDoTableCells, ImportGoodsAndBeHeaders, ImportGoodsAndBeCells } from "@/components/import/ImportTableExtras";
+import { ImportSearchDownloadBar, ImportCoreTableHeaders, ImportCoreTableCells } from "@/components/import/ImportTableExtras";
 import {
   ImportCurrentStatusCell,
   useCfsScopedImportRecords,
   useImportTableRows,
 } from "@/components/import/ImportTableState";
-import { ImportEzCell } from "@/components/import/ImportEzCell";
-import { formatHblDisplay } from "@/lib/import/hbl";
 import { formatImportAuditDate } from "@/lib/import/auditDisplay";
 import ActionMenu from "@/components/shared/ActionMenu";
 import {
@@ -67,7 +63,6 @@ import {
   ImportSortKey,
   toggleImportSort,
 } from "@/lib/import/sortImportRecords";
-import { formatContainersDisplay } from "@/lib/freightForward/containers";
 import {
   FreightForward,
   ImportDoStatus,
@@ -98,61 +93,6 @@ function latestAudit(item: FreightForward, section: ImportWorkflowSection) {
   return [...(item.importWorkflowTimeline ?? [])]
     .reverse()
     .find((entry) => entry.section === section);
-}
-
-function TableCell({
-  value,
-  width = 150,
-  className = "",
-}: {
-  value: unknown;
-  width?: number;
-  className?: string;
-}) {
-  const text = String(value || "—");
-  const textRef = useRef<HTMLSpanElement | null>(null);
-  const [tooltip, setTooltip] = useState<{ left: number; top: number } | null>(
-    null
-  );
-
-  const showTooltip = (cell: HTMLElement) => {
-    const content = textRef.current;
-    if (text === "—" || !content) return;
-    if (content.scrollWidth - content.clientWidth < 1) return;
-
-    const rect = cell.getBoundingClientRect();
-    const tooltipWidth = Math.min(320, window.innerWidth - 16);
-    setTooltip({
-      left: Math.max(8, Math.min(rect.left, window.innerWidth - tooltipWidth - 8)),
-      top: rect.bottom + 6,
-    });
-  };
-
-  return (
-    <td
-      className={`px-3 py-3 ${className}`}
-      onMouseEnter={(event) => showTooltip(event.currentTarget)}
-      onMouseLeave={() => setTooltip(null)}
-    >
-      <span
-        ref={textRef}
-        className="block truncate whitespace-nowrap"
-        style={{ maxWidth: width }}
-      >
-        {text}
-      </span>
-      {tooltip &&
-        createPortal(
-          <span
-            className="pointer-events-none fixed z-[9999] max-w-80 whitespace-normal break-words rounded-md bg-zinc-950 px-2.5 py-1.5 text-[11px] leading-4 text-white shadow-lg"
-            style={{ left: tooltip.left, top: tooltip.top }}
-          >
-            {text}
-          </span>,
-          document.body
-        )}
-    </td>
-  );
 }
 
 export default function ImportLinerPage() {
@@ -428,42 +368,19 @@ export default function ImportLinerPage() {
         </p>
       )}
 
-      <div
-        ref={tableScrollRef}
+      <HorizontalDragScroll
+        scrollRef={tableScrollRef}
         className="mt-4 overflow-x-auto rounded-xl border border-zinc-200"
       >
         <table className="min-w-[1280px] w-full text-left text-xs">
           <thead className="bg-zinc-50 text-[10px] uppercase tracking-wide text-zinc-500">
             <tr>
               <th className="w-9 px-2 py-3" />
-              <ImportSortableHeader
-                label="Job No"
-                sortKey="jobNumber"
-                activeSortKey={sortKey}
+              <ImportCoreTableHeaders
+                sortKey={sortKey}
                 sortDir={sortDir}
                 onSort={handleColumnSort}
               />
-              <th className="px-3 py-3 font-semibold">EZ No</th>
-              <th className="px-3 py-3 font-semibold">BL Type</th>
-              <th className="px-3 py-3 font-semibold">Trade Terms</th>
-              <th className="px-3 py-3 font-semibold">Vessel</th>
-              <ImportSortableHeader
-                label="ETA"
-                sortKey="eta"
-                activeSortKey={sortKey}
-                sortDir={sortDir}
-                onSort={handleColumnSort}
-              />
-              <th className="px-3 py-3 font-semibold">Location</th>
-              <th className="px-3 py-3 font-semibold">Consignee</th>
-              <th className="px-3 py-3 font-semibold">Client</th>
-              <ImportGoodsAndBeHeaders />
-              <th className="px-3 py-3 font-semibold">DO Status</th>
-              <th className="px-3 py-3 font-semibold">Port</th>
-              <th className="px-3 py-3 font-semibold">Empty</th>
-              <th className="px-3 py-3 font-semibold">MBL</th>
-              <th className="px-3 py-3 font-semibold">HBL</th>
-              <th className="px-3 py-3 font-semibold">Containers</th>
               <th className="px-3 py-3 font-semibold">Done</th>
               <th className="px-3 py-3 font-semibold">Current Status</th>
               <th className="px-3 py-3 font-semibold">Import Status</th>
@@ -473,13 +390,13 @@ export default function ImportLinerPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={21} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={26} className="px-4 py-10 text-center text-zinc-400">
                   Loading Import Liner jobs...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={21} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={26} className="px-4 py-10 text-center text-zinc-400">
                   No jobs found for this filter. Add jobs from Import Job List,
                   or enable “Use this job for Import” in Freight Forward.
                 </td>
@@ -519,7 +436,7 @@ export default function ImportLinerPage() {
             )}
           </tbody>
         </table>
-      </div>
+      </HorizontalDragScroll>
 
       <div className="mt-4 flex items-center justify-end gap-2 text-xs">
         <button
@@ -635,20 +552,7 @@ function Row({
             )
           ) : null}
         </td>
-        <TableCell value={item.jobNumber} width={105} className="font-medium text-zinc-900" />
-        <ImportEzCell item={item} />
-        <TableCell value={item.blType} width={90} />
-        <TableCell value={item.tradeTerms} width={110} />
-        <TableCell value={item.vesselName} />
-        <TableCell value={item.eta} width={100} />
-        <ImportLocationCell item={item} />
-        <TableCell value={item.consignmentName} />
-        <TableCell value={item.clientName} />
-        <ImportGoodsAndBeCells item={item} />
-        <ImportDoTableCells item={item} />
-        <TableCell value={item.mbl} width={130} />
-        <TableCell value={formatHblDisplay(item)} width={130} />
-        <TableCell value={formatContainersDisplay(item)} width={170} />
+        <ImportCoreTableCells item={item} />
         <td className="px-3 py-3 font-medium text-zinc-800">
           {completedStages} / 3
         </td>
@@ -685,7 +589,7 @@ function Row({
       </tr>
       {canExpand && expanded && (
         <tr className="border-t border-zinc-100 bg-zinc-100/70">
-          <td colSpan={21} className="p-0">
+          <td colSpan={26} className="p-0">
             <div
               className="sticky left-0 min-w-0 p-3"
               style={panelWidth ? { width: panelWidth } : undefined}
@@ -721,8 +625,8 @@ function Row({
                     value={movementStatus}
                     options={[
                       ["pending", "Pending"],
-                      ["accepted", "Accepted"],
-                      ["completed", "Completed"],
+                      ["accepted", "Requested"],
+                      ["completed", "Accepted"],
                     ]}
                     locked={false}
                     lockHint=""

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { RotateCcw, Trash2 } from "lucide-react";
 import ModuleHeader from "@/components/ModuleHeader";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
+import HorizontalDragScroll from "@/components/shared/HorizontalDragScroll";
 import {
   getTrashedImportLinerRecords,
   permanentlyDeleteFreightForwards,
@@ -148,7 +149,7 @@ export default function ImportTrashPage() {
         </button>
       </div>
 
-      <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-200">
+      <HorizontalDragScroll className="mt-4 overflow-x-auto rounded-xl border border-zinc-200">
         <table className="min-w-[960px] w-full text-left text-xs">
           <thead className="bg-zinc-50 text-[10px] uppercase tracking-wide text-zinc-500">
             <tr>
@@ -218,7 +219,7 @@ export default function ImportTrashPage() {
             )}
           </tbody>
         </table>
-      </div>
+      </HorizontalDragScroll>
 
       <ConfirmDialog
         open={confirmOpen}

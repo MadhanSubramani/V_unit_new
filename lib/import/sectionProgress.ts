@@ -4,6 +4,7 @@ import {
   getImportDoStatus,
   getImportIgmStatus,
   getImportMovementStatus,
+  getImportMovementStatusLabel,
   isImportLinerCompleted,
 } from "@/lib/import/linerWorkflow";
 import {
@@ -95,7 +96,7 @@ function linerDetails(item: FreightForward): ImportProgressDetail[] {
   const rows: ImportProgressDetail[] = [
     detail(
       "Movement",
-      pretty(getImportMovementStatus(item)),
+      getImportMovementStatusLabel(getImportMovementStatus(item)),
       linerSectionAudit(item, "movement")
     ),
   ];
@@ -104,10 +105,14 @@ function linerDetails(item: FreightForward): ImportProgressDetail[] {
     .filter((entry) => entry.section === "movement")
     .forEach((entry) => {
       rows.push(
-        detail(`Movement · ${pretty(entry.status)}`, pretty(entry.status), {
-          updatedBy: entry.updatedBy,
-          updatedAt: entry.updatedAt,
-        })
+        detail(
+          `Movement · ${getImportMovementStatusLabel(entry.status)}`,
+          getImportMovementStatusLabel(entry.status),
+          {
+            updatedBy: entry.updatedBy,
+            updatedAt: entry.updatedAt,
+          }
+        )
       );
     });
   if (item.importMovementRemark?.trim()) {

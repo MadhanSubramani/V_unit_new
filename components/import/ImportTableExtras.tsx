@@ -14,13 +14,21 @@ import {
 } from "@/lib/import/exportImportExcel";
 import { ImportTableCell } from "@/components/import/ImportJobTableCells";
 import ImportDocumentLink from "@/components/import/ImportDocumentLink";
+import { ImportLocationCell } from "@/components/import/ImportLocationCell";
+import ImportSortableHeader from "@/components/import/ImportSortableHeader";
+import { formatContainersDisplay } from "@/lib/freightForward/containers";
+import { formatEzDate, formatHblDisplay } from "@/lib/import/hbl";
 import {
   getImportDoEmptyDisplay,
   getImportDoPlaceOfDelivery,
   getImportDoPortDisplay,
   getImportDoStatusLabel,
 } from "@/lib/import/linerWorkflow";
-import { getTTypeBoeNoDisplay } from "@/lib/import/boeOutWorkflow";
+import {
+  getTTypeBoeDateDisplay,
+  getTTypeBoeNoDisplay,
+} from "@/lib/import/boeOutWorkflow";
+import type { ImportSortDir, ImportSortKey } from "@/lib/import/sortImportRecords";
 
 export function ImportDoTableCells({ item }: { item: FreightForward }) {
   return (
@@ -28,9 +36,6 @@ export function ImportDoTableCells({ item }: { item: FreightForward }) {
       <td className="px-3 py-3">
         <span className="block text-[11px] font-medium text-zinc-800">
           {getImportDoStatusLabel(item)}
-        </span>
-        <span className="mt-0.5 block max-w-[110px] truncate text-[10px] text-zinc-400" title={getImportDoPlaceOfDelivery(item)}>
-          {getImportDoPlaceOfDelivery(item)}
         </span>
       </td>
       <td className="px-3 py-3">
@@ -53,20 +58,107 @@ export function ImportDoTableCells({ item }: { item: FreightForward }) {
           />
         ) : null}
       </td>
+      <ImportTableCell value={getImportDoPlaceOfDelivery(item)} width={140} />
     </>
   );
 }
 
-export const IMPORT_DO_TABLE_HEADERS = ["DO Status", "Port", "Empty"] as const;
+export const IMPORT_DO_TABLE_HEADERS = [
+  "DO Status",
+  "Port",
+  "Empty",
+  "Place of delivery",
+] as const;
 
-export function ImportGoodsAndBeHeaders() {
+export const IMPORT_CORE_COLUMN_COUNT = 22;
+
+export function ImportCoreTableHeaders({
+  sortKey,
+  sortDir,
+  onSort,
+}: {
+  sortKey: ImportSortKey;
+  sortDir: ImportSortDir;
+  onSort: (key: ImportSortKey) => void;
+}) {
   return (
     <>
-      <th className="px-3 py-3 font-semibold">Desc of goods</th>
+      <ImportSortableHeader
+        label="Job No"
+        sortKey="jobNumber"
+        activeSortKey={sortKey}
+        sortDir={sortDir}
+        onSort={onSort}
+      />
+      <th className="px-3 py-3 font-semibold">EZ No</th>
+      <th className="px-3 py-3 font-semibold">EZ Date</th>
+      <th className="px-3 py-3 font-semibold">BL Type</th>
+      <th className="px-3 py-3 font-semibold">Trade Terms</th>
+      <th className="px-3 py-3 font-semibold">Location</th>
+      <th className="px-3 py-3 font-semibold">Vessel</th>
+      <ImportSortableHeader
+        label="ETA"
+        sortKey="eta"
+        activeSortKey={sortKey}
+        sortDir={sortDir}
+        onSort={onSort}
+      />
+      <th className="px-3 py-3 font-semibold">Consignee</th>
+      <th className="px-3 py-3 font-semibold">Client</th>
+      <th className="px-3 py-3 font-semibold">MBL</th>
+      <th className="px-3 py-3 font-semibold">HBL</th>
+      <th className="px-3 py-3 font-semibold">Containers</th>
+      <th className="px-3 py-3 font-semibold">DO Status</th>
+      <th className="px-3 py-3 font-semibold">Port</th>
+      <th className="px-3 py-3 font-semibold">Empty</th>
+      <th className="px-3 py-3 font-semibold">Place of delivery</th>
       <th className="px-3 py-3 font-semibold">Z type BE No</th>
       <th className="px-3 py-3 font-semibold">Z type BE Date</th>
       <th className="px-3 py-3 font-semibold">T type BE No</th>
       <th className="px-3 py-3 font-semibold">T type BE Date</th>
+      <th className="px-3 py-3 font-semibold">Desc of goods</th>
+    </>
+  );
+}
+
+export function ImportCoreTableCells({ item }: { item: FreightForward }) {
+  return (
+    <>
+      <ImportTableCell
+        value={item.jobNumber}
+        width={105}
+        className="font-medium text-zinc-900"
+      />
+      <ImportTableCell value={item.ezRefNumber} width={105} />
+      <ImportTableCell value={formatEzDate(item)} width={90} />
+      <ImportTableCell value={item.blType} width={90} />
+      <ImportTableCell value={item.tradeTerms} width={110} />
+      <ImportLocationCell item={item} />
+      <ImportTableCell value={item.vesselName} />
+      <ImportTableCell value={item.eta} width={100} />
+      <ImportTableCell value={item.consignmentName} />
+      <ImportTableCell value={item.clientName} />
+      <ImportTableCell value={item.mbl} width={130} />
+      <ImportTableCell value={formatHblDisplay(item)} width={130} />
+      <ImportTableCell value={formatContainersDisplay(item)} width={170} />
+      <ImportDoTableCells item={item} />
+      <ImportTableCell value={item.inwardBoeNo} width={110} />
+      <ImportTableCell value={item.inwardBoeDate} width={100} />
+      <ImportTableCell value={getTTypeBoeNoDisplay(item)} width={110} />
+      <ImportTableCell value={getTTypeBoeDateDisplay(item)} width={100} />
+      <ImportTableCell value={item.descriptionOfGoods} width={120} />
+    </>
+  );
+}
+
+export function ImportGoodsAndBeHeaders() {
+  return (
+    <>
+      <th className="px-3 py-3 font-semibold">Z type BE No</th>
+      <th className="px-3 py-3 font-semibold">Z type BE Date</th>
+      <th className="px-3 py-3 font-semibold">T type BE No</th>
+      <th className="px-3 py-3 font-semibold">T type BE Date</th>
+      <th className="px-3 py-3 font-semibold">Desc of goods</th>
     </>
   );
 }
@@ -74,11 +166,11 @@ export function ImportGoodsAndBeHeaders() {
 export function ImportGoodsAndBeCells({ item }: { item: FreightForward }) {
   return (
     <>
-      <ImportTableCell value={item.descriptionOfGoods} width={120} />
       <ImportTableCell value={item.inwardBoeNo} width={110} />
       <ImportTableCell value={item.inwardBoeDate} width={100} />
       <ImportTableCell value={getTTypeBoeNoDisplay(item)} width={110} />
-      <ImportTableCell value={item.importTTypeBoeDate} width={100} />
+      <ImportTableCell value={getTTypeBoeDateDisplay(item)} width={100} />
+      <ImportTableCell value={item.descriptionOfGoods} width={120} />
     </>
   );
 }

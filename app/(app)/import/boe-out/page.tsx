@@ -10,27 +10,22 @@ import {
   Plus,
 } from "lucide-react";
 import ModuleHeader from "@/components/ModuleHeader";
+import HorizontalDragScroll from "@/components/shared/HorizontalDragScroll";
 import ImportAuditLine from "@/components/import/ImportAuditLine";
 import ImportDoStatusPanel from "@/components/import/ImportDoStatusPanel";
 import ImportJobDocumentsPanel from "@/components/import/ImportJobDocumentsPanel";
 import ImportSectionProgress from "@/components/import/ImportSectionProgress";
 import {
-  ImportDoTableCells,
-  ImportGoodsAndBeHeaders,
-  ImportGoodsAndBeCells,
+  ImportCoreTableCells,
+  ImportCoreTableHeaders,
   ImportSearchDownloadBar,
 } from "@/components/import/ImportTableExtras";
-import { ImportLocationCell } from "@/components/import/ImportLocationCell";
-import ImportSortableHeader from "@/components/import/ImportSortableHeader";
 import {
   ImportCurrentStatusCell,
   useCfsScopedImportRecords,
   useImportTableRows,
 } from "@/components/import/ImportTableState";
-import { ImportEzCell } from "@/components/import/ImportEzCell";
 import ImportSectionRemarks from "@/components/import/ImportSectionRemarks";
-import { formatHblDisplay } from "@/lib/import/hbl";
-import { ImportTableCell } from "@/components/import/ImportJobTableCells";
 import {
   changeImportBoeOutVehicle,
   addImportSectionRemark,
@@ -42,7 +37,6 @@ import {
   updateImportBoeOutNewVehicle,
   updateImportEwayBill,
 } from "@/lib/freightForward/freightForward";
-import { formatContainersDisplay } from "@/lib/freightForward/containers";
 import {
   getImportTruckDetails,
   getImportVehicleChanges,
@@ -75,6 +69,7 @@ import { getInwardBoeNoDisplay } from "@/lib/import/linerWorkflow";
 import {
   canActOnImportModule,
   canExpandImportRow,
+  isImportAdmin,
   parseImportSessionUser,
 } from "@/lib/import/permissions";
 import {
@@ -115,6 +110,7 @@ export default function ImportBoeOutPage() {
   const [user] = useState(() => parseImportSessionUser());
   const canExpand = canExpandImportRow(user, "ttype");
   const canAct = canActOnImportModule(user, "ttype");
+  const isAdmin = isImportAdmin(user);
 
   const handleColumnSort = (key: ImportSortKey) => {
     const next = toggleImportSort(sortKey, sortDir, key);
@@ -249,42 +245,19 @@ export default function ImportBoeOutPage() {
         </p>
       )}
 
-      <div
-        ref={tableScrollRef}
+      <HorizontalDragScroll
+        scrollRef={tableScrollRef}
         className="mt-4 overflow-x-auto rounded-xl border border-zinc-200"
       >
         <table className="min-w-[1280px] w-full text-left text-xs">
           <thead className="bg-zinc-50 text-[10px] uppercase tracking-wide text-zinc-500">
             <tr>
               <th className="w-9 px-2 py-3" />
-              <ImportSortableHeader
-                label="Job No"
-                sortKey="jobNumber"
-                activeSortKey={sortKey}
+              <ImportCoreTableHeaders
+                sortKey={sortKey}
                 sortDir={sortDir}
                 onSort={handleColumnSort}
               />
-              <th className="px-3 py-3 font-semibold">EZ No</th>
-              <th className="px-3 py-3 font-semibold">BL Type</th>
-              <th className="px-3 py-3 font-semibold">Trade Terms</th>
-              <th className="px-3 py-3 font-semibold">Vessel</th>
-              <ImportSortableHeader
-                label="ETA"
-                sortKey="eta"
-                activeSortKey={sortKey}
-                sortDir={sortDir}
-                onSort={handleColumnSort}
-              />
-              <th className="px-3 py-3 font-semibold">Location</th>
-              <th className="px-3 py-3 font-semibold">Consignee</th>
-              <th className="px-3 py-3 font-semibold">Client</th>
-              <ImportGoodsAndBeHeaders />
-              <th className="px-3 py-3 font-semibold">DO Status</th>
-              <th className="px-3 py-3 font-semibold">Port</th>
-              <th className="px-3 py-3 font-semibold">Empty</th>
-              <th className="px-3 py-3 font-semibold">MBL</th>
-              <th className="px-3 py-3 font-semibold">HBL</th>
-              <th className="px-3 py-3 font-semibold">Containers</th>
               <th className="px-3 py-3 font-semibold">Current Status</th>
               <th className="px-3 py-3 font-semibold">Status</th>
             </tr>
@@ -292,13 +265,13 @@ export default function ImportBoeOutPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={19} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={25} className="px-4 py-10 text-center text-zinc-400">
                   Loading T type BE jobs...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={19} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={25} className="px-4 py-10 text-center text-zinc-400">
                   No import jobs found.
                 </td>
               </tr>
@@ -312,6 +285,7 @@ export default function ImportBoeOutPage() {
                   username={user?.username ?? "Unknown"}
                   canExpand={canExpand}
                   canAct={canAct}
+                  isAdmin={isAdmin}
                   panelWidth={panelWidth}
                   onToggle={() =>
                     setExpandedId((current) =>
@@ -326,7 +300,7 @@ export default function ImportBoeOutPage() {
             )}
           </tbody>
         </table>
-      </div>
+      </HorizontalDragScroll>
 
       <div className="mt-4 flex items-center justify-end gap-2 text-xs">
         <button
@@ -362,6 +336,7 @@ function BoeOutRow({
   username,
   canExpand,
   canAct,
+  isAdmin,
   panelWidth,
   onToggle,
   onBusy,
@@ -374,6 +349,7 @@ function BoeOutRow({
   username: string;
   canExpand: boolean;
   canAct: boolean;
+  isAdmin: boolean;
   panelWidth: number;
   onToggle: () => void;
   onBusy: (id: string | null) => void;
@@ -399,20 +375,7 @@ function BoeOutRow({
             )
           ) : null}
         </td>
-        <ImportTableCell value={item.jobNumber} width={105} className="font-medium text-zinc-900" />
-        <ImportEzCell item={item} />
-        <ImportTableCell value={item.blType} width={90} />
-        <ImportTableCell value={item.tradeTerms} width={110} />
-        <ImportTableCell value={item.vesselName} />
-        <ImportTableCell value={item.eta} width={100} />
-        <ImportLocationCell item={item} />
-        <ImportTableCell value={item.consignmentName} />
-        <ImportTableCell value={item.clientName} />
-        <ImportGoodsAndBeCells item={item} />
-        <ImportDoTableCells item={item} />
-        <ImportTableCell value={item.mbl} width={130} />
-        <ImportTableCell value={formatHblDisplay(item)} width={130} />
-        <ImportTableCell value={formatContainersDisplay(item)} width={170} />
+        <ImportCoreTableCells item={item} />
         <ImportCurrentStatusCell item={item} module="ttype" />
         <td className="px-3 py-3">
           {busy ? (
@@ -435,7 +398,7 @@ function BoeOutRow({
       </tr>
       {canExpand && expanded && (
         <tr className="border-t border-zinc-100 bg-zinc-100/70">
-          <td colSpan={19} className="p-0">
+          <td colSpan={25} className="p-0">
             <div
               className="sticky left-0 min-w-0 p-3"
               style={panelWidth ? { width: panelWidth } : undefined}
@@ -445,6 +408,7 @@ function BoeOutRow({
                 busy={busy}
                 username={username}
                 canAct={canAct}
+                isAdmin={isAdmin}
                 onBusy={onBusy}
                 onError={onError}
                 onUpdated={onUpdated}
@@ -462,6 +426,7 @@ function BoeOutExpansion({
   busy,
   username,
   canAct,
+  isAdmin,
   onBusy,
   onError,
   onUpdated,
@@ -470,12 +435,14 @@ function BoeOutExpansion({
   busy: boolean;
   username: string;
   canAct: boolean;
+  isAdmin: boolean;
   onBusy: (id: string | null) => void;
   onError: (message: string) => void;
   onUpdated: (item: FreightForward) => void;
 }) {
   const dispatched = isImportBoeOutDispatched(item);
-  const readOnly = dispatched || !canAct;
+  const [adminEdit, setAdminEdit] = useState(false);
+  const readOnly = (dispatched && !(isAdmin && adminEdit)) || !canAct;
   const transportReady = canTakeTTypeAction(item);
   const occDone = isImportBoeOutInwardOccDone(item);
   const tTypeSaved = isImportTTypeBoeSaved(item);
@@ -529,7 +496,11 @@ function BoeOutExpansion({
   };
 
   const saveTType = () => {
-    void run(() => saveImportTTypeBoe(item.id!, tTypeEntries, username));
+    void run(() =>
+      saveImportTTypeBoe(item.id!, tTypeEntries, username, {
+        allowCompletedEdit: isAdmin && adminEdit,
+      })
+    );
   };
 
   const completeTType = () => {
@@ -556,7 +527,11 @@ function BoeOutExpansion({
       };
     });
     setTTypeEntries(next);
-    void run(() => saveImportTTypeBoe(item.id!, next, username));
+    void run(() =>
+      saveImportTTypeBoe(item.id!, next, username, {
+        allowCompletedEdit: isAdmin && adminEdit,
+      })
+    );
   };
 
   const tTypeShowsComplete = tTypeEntries.some(
@@ -612,17 +587,34 @@ function BoeOutExpansion({
     void run(() => dispatchImportBoeOut(item.id!, username));
   };
 
+  const tTypeLocked = readOnly || (tTypeCompleted && !(isAdmin && adminEdit));
   const locked = readOnly;
 
   return (
     <div className="min-w-0 overflow-hidden rounded-xl border border-zinc-200 bg-white">
       <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-          T type BE workflow
-        </p>
-        <h3 className="mt-1 text-sm font-semibold text-zinc-900">
-          {item.jobNumber || "Import"} — inward OOC, T type, duty, e waybill & dispatch
-        </h3>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              T type BE workflow
+            </p>
+            <h3 className="mt-1 text-sm font-semibold text-zinc-900">
+              {item.jobNumber || "Import"} — inward OOC, T type, duty, e waybill & dispatch
+            </h3>
+          </div>
+          {isAdmin && (tTypeCompleted || dispatched) && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setAdminEdit((current) => !current);
+              }}
+              className="rounded-lg border border-zinc-200 px-2.5 py-1 text-[10px] font-semibold text-zinc-700"
+            >
+              {adminEdit ? "Lock" : "Edit"}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid min-w-0 gap-3 p-4 lg:grid-cols-2">
@@ -715,7 +707,7 @@ function BoeOutExpansion({
                       <input
                         value={entry.boeNo}
                         maxLength={7}
-                        disabled={busy || locked}
+                        disabled={busy || tTypeLocked}
                         onChange={(event) =>
                           updateEntry(entry.id, {
                             boeNo: event.target.value.replace(/\D/g, "").slice(0, 7),
@@ -730,7 +722,7 @@ function BoeOutExpansion({
                       <input
                         type="date"
                         value={entry.boeDate}
-                        disabled={busy || locked}
+                        disabled={busy || tTypeLocked}
                         onChange={(event) =>
                           updateEntry(entry.id, { boeDate: event.target.value })
                         }
@@ -742,7 +734,7 @@ function BoeOutExpansion({
                         <span className="font-medium text-zinc-700">Weight</span>
                         <input
                           value={entry.weight ?? ""}
-                          disabled={busy || locked}
+                          disabled={busy || tTypeLocked}
                           onChange={(event) =>
                             updateEntry(entry.id, { weight: event.target.value })
                           }
@@ -753,7 +745,7 @@ function BoeOutExpansion({
                         <span className="font-medium text-zinc-700">Package</span>
                         <input
                           value={entry.packages ?? ""}
-                          disabled={busy || locked}
+                          disabled={busy || tTypeLocked}
                           onChange={(event) =>
                             updateEntry(entry.id, { packages: event.target.value })
                           }
@@ -766,7 +758,7 @@ function BoeOutExpansion({
                         <span className="font-medium text-zinc-700">Status</span>
                         <select
                           value={statusPick[entry.id] ?? "open"}
-                          disabled={busy || locked}
+                          disabled={busy || tTypeLocked}
                           onChange={(event) =>
                             setStatusPick((current) => ({
                               ...current,
@@ -782,7 +774,7 @@ function BoeOutExpansion({
                           ))}
                         </select>
                       </label>
-                      {!readOnly && (
+                      {!tTypeLocked && (
                         <button
                           type="button"
                           disabled={busy}
@@ -812,7 +804,7 @@ function BoeOutExpansion({
                   </div>
                 );
               })}
-              {!readOnly && (
+              {!tTypeLocked && (
                 <button
                   type="button"
                   disabled={busy}
@@ -825,7 +817,7 @@ function BoeOutExpansion({
                   Add T type
                 </button>
               )}
-              {!readOnly && (
+              {!tTypeLocked && (
                 <button
                   type="button"
                   disabled={

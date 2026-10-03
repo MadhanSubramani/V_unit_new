@@ -12,6 +12,7 @@ import {
   setImportOtherDocuments,
   updateFreightForward,
 } from "@/lib/freightForward/freightForward";
+import { findDuplicateBlConflict } from "@/lib/import/uniqueBls";
 import {
   emptyContainer,
   getContainersFromRecord,
@@ -252,6 +253,16 @@ export default function ImportJobEditDrawer({
     if (readOnly || !item.id || !validate()) return;
     setSaving(true);
     try {
+      const duplicate = await findDuplicateBlConflict({
+        mbl: form.mbl,
+        hblEntries: hblDrafts.map((draft) => ({ number: draft.number })),
+        excludeId: item.id,
+      });
+      if (duplicate) {
+        setErrors({ form: duplicate });
+        return;
+      }
+
       const uploadIfNeeded = async (
         file: File | null,
         folder: string,
@@ -337,7 +348,12 @@ export default function ImportJobEditDrawer({
       onClose();
     } catch (error) {
       console.error(error);
-      setErrors({ form: "Unable to update job. Please try again." });
+      setErrors({
+        form:
+          error instanceof Error
+            ? error.message
+            : "Unable to update job. Please try again.",
+      });
     } finally {
       setSaving(false);
     }

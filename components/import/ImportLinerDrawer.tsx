@@ -8,6 +8,7 @@ import {
   ImportJobShipmentBlock,
 } from "@/components/import/ImportJobShipmentBlock";
 import { createImportLinerJob } from "@/lib/freightForward/freightForward";
+import { findDuplicateBlConflict } from "@/lib/import/uniqueBls";
 import {
   emptyContainer,
   getContainersFromRecord,
@@ -219,6 +220,15 @@ export default function ImportLinerDrawer({
     if (!validate()) return;
     setSaving(true);
     try {
+      const duplicate = await findDuplicateBlConflict({
+        mbl: form.mbl,
+        hblEntries: hblDrafts.map((draft) => ({ number: draft.number })),
+      });
+      if (duplicate) {
+        setErrors({ form: duplicate });
+        return;
+      }
+
       const uploadedHbls = [];
       for (const draft of hblDrafts) {
         if (!draft.number.trim() && !draft.file) continue;
@@ -282,7 +292,12 @@ export default function ImportLinerDrawer({
       onClose();
     } catch (error) {
       console.error(error);
-      setErrors({ form: "Unable to create Import job. Please try again." });
+      setErrors({
+        form:
+          error instanceof Error
+            ? error.message
+            : "Unable to create Import job. Please try again.",
+      });
     } finally {
       setSaving(false);
     }

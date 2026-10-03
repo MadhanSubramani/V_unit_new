@@ -229,8 +229,8 @@ export default function WorkflowTimeline({
                 className="flex-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
               >
                 <option value="pending">Pending</option>
-                <option value="accepted">Accepted</option>
-                <option value="completed">Completed</option>
+                <option value="accepted">Requested</option>
+                <option value="completed">Accepted</option>
               </select>
             )}
             <button
@@ -284,8 +284,8 @@ export default function WorkflowTimeline({
                 className="flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
               >
                 <option value="pending">Pending</option>
-                <option value="accepted">Accepted</option>
-                <option value="completed">Completed</option>
+                <option value="accepted">Requested</option>
+                <option value="completed">Accepted</option>
               </select>
             )}
             <button

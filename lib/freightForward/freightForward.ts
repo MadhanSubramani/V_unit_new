@@ -82,6 +82,8 @@ import {
   isIgmAdvanced,
   isIgmInward,
 } from "@/lib/import/linerWorkflow";
+import { getHblEntries, serializeHblEntries } from "@/lib/import/hbl";
+import { findDuplicateBlConflict } from "@/lib/import/uniqueBls";
 import {
   isBoeChecklistComplete,
   isImportBoeInCompleted,
@@ -281,6 +283,13 @@ export async function createImportLinerJob(
   data: FreightForwardFormData,
   createdBy: string
 ) {
+  const duplicate = await findDuplicateBlConflict({
+    mbl: data.mbl,
+    hbl: data.hbl,
+    hblEntries: data.hblEntries,
+  });
+  if (duplicate) throw new Error(duplicate);
+
   await ensureImportLinerCounterSeeded();
 
   const { jobNumber: _ignored, ...recordData } = data;
@@ -370,6 +379,27 @@ export async function updateFreightForward(
   const beforeRecord = beforeSnap.exists()
     ? ({ id: beforeSnap.id, ...(beforeSnap.data() as Omit<FreightForward, "id">) } as FreightForward)
     : null;
+
+  if (
+    data.mbl !== undefined ||
+    data.hbl !== undefined ||
+    data.hblEntries !== undefined
+  ) {
+    const isImportJob =
+      data.useForImport === true ||
+      beforeRecord?.useForImport === true ||
+      beforeRecord?.createdFrom === "import" ||
+      data.createdFrom === "import";
+    if (isImportJob) {
+      const duplicate = await findDuplicateBlConflict({
+        mbl: data.mbl ?? beforeRecord?.mbl,
+        hbl: data.hbl ?? beforeRecord?.hbl,
+        hblEntries: data.hblEntries ?? beforeRecord?.hblEntries,
+        excludeId: id,
+      });
+      if (duplicate) throw new Error(duplicate);
+    }
+  }
 
   const patch: Record<string, unknown> = {
     ...data,
@@ -1407,12 +1437,16 @@ export async function updateImportBoeOutInwardOcc(
 export async function saveImportTTypeBoe(
   id: string,
   entries: ImportTTypeEntry[],
-  updatedBy: string
+  updatedBy: string,
+  options?: { allowCompletedEdit?: boolean }
 ) {
   const { docRef, before } = await loadActiveImportJob(id);
   requireImportTransportCompleted(before);
-  if (isImportBoeOutDispatched(before)) {
+  if (isImportBoeOutDispatched(before) && !options?.allowCompletedEdit) {
     throw new Error("T type BE job is already dispatched.");
+  }
+  if (isImportTTypeSectionCompleted(before) && !options?.allowCompletedEdit) {
+    throw new Error("T type BE is already completed.");
   }
   if (!canUnlockImportTTypeSection(before)) {
     throw new Error("Mark Inward OCC before saving T type BE.");
@@ -1964,6 +1998,71 @@ export async function setImportOtherDocuments(
   });
   invalidateFreightForwardListCache();
   return { ...before, otherDocuments: documents, updatedBy };
+}
+
+export async function removeImportJobDocument(
+  id: string,
+  url: string,
+  updatedBy: string
+) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  if (!url?.trim()) throw new Error("Document is missing.");
+  await deleteStorageFileByUrl(url);
+
+  const patch: Record<string, unknown> = {
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  };
+  const after = { ...before, updatedBy };
+
+  const named = [
+    "importIgmAttachment",
+    "importBoeChecklistAttachment",
+    "importDoEmptyAttachment",
+    "importDoPortAttachment",
+    "mblUrl",
+    "hblUrl",
+  ] as const;
+  for (const field of named) {
+    if (before[field]?.url === url) {
+      patch[field] = deleteField();
+      after[field] = undefined;
+    }
+  }
+
+  if ((before.mblDocs ?? []).some((doc) => doc.url === url)) {
+    const mblDocs = (before.mblDocs ?? []).filter((doc) => doc.url !== url);
+    patch.mblDocs = mblDocs;
+    after.mblDocs = mblDocs;
+    if (before.mblUrl?.url === url) {
+      patch.mblUrl = mblDocs[0] ?? deleteField();
+      after.mblUrl = mblDocs[0];
+    }
+  }
+
+  const hblEntries = getHblEntries(before).map((entry) =>
+    entry.file?.url === url ? { ...entry, file: undefined } : entry
+  );
+  if (getHblEntries(before).some((entry) => entry.file?.url === url)) {
+    const payload = serializeHblEntries(hblEntries);
+    patch.hblEntries = payload.hblEntries;
+    patch.hbl = payload.hbl;
+    patch.hblDocs = payload.hblDocs;
+    patch.hblUrl = payload.hblUrl ?? deleteField();
+    Object.assign(after, payload);
+  }
+
+  if ((before.otherDocuments ?? []).some((doc) => doc.url === url)) {
+    const otherDocuments = (before.otherDocuments ?? []).filter(
+      (doc) => doc.url !== url
+    );
+    patch.otherDocuments = otherDocuments;
+    after.otherDocuments = otherDocuments;
+  }
+
+  await updateDoc(docRef, patch);
+  invalidateFreightForwardListCache();
+  return after as FreightForward;
 }
 
 export async function clearImportNamedAttachment(

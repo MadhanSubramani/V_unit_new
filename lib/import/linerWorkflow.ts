@@ -67,6 +67,13 @@ export function getImportMovementStatus(
   return "pending";
 }
 
+export function getImportMovementStatusLabel(status?: string | null) {
+  if (status === "accepted") return "Requested";
+  if (status === "completed") return "Accepted";
+  if (status === "pending") return "Pending";
+  return status?.trim() || "—";
+}
+
 export function getImportIgmStatus(item: FreightForward): ImportIgmStatus {
   return item.importIgmStatus ?? "pending";
 }

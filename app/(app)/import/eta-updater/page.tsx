@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CalendarClock } from "lucide-react";
 import ModuleHeader from "@/components/ModuleHeader";
+import HorizontalDragScroll from "@/components/shared/HorizontalDragScroll";
 import {
   findImportJobsByVesselName,
   updateImportEtaByVesselName,
@@ -160,7 +161,7 @@ export default function ImportEtaUpdaterPage() {
       {error && <p className="mt-3 text-[11px] text-red-500">{error}</p>}
       {message && <p className="mt-3 text-[11px] text-emerald-600">{message}</p>}
 
-      <div className="mt-5 overflow-x-auto rounded-xl border border-zinc-200">
+      <HorizontalDragScroll className="mt-5 overflow-x-auto rounded-xl border border-zinc-200">
         <table className="min-w-full text-left text-xs">
           <thead className="bg-zinc-50 text-[10px] uppercase tracking-wide text-zinc-500">
             <tr>
@@ -213,7 +214,7 @@ export default function ImportEtaUpdaterPage() {
             )}
           </tbody>
         </table>
-      </div>
+      </HorizontalDragScroll>
     </div>
   );
 }
