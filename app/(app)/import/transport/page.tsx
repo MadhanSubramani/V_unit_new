@@ -19,11 +19,13 @@ import {
   useCfsScopedImportRecords,
   useImportTableRows,
 } from "@/components/import/ImportTableState";
+import type { ImportDateField } from "@/lib/import/dateFields";
 import ImportSectionRemarks from "@/components/import/ImportSectionRemarks";
 import {
   ImportCoreTableCells,
   ImportCoreTableHeaders,
   ImportSearchDownloadBar,
+  IMPORT_TABLE_HEAD_CLASS,
 } from "@/components/import/ImportTableExtras";
 import {
   completeImportTransport,
@@ -69,6 +71,7 @@ export default function ImportTransportPage() {
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [dateField, setDateField] = useState<ImportDateField>("eta");
   const [page, setPage] = useState(0);
   const [sortKey, setSortKey] = useState<ImportSortKey>("eta");
   const [sortDir, setSortDir] = useState<ImportSortDir>("asc");
@@ -134,6 +137,7 @@ export default function ImportTransportPage() {
     search,
     dateFrom,
     dateTo,
+    dateField,
     page,
     pageSize: PAGE_SIZE,
     sortKey,
@@ -198,6 +202,11 @@ export default function ImportTransportPage() {
           setPage(0);
           setDateTo(value);
         }}
+        dateField={dateField}
+        onDateFieldChange={(value) => {
+          setPage(0);
+          setDateField(value);
+        }}
         records={filtered}
         filePrefix="import-transport"
       />
@@ -213,7 +222,7 @@ export default function ImportTransportPage() {
         className="mt-4 overflow-x-auto rounded-xl border border-zinc-200"
       >
         <table className="min-w-[1280px] w-full text-left text-xs">
-          <thead className="bg-zinc-50 text-[10px] uppercase tracking-wide text-zinc-500">
+          <thead className={IMPORT_TABLE_HEAD_CLASS}>
             <tr>
               <th className="w-9 px-2 py-3" />
               <ImportCoreTableHeaders
@@ -228,13 +237,13 @@ export default function ImportTransportPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={25} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={26} className="px-4 py-10 text-center text-zinc-400">
                   Loading Transport jobs...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={25} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={26} className="px-4 py-10 text-center text-zinc-400">
                   No import jobs found.
                 </td>
               </tr>
@@ -375,7 +384,7 @@ function TransportRow({
       </tr>
       {canExpand && expanded && (
         <tr className="border-t border-zinc-100 bg-zinc-100/70">
-          <td colSpan={25} className="p-0">
+          <td colSpan={26} className="p-0">
             <div
               className="sticky left-0 min-w-0 p-3"
               style={panelWidth ? { width: panelWidth } : undefined}

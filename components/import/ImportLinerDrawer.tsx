@@ -18,6 +18,7 @@ import {
 import { getCfsList } from "@/lib/cfs/cfs";
 import { getSezList } from "@/lib/sez/sez";
 import { getConfigByCategory } from "@/lib/configurations/configurations";
+import ConfigTypeahead from "@/components/import/ConfigTypeahead";
 import { getKyc } from "@/lib/kyc/getKyc";
 import { uploadDocument } from "@/lib/kyc/uploadDocument";
 import { Cfs } from "@/types/cfs";
@@ -91,6 +92,7 @@ export default function ImportLinerDrawer({
   const [tradeTermsList, setTradeTermsList] = useState<ConfigItem[]>([]);
   const [containerSizes, setContainerSizes] = useState<ConfigItem[]>([]);
   const [containerTypes, setContainerTypes] = useState<ConfigItem[]>([]);
+  const [vesselOptions, setVesselOptions] = useState<ConfigItem[]>([]);
   const [kycList, setKycList] = useState<Kyc[]>([]);
 
   useEffect(() => {
@@ -102,9 +104,10 @@ export default function ImportLinerDrawer({
       getConfigByCategory("trade_terms"),
       getConfigByCategory("container_size"),
       getConfigByCategory("container_type"),
+      getConfigByCategory("vessel"),
       getKyc(),
     ]).then(
-      ([cfs, sez, blTypeItems, tradeTerms, sizes, types, kyc]) => {
+      ([cfs, sez, blTypeItems, tradeTerms, sizes, types, vessels, kyc]) => {
         if (!active) return;
         setCfsList(cfs);
         setSezList(sez);
@@ -112,6 +115,7 @@ export default function ImportLinerDrawer({
         setTradeTermsList(tradeTerms);
         setContainerSizes(sizes);
         setContainerTypes(types);
+        setVesselOptions(vessels);
         setKycList(kyc);
       }
     );
@@ -392,11 +396,11 @@ export default function ImportLinerDrawer({
             </label>
             <label className="block space-y-1.5 text-xs">
               <span className="font-medium text-zinc-700">Vessel</span>
-              <input
+              <ConfigTypeahead
                 value={form.vesselName ?? ""}
-                onChange={(e) =>
-                  setForm({ ...form, vesselName: e.target.value })
-                }
+                options={vesselOptions.map((item) => item.value)}
+                onChange={(value) => setForm({ ...form, vesselName: value })}
+                placeholder="Type vessel name"
                 className={fieldClass("vesselName")}
               />
             </label>

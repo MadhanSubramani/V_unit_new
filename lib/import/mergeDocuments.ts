@@ -34,9 +34,9 @@ export async function downloadImportDocument(doc: FreightForwardDocument) {
 /** Merge and download in the browser — works on Firebase static hosting (no API routes). */
 export async function downloadMergedImportDocuments(
   item: FreightForward,
-  jobLabel?: string
+  jobLabel?: string,
+  documents = collectJobDocuments(item)
 ) {
-  const documents = collectJobDocuments(item);
   if (!documents.length) {
     throw new Error("No documents available to download.");
   }

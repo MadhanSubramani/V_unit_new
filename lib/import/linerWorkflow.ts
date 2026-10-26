@@ -43,7 +43,7 @@ export function isImportStagePending(
 
 export function isImportDoCompleted(item: FreightForward) {
   const status = item.importDoStatus;
-  return status === "received" || status === "eod";
+  return status === "received" || status === "eod" || status === "completed";
 }
 
 /** Stages completed out of Movement / IGM / DO (0–3). */
@@ -145,6 +145,7 @@ export function getImportDoPortValidity(item: FreightForward) {
 }
 
 export function getImportDoStatusLabel(item: FreightForward) {
+  if (item.importDoStatus === "completed") return "Completed";
   return isImportDoCompleted(item) ? "Received" : "Pending";
 }
 

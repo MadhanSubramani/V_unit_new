@@ -2,8 +2,10 @@ export type ImportModuleKey =
   | "worklist"
   | "liner"
   | "ztype"
+  | "cmfc"
   | "transport"
   | "ttype"
+  | "inout"
   | "accounts"
   | "eta";
 
@@ -24,8 +26,10 @@ export const IMPORT_MODULE_OPTIONS: {
   { value: "worklist", label: "Job List" },
   { value: "liner", label: "Liner" },
   { value: "ztype", label: "Z type BE" },
+  { value: "cmfc", label: "CMFC" },
   { value: "transport", label: "Transport" },
   { value: "ttype", label: "T type BE" },
+  { value: "inout", label: "In & Out" },
   { value: "accounts", label: "Accounts" },
   { value: "eta", label: "ETA Updater" },
 ];

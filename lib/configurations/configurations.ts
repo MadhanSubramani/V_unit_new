@@ -24,6 +24,7 @@ const ALL_CONFIG_CATEGORIES: ConfigCategory[] = [
   "payment_type",
   "bl_type",
   "trade_terms",
+  "vessel",
 ];
 
 export function invalidateConfigCache(category?: ConfigCategory) {

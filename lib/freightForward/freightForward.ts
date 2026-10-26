@@ -385,12 +385,9 @@ export async function updateFreightForward(
     data.hbl !== undefined ||
     data.hblEntries !== undefined
   ) {
-    const isImportJob =
-      data.useForImport === true ||
-      beforeRecord?.useForImport === true ||
-      beforeRecord?.createdFrom === "import" ||
-      data.createdFrom === "import";
-    if (isImportJob) {
+    const creatingImport =
+      data.createdFrom === "import" && beforeRecord?.createdFrom !== "import";
+    if (creatingImport) {
       const duplicate = await findDuplicateBlConflict({
         mbl: data.mbl ?? beforeRecord?.mbl,
         hbl: data.hbl ?? beforeRecord?.hbl,
@@ -598,7 +595,7 @@ function isValidImportStatus(
   if (section === "igm") {
     return ["pending", "posted", "inward"].includes(status);
   }
-  return ["pending", "received", "eod"].includes(status);
+  return ["pending", "received", "eod", "completed"].includes(status);
 }
 
 /**
@@ -671,6 +668,18 @@ export async function updateImportLinerStage(
         throw new Error("Upload Empty and Port attachments before Received.");
       }
     }
+    if (section === "do" && status === "completed") {
+      const ready =
+        doBefore === "received" ||
+        doBefore === "eod" ||
+        doBefore === "completed";
+      if (!ready) {
+        throw new Error("Mark DO Received before Completed.");
+      }
+      if (!before.importDoInvoiceAttachment?.url) {
+        throw new Error("Upload the invoice file before Completing DO.");
+      }
+    }
 
     const now = Timestamp.now();
     const importEntry =
@@ -733,7 +742,7 @@ export async function updateImportLinerStage(
     const importCompleted =
       nextMovement === "completed" &&
       nextIgm === "inward" &&
-      (nextDo === "received" || nextDo === "eod");
+      (nextDo === "received" || nextDo === "eod" || nextDo === "completed");
 
     const patch: Record<string, unknown> = {
       importMovementStatus: nextMovement,
@@ -1074,6 +1083,9 @@ export async function saveImportBoeInInward(
     updatedBy,
     updatedAt: serverTimestamp(),
   };
+  if (complete && !before.importInwardBoeAttachment?.url) {
+    throw new Error("Upload the Z type BE attachment before Complete.");
+  }
   if (complete) {
     patch.importBoeInCompleteAudit = saveAudit;
     patch.importBoeInInwardSaveAudit = deleteField();
@@ -1412,6 +1424,9 @@ export async function updateImportBoeOutInwardOcc(
   if (!["pending", "occ"].includes(status)) {
     throw new Error("Invalid inward OCC status.");
   }
+  if (status === "occ" && !before.importOccAttachment?.url) {
+    throw new Error("Upload the OCC attachment before OOC.");
+  }
 
   const audit = status === "occ" ? stamp(updatedBy) : undefined;
   const patch: Record<string, unknown> = {
@@ -1518,6 +1533,9 @@ export async function saveImportTTypeBoe(
   } else {
     payload.importTTypeBoeClearanceStatus = deleteField();
   }
+  if (allCompleted && !before.importTTypeBoeAttachment?.url) {
+    throw new Error("Upload the T type BE attachment before Complete.");
+  }
   if (allCompleted) {
     payload.importTTypeOocCompleted = true;
     payload.importTTypeOocCompleteAudit = audit;
@@ -1565,6 +1583,75 @@ export async function completeImportTTypeOoc(id: string, updatedBy: string) {
   } as FreightForward;
 }
 
+export async function updateImportDoParty(
+  id: string,
+  data: { name?: string; number?: string; address?: string },
+  updatedBy: string
+) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  const importDoName = data.name?.trim() ?? before.importDoName ?? "";
+  const importDoNumber = data.number?.trim() ?? before.importDoNumber ?? "";
+  const importDoAddress = data.address?.trim() ?? before.importDoAddress ?? "";
+  await updateDoc(docRef, {
+    importDoName,
+    importDoNumber,
+    importDoAddress,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+  return {
+    ...before,
+    importDoName,
+    importDoNumber,
+    importDoAddress,
+    updatedBy,
+  } as FreightForward;
+}
+
+export async function updateImportCmfcPrintStatus(
+  id: string,
+  status: "not_completed" | "completed",
+  updatedBy: string
+) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  const audit = stamp(updatedBy);
+  await updateDoc(docRef, {
+    importCmfcPrintStatus: status,
+    importCmfcPrintAudit: audit,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+  return {
+    ...before,
+    importCmfcPrintStatus: status,
+    importCmfcPrintAudit: audit,
+    updatedBy,
+  } as FreightForward;
+}
+
+export async function updateImportInOutMeta(
+  id: string,
+  data: { docType?: string; lorryType?: string },
+  updatedBy: string
+) {
+  const { docRef, before } = await loadActiveImportJob(id);
+  await updateDoc(docRef, {
+    importInOutDocType: data.docType ?? before.importInOutDocType ?? "",
+    importInOutLorryType: data.lorryType ?? before.importInOutLorryType ?? "",
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+  invalidateFreightForwardListCache();
+  return {
+    ...before,
+    importInOutDocType: data.docType ?? before.importInOutDocType,
+    importInOutLorryType: data.lorryType ?? before.importInOutLorryType,
+    updatedBy,
+  } as FreightForward;
+}
+
 export async function updateImportEwayBill(
   id: string,
   value: ImportYesNo,
@@ -1603,6 +1690,8 @@ const IMPORT_REMARK_FIELDS: Record<
   ztype: "importBoeInRemarks",
   transport: "importTransportRemarks",
   ttype: "importBoeOutRemarks",
+  cmfc: "importCmfcRemarks",
+  inout: "importInOutRemarks",
   accounts: "importAccountsRemarks",
 };
 
@@ -2020,6 +2109,12 @@ export async function removeImportJobDocument(
     "importBoeChecklistAttachment",
     "importDoEmptyAttachment",
     "importDoPortAttachment",
+    "importDoInvoiceAttachment",
+    "importCommercialInvoiceAttachment",
+    "importPackingListAttachment",
+    "importInwardBoeAttachment",
+    "importOccAttachment",
+    "importTTypeBoeAttachment",
     "mblUrl",
     "hblUrl",
   ] as const;
@@ -2065,13 +2160,21 @@ export async function removeImportJobDocument(
   return after as FreightForward;
 }
 
+export type ImportNamedAttachmentField =
+  | "importIgmAttachment"
+  | "importDoEmptyAttachment"
+  | "importDoPortAttachment"
+  | "importDoInvoiceAttachment"
+  | "importBoeChecklistAttachment"
+  | "importCommercialInvoiceAttachment"
+  | "importPackingListAttachment"
+  | "importInwardBoeAttachment"
+  | "importOccAttachment"
+  | "importTTypeBoeAttachment";
+
 export async function clearImportNamedAttachment(
   id: string,
-  field:
-    | "importIgmAttachment"
-    | "importDoEmptyAttachment"
-    | "importDoPortAttachment"
-    | "importBoeChecklistAttachment",
+  field: ImportNamedAttachmentField,
   updatedBy: string
 ) {
   const { docRef, before } = await loadActiveImportJob(id);
@@ -2088,11 +2191,7 @@ export async function clearImportNamedAttachment(
 
 export async function saveImportNamedAttachment(
   id: string,
-  field:
-    | "importIgmAttachment"
-    | "importDoEmptyAttachment"
-    | "importDoPortAttachment"
-    | "importBoeChecklistAttachment",
+  field: ImportNamedAttachmentField,
   file: FreightForwardDocument,
   updatedBy: string
 ) {

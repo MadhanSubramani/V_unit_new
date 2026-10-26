@@ -3,7 +3,8 @@ export type ConfigCategory =
   | "container_size"
   | "payment_type"
   | "bl_type"
-  | "trade_terms";
+  | "trade_terms"
+  | "vessel";
 
 export interface ConfigItem {
   id?: string;
@@ -21,4 +22,5 @@ export const CONFIG_CATEGORIES: {
   { key: "payment_type", label: "Payment Type" },
   { key: "bl_type", label: "BL Type" },
   { key: "trade_terms", label: "Trade Terms" },
+  { key: "vessel", label: "Vessel" },
 ];

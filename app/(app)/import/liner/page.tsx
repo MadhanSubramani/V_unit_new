@@ -17,12 +17,18 @@ import ImportDocumentLink from "@/components/import/ImportDocumentLink";
 import { uploadDocument } from "@/lib/kyc/uploadDocument";
 import ImportSectionProgress from "@/components/import/ImportSectionProgress";
 import ImportSectionRemarks from "@/components/import/ImportSectionRemarks";
-import { ImportSearchDownloadBar, ImportCoreTableHeaders, ImportCoreTableCells } from "@/components/import/ImportTableExtras";
+import {
+  ImportSearchDownloadBar,
+  ImportCoreTableHeaders,
+  ImportCoreTableCells,
+  IMPORT_TABLE_HEAD_CLASS,
+} from "@/components/import/ImportTableExtras";
 import {
   ImportCurrentStatusCell,
   useCfsScopedImportRecords,
   useImportTableRows,
 } from "@/components/import/ImportTableState";
+import type { ImportDateField } from "@/lib/import/dateFields";
 import { formatImportAuditDate } from "@/lib/import/auditDisplay";
 import ActionMenu from "@/components/shared/ActionMenu";
 import {
@@ -31,9 +37,11 @@ import {
   addImportSectionRemark,
   clearImportNamedAttachment,
   saveImportNamedAttachment,
+  updateImportDoParty,
   updateImportLinerRemark,
   updateImportLinerStage,
 } from "@/lib/freightForward/freightForward";
+import ImportNamedFileField from "@/components/import/ImportNamedFileField";
 import {
   canUpdateImportDo,
   canUpdateImportIgm,
@@ -104,6 +112,7 @@ export default function ImportLinerPage() {
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [dateField, setDateField] = useState<ImportDateField>("eta");
   const [page, setPage] = useState(0);
   const [sortKey, setSortKey] = useState<ImportSortKey>("eta");
   const [sortDir, setSortDir] = useState<ImportSortDir>("asc");
@@ -174,6 +183,7 @@ export default function ImportLinerPage() {
     search,
     dateFrom,
     dateTo,
+    dateField,
     page,
     pageSize: PAGE_SIZE,
     sortKey,
@@ -358,6 +368,11 @@ export default function ImportLinerPage() {
           setPage(0);
           setDateTo(value);
         }}
+        dateField={dateField}
+        onDateFieldChange={(value) => {
+          setPage(0);
+          setDateField(value);
+        }}
         records={filtered}
         filePrefix="import-liner"
       />
@@ -373,7 +388,7 @@ export default function ImportLinerPage() {
         className="mt-4 overflow-x-auto rounded-xl border border-zinc-200"
       >
         <table className="min-w-[1280px] w-full text-left text-xs">
-          <thead className="bg-zinc-50 text-[10px] uppercase tracking-wide text-zinc-500">
+          <thead className={IMPORT_TABLE_HEAD_CLASS}>
             <tr>
               <th className="w-9 px-2 py-3" />
               <ImportCoreTableHeaders
@@ -390,13 +405,13 @@ export default function ImportLinerPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={26} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={28} className="px-4 py-10 text-center text-zinc-400">
                   Loading Import Liner jobs...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={26} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={28} className="px-4 py-10 text-center text-zinc-400">
                   No jobs found for this filter. Add jobs from Import Job List,
                   or enable “Use this job for Import” in Freight Forward.
                 </td>
@@ -589,7 +604,7 @@ function Row({
       </tr>
       {canExpand && expanded && (
         <tr className="border-t border-zinc-100 bg-zinc-100/70">
-          <td colSpan={26} className="p-0">
+          <td colSpan={28} className="p-0">
             <div
               className="sticky left-0 min-w-0 p-3"
               style={panelWidth ? { width: panelWidth } : undefined}
@@ -663,6 +678,7 @@ function Row({
                     options={[
                       ["pending", "Pending"],
                       ["received", "Received"],
+                      ["completed", "Completed"],
                     ]}
                     locked={!canUpdateImportDo(item)}
                     lockHint="Mark IGM Posted or Inward first"
@@ -748,7 +764,8 @@ function StageCard({
   const complete =
     (section === "movement" && value === "completed") ||
     (section === "igm" && (value === "posted" || value === "inward")) ||
-    (section === "do" && (value === "received" || value === "eod"));
+    (section === "do" &&
+      (value === "received" || value === "eod" || value === "completed"));
   const pending = isImportStagePending(item, section);
   const [remarkDraft, setRemarkDraft] = useState(
     getImportStageRemark(item, section)
@@ -882,7 +899,12 @@ function StageCard({
                 (section === "do" &&
                   optionValue === "received" &&
                   !canSelectReceived &&
-                  value !== "received") ||
+                  value !== "received" &&
+                  value !== "completed") ||
+                (section === "do" &&
+                  optionValue === "completed" &&
+                  !item.importDoInvoiceAttachment?.url &&
+                  value !== "completed") ||
                 (section === "igm" &&
                   optionValue === "inward" &&
                   !item.importIgmAttachment?.url &&
@@ -965,6 +987,54 @@ function StageCard({
               onChange={(event) => {
                 setEmptyValidity(event.target.value);
                 setDoDateError("");
+              }}
+              className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
+            />
+          </label>
+          <label className="block text-xs">
+            <span className="font-medium text-zinc-700">DO name</span>
+            <input
+              defaultValue={item.importDoName ?? ""}
+              disabled={busy || !canAct}
+              onBlur={(event) => {
+                if (!item.id) return;
+                void updateImportDoParty(
+                  item.id,
+                  { name: event.target.value },
+                  igmUsername
+                ).then((updated) => onJobUpdated?.(updated));
+              }}
+              className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
+            />
+          </label>
+          <label className="block text-xs">
+            <span className="font-medium text-zinc-700">DO number</span>
+            <input
+              defaultValue={item.importDoNumber ?? ""}
+              disabled={busy || !canAct}
+              onBlur={(event) => {
+                if (!item.id) return;
+                void updateImportDoParty(
+                  item.id,
+                  { number: event.target.value },
+                  igmUsername
+                ).then((updated) => onJobUpdated?.(updated));
+              }}
+              className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
+            />
+          </label>
+          <label className="block text-xs sm:col-span-2">
+            <span className="font-medium text-zinc-700">DO address</span>
+            <input
+              defaultValue={item.importDoAddress ?? ""}
+              disabled={busy || !canAct}
+              onBlur={(event) => {
+                if (!item.id) return;
+                void updateImportDoParty(
+                  item.id,
+                  { address: event.target.value },
+                  igmUsername
+                ).then((updated) => onJobUpdated?.(updated));
               }}
               className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
             />
@@ -1056,6 +1126,17 @@ function StageCard({
                 }}
               />
             )}
+          </div>
+          <div className="sm:col-span-2">
+            <ImportNamedFileField
+              item={item}
+              field="importDoInvoiceAttachment"
+              label="Invoice file"
+              folder="import/do"
+              username={igmUsername}
+              disabled={busy || !canAct}
+              onUpdated={(updated) => onJobUpdated?.(updated)}
+            />
           </div>
           {doDateError && (
             <p className="sm:col-span-2 text-[11px] text-red-500">{doDateError}</p>

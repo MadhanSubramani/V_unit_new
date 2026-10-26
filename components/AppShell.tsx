@@ -53,8 +53,10 @@ const IMPORT_SUB: {
   { href: "/import/worklist", label: "Job List", icon: ClipboardList, enabled: true, module: "worklist" },
   { href: "/import/liner", label: "Liner", icon: Ship, enabled: true, module: "liner" },
   { href: "/import/boe-in", label: "Z type BE", icon: FileText, enabled: true, module: "ztype" },
+  { href: "/import/cmfc", label: "CMFC", icon: FileText, enabled: true, module: "cmfc" },
   { href: "/import/transport", label: "Transport", icon: ScanLine, enabled: true, module: "transport" },
   { href: "/import/boe-out", label: "T type BE", icon: ClipboardList, enabled: true, module: "ttype" },
+  { href: "/import/in-out", label: "In & Out", icon: ScanLine, enabled: true, module: "inout" },
   { href: "/import/accounts", label: "Accounts", icon: Settings, enabled: true, module: "accounts" },
   { href: "/import/trash", label: "Trash", icon: Trash2, enabled: true, module: "trash" },
 ];

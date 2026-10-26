@@ -18,12 +18,14 @@ import {
   ImportCoreTableCells,
   ImportCoreTableHeaders,
   ImportSearchDownloadBar,
+  IMPORT_TABLE_HEAD_CLASS,
 } from "@/components/import/ImportTableExtras";
 import {
   ImportCurrentStatusCell,
   useCfsScopedImportRecords,
   useImportTableRows,
 } from "@/components/import/ImportTableState";
+import type { ImportDateField } from "@/lib/import/dateFields";
 import ImportSectionRemarks from "@/components/import/ImportSectionRemarks";
 import FileInputWithClip from "@/components/import/FileInputWithClip";
 import ImportDocumentLink from "@/components/import/ImportDocumentLink";
@@ -40,6 +42,7 @@ import {
   updateImportBoeChecklist,
   updateImportBoeFiling,
 } from "@/lib/freightForward/freightForward";
+import ImportNamedFileField from "@/components/import/ImportNamedFileField";
 import {
   BOE_CHECKLIST_ITEMS,
   computeImportBoeInCounts,
@@ -83,6 +86,7 @@ export default function ImportBoeInPage() {
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [dateField, setDateField] = useState<ImportDateField>("eta");
   const [page, setPage] = useState(0);
   const [sortKey, setSortKey] = useState<ImportSortKey>("eta");
   const [sortDir, setSortDir] = useState<ImportSortDir>("asc");
@@ -154,6 +158,7 @@ export default function ImportBoeInPage() {
     search,
     dateFrom,
     dateTo,
+    dateField,
     page,
     pageSize: PAGE_SIZE,
     sortKey,
@@ -224,6 +229,11 @@ export default function ImportBoeInPage() {
           setPage(0);
           setDateTo(value);
         }}
+        dateField={dateField}
+        onDateFieldChange={(value) => {
+          setPage(0);
+          setDateField(value);
+        }}
         records={filtered}
         filePrefix="import-z-type-be"
       />
@@ -239,7 +249,7 @@ export default function ImportBoeInPage() {
         className="mt-4 overflow-x-auto rounded-xl border border-zinc-200"
       >
         <table className="min-w-[1280px] w-full text-left text-xs">
-          <thead className="bg-zinc-50 text-[10px] uppercase tracking-wide text-zinc-500">
+          <thead className={IMPORT_TABLE_HEAD_CLASS}>
             <tr>
               <th className="w-9 px-2 py-3" />
               <ImportCoreTableHeaders
@@ -254,13 +264,13 @@ export default function ImportBoeInPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={25} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={26} className="px-4 py-10 text-center text-zinc-400">
                   Loading BOE In jobs...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={25} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={26} className="px-4 py-10 text-center text-zinc-400">
                   No import jobs found.
                 </td>
               </tr>
@@ -389,7 +399,7 @@ function BoeRow({
       </tr>
       {canExpand && expanded && (
         <tr className="border-t border-zinc-100 bg-zinc-100/70">
-          <td colSpan={25} className="p-0">
+          <td colSpan={26} className="p-0">
             <div
               className="sticky left-0 min-w-0 p-3"
               style={panelWidth ? { width: panelWidth } : undefined}
@@ -473,6 +483,15 @@ function BoeExpansion({
   };
 
   const toggleCheck = (key: keyof ImportBoeChecklist, checked: boolean) => {
+    if (
+      key === "docReceived" &&
+      checked &&
+      (!item.importCommercialInvoiceAttachment?.url ||
+        !item.importPackingListAttachment?.url)
+    ) {
+      onError("Upload invoice and packing list before checking Doc received.");
+      return;
+    }
     const next = {
       ...(item.importBoeChecklist ?? {}),
       [key]: checked,
@@ -558,15 +577,22 @@ function BoeExpansion({
             onClick={(event) => event.stopPropagation()}
           >
             {BOE_CHECKLIST_ITEMS.map((entry) => (
+              <div key={entry.key} className="space-y-2">
               <label
-                key={entry.key}
                 className="flex items-start gap-2 text-xs text-zinc-700"
               >
                 <input
                   type="checkbox"
                   className="mt-0.5"
                   checked={!!item.importBoeChecklist?.[entry.key]}
-                  disabled={busy || readOnly}
+                  disabled={
+                    busy ||
+                    readOnly ||
+                    (entry.key === "docReceived" &&
+                      !item.importBoeChecklist?.docReceived &&
+                      (!item.importCommercialInvoiceAttachment?.url ||
+                        !item.importPackingListAttachment?.url))
+                  }
                   onChange={(event) =>
                     toggleCheck(entry.key, event.target.checked)
                   }
@@ -582,6 +608,29 @@ function BoeExpansion({
                   ) : null}
                 </span>
               </label>
+              {entry.key === "docReceived" && (
+                <div className="ml-6 grid gap-2 sm:grid-cols-2">
+                  <ImportNamedFileField
+                    item={item}
+                    field="importCommercialInvoiceAttachment"
+                    label="Invoice"
+                    folder="import/ci"
+                    username={username}
+                    disabled={busy || readOnly}
+                    onUpdated={onUpdated}
+                  />
+                  <ImportNamedFileField
+                    item={item}
+                    field="importPackingListAttachment"
+                    label="Packing list"
+                    folder="import/pl"
+                    username={username}
+                    disabled={busy || readOnly}
+                    onUpdated={onUpdated}
+                  />
+                </div>
+              )}
+              </div>
             ))}
             <div className="pt-1">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
@@ -757,6 +806,15 @@ function BoeExpansion({
                   className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
                 />
               </label>
+              <ImportNamedFileField
+                item={item}
+                field="importInwardBoeAttachment"
+                label="Z type BE attachment"
+                folder="import/z-type"
+                username={username}
+                disabled={busy || readOnly}
+                onUpdated={onUpdated}
+              />
               <label className="block text-xs">
                 <span className="font-medium text-zinc-700">Status</span>
                 <select
@@ -793,7 +851,8 @@ function BoeExpansion({
                       disabled={
                         busy ||
                         !INWARD_BOE_NO_REGEX.test(inwardNo.trim()) ||
-                        !inwardDate
+                        !inwardDate ||
+                        !item.importInwardBoeAttachment?.url
                       }
                       onClick={complete}
                       className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"

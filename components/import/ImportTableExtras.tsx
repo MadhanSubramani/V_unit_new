@@ -29,6 +29,10 @@ import {
   getTTypeBoeNoDisplay,
 } from "@/lib/import/boeOutWorkflow";
 import type { ImportSortDir, ImportSortKey } from "@/lib/import/sortImportRecords";
+import {
+  IMPORT_DATE_FIELD_OPTIONS,
+  type ImportDateField,
+} from "@/lib/import/dateFields";
 
 export function ImportDoTableCells({ item }: { item: FreightForward }) {
   return (
@@ -70,7 +74,9 @@ export const IMPORT_DO_TABLE_HEADERS = [
   "Place of delivery",
 ] as const;
 
-export const IMPORT_CORE_COLUMN_COUNT = 22;
+export const IMPORT_CORE_COLUMN_COUNT = 23;
+export const IMPORT_TABLE_HEAD_CLASS =
+  "sticky top-0 z-[1] bg-zinc-50 text-[10px] uppercase tracking-wide text-zinc-500 shadow-[0_1px_0_0_#e4e4e7]";
 
 export function ImportCoreTableHeaders({
   sortKey,
@@ -114,6 +120,7 @@ export function ImportCoreTableHeaders({
       <th className="px-3 py-3 font-semibold">Place of delivery</th>
       <th className="px-3 py-3 font-semibold">Z type BE No</th>
       <th className="px-3 py-3 font-semibold">Z type BE Date</th>
+      <th className="px-3 py-3 font-semibold">EZ Ref</th>
       <th className="px-3 py-3 font-semibold">T type BE No</th>
       <th className="px-3 py-3 font-semibold">T type BE Date</th>
       <th className="px-3 py-3 font-semibold">Desc of goods</th>
@@ -144,6 +151,14 @@ export function ImportCoreTableCells({ item }: { item: FreightForward }) {
       <ImportDoTableCells item={item} />
       <ImportTableCell value={item.inwardBoeNo} width={110} />
       <ImportTableCell value={item.inwardBoeDate} width={100} />
+      <td className="px-3 py-3">
+        <span className="block truncate font-medium text-zinc-800" style={{ maxWidth: 110 }}>
+          {item.ezRefNumber || "—"}
+        </span>
+        <span className="mt-0.5 block truncate text-[10px] text-zinc-400">
+          {formatEzDate(item) || "—"}
+        </span>
+      </td>
       <ImportTableCell value={getTTypeBoeNoDisplay(item)} width={110} />
       <ImportTableCell value={getTTypeBoeDateDisplay(item)} width={100} />
       <ImportTableCell value={item.descriptionOfGoods} width={120} />
@@ -205,8 +220,10 @@ export function ImportSearchDownloadBar({
   extraColumns,
   dateFrom = "",
   dateTo = "",
+  dateField = "eta",
   onDateFromChange,
   onDateToChange,
+  onDateFieldChange,
 }: {
   search: string;
   onSearchChange: (value: string) => void;
@@ -215,8 +232,10 @@ export function ImportSearchDownloadBar({
   extraColumns?: (item: FreightForward) => ImportTableExportRow;
   dateFrom?: string;
   dateTo?: string;
+  dateField?: ImportDateField;
   onDateFromChange?: (value: string) => void;
   onDateToChange?: (value: string) => void;
+  onDateFieldChange?: (value: ImportDateField) => void;
 }) {
   const { cfsList, sezList } = useImportLocationLookups();
   const [exporting, setExporting] = useState(false);
@@ -245,19 +264,33 @@ export function ImportSearchDownloadBar({
         placeholder="Search job no, consignee, inward BOE no, MBL, HBL..."
         className="w-full flex-1 rounded-xl border border-zinc-200 px-3 py-2 text-xs outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
       />
+      <select
+        value={dateField}
+        onChange={(event) =>
+          onDateFieldChange?.(event.target.value as ImportDateField)
+        }
+        className="rounded-xl border border-zinc-200 px-3 py-2 text-xs outline-none focus:border-zinc-500"
+        title="Date field"
+      >
+        {IMPORT_DATE_FIELD_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
       <input
         type="date"
         value={dateFrom}
         onChange={(event) => onDateFromChange?.(event.target.value)}
         className="rounded-xl border border-zinc-200 px-3 py-2 text-xs outline-none focus:border-zinc-500"
-        title="ETA from"
+        title="From date"
       />
       <input
         type="date"
         value={dateTo}
         onChange={(event) => onDateToChange?.(event.target.value)}
         className="rounded-xl border border-zinc-200 px-3 py-2 text-xs outline-none focus:border-zinc-500"
-        title="ETA to"
+        title="To date"
       />
       <button
         type="button"

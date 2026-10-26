@@ -18,12 +18,14 @@ import {
   ImportCoreTableCells,
   ImportCoreTableHeaders,
   ImportSearchDownloadBar,
+  IMPORT_TABLE_HEAD_CLASS,
 } from "@/components/import/ImportTableExtras";
 import {
   ImportCurrentStatusCell,
   useCfsScopedImportRecords,
   useImportTableRows,
 } from "@/components/import/ImportTableState";
+import type { ImportDateField } from "@/lib/import/dateFields";
 import {
   canActOnImportModule,
   isImportAdmin,
@@ -44,6 +46,7 @@ export default function ImportWorklistPage() {
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [dateField, setDateField] = useState<ImportDateField>("eta");
   const [page, setPage] = useState(0);
   const [sortKey, setSortKey] = useState<ImportSortKey>("eta");
   const [sortDir, setSortDir] = useState<ImportSortDir>("asc");
@@ -88,6 +91,7 @@ export default function ImportWorklistPage() {
     search,
     dateFrom,
     dateTo,
+    dateField,
     page,
     pageSize: PAGE_SIZE,
     sortKey,
@@ -160,6 +164,11 @@ export default function ImportWorklistPage() {
           setPage(0);
           setDateTo(value);
         }}
+        dateField={dateField}
+        onDateFieldChange={(value) => {
+          setPage(0);
+          setDateField(value);
+        }}
         records={filtered}
         filePrefix="import-job-list"
       />
@@ -172,7 +181,7 @@ export default function ImportWorklistPage() {
 
       <HorizontalDragScroll className="mt-4 overflow-x-auto rounded-xl border border-zinc-200">
         <table className="min-w-[1100px] w-full text-left text-xs">
-          <thead className="bg-zinc-50 text-[10px] uppercase tracking-wide text-zinc-500">
+          <thead className={IMPORT_TABLE_HEAD_CLASS}>
             <tr>
               <ImportCoreTableHeaders
                 sortKey={sortKey}
@@ -188,13 +197,13 @@ export default function ImportWorklistPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={26} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={27} className="px-4 py-10 text-center text-zinc-400">
                   Loading job list...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={26} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={27} className="px-4 py-10 text-center text-zinc-400">
                   No jobs found. Use Add, or enable “Use this job for Import” in
                   Freight Forward.
                 </td>

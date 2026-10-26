@@ -22,6 +22,7 @@ import {
 import { getCfsList } from "@/lib/cfs/cfs";
 import { getSezList } from "@/lib/sez/sez";
 import { getConfigByCategory } from "@/lib/configurations/configurations";
+import ConfigTypeahead from "@/components/import/ConfigTypeahead";
 import { getKyc } from "@/lib/kyc/getKyc";
 import { deleteStorageFileByUrl } from "@/lib/freightForward/deleteStorage";
 import { uploadDocument } from "@/lib/kyc/uploadDocument";
@@ -111,6 +112,7 @@ export default function ImportJobEditDrawer({
   const [tradeTermsList, setTradeTermsList] = useState<ConfigItem[]>([]);
   const [containerSizes, setContainerSizes] = useState<ConfigItem[]>([]);
   const [containerTypes, setContainerTypes] = useState<ConfigItem[]>([]);
+  const [vesselOptions, setVesselOptions] = useState<ConfigItem[]>([]);
   const [kycList, setKycList] = useState<Kyc[]>([]);
 
   useEffect(() => {
@@ -134,9 +136,10 @@ export default function ImportJobEditDrawer({
       getConfigByCategory("trade_terms"),
       getConfigByCategory("container_size"),
       getConfigByCategory("container_type"),
+      getConfigByCategory("vessel"),
       getKyc(),
     ]).then(
-      ([cfs, sez, blTypeItems, tradeTerms, sizes, types, kyc]) => {
+      ([cfs, sez, blTypeItems, tradeTerms, sizes, types, vessels, kyc]) => {
         if (!active) return;
         setCfsList(cfs);
         setSezList(sez);
@@ -144,6 +147,7 @@ export default function ImportJobEditDrawer({
         setTradeTermsList(tradeTerms);
         setContainerSizes(sizes);
         setContainerTypes(types);
+        setVesselOptions(vessels);
         setKycList(kyc);
       }
     );
@@ -477,11 +481,12 @@ export default function ImportJobEditDrawer({
           <div className="grid grid-cols-2 gap-3">
             <label className="block space-y-1.5 text-xs">
               <span className="font-medium text-zinc-700">Vessel</span>
-              <input
+              <ConfigTypeahead
                 value={form.vesselName ?? ""}
-                onChange={(e) =>
-                  setForm({ ...form, vesselName: e.target.value })
-                }
+                options={vesselOptions.map((entry) => entry.value)}
+                onChange={(value) => setForm({ ...form, vesselName: value })}
+                disabled={readOnly}
+                placeholder="Type vessel name"
                 className={fieldClass("vesselName")}
               />
             </label>

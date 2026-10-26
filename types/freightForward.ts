@@ -52,8 +52,10 @@ export interface ImportHblEntry {
 
 export type ImportMovementStatus = "pending" | "accepted" | "completed";
 export type ImportIgmStatus = "pending" | "posted" | "inward";
-/** `eod` is legacy; DO is complete at `received`. */
-export type ImportDoStatus = "pending" | "received" | "eod";
+/** `eod` is legacy received. `completed` is invoice-file completion. */
+export type ImportDoStatus = "pending" | "received" | "eod" | "completed";
+export type ImportCmfcPrintStatus = "not_completed" | "completed";
+export type ImportInOutDocType = "DTA" | "ZONE TO ZONE" | "EXPORT";
 export type ImportWorkflowSection = "movement" | "igm" | "do";
 
 export type ImportBoeFilingStatus = "unfiled" | "filed";
@@ -153,8 +155,10 @@ export type ImportRemarkSection =
   | "movement"
   | "igm"
   | "ztype"
+  | "cmfc"
   | "transport"
   | "ttype"
+  | "inout"
   | "accounts";
 
 export interface ImportBoeChecklist {
@@ -271,6 +275,8 @@ export interface FreightForward {
   importBoeInRemarks?: ImportFreeRemark[];
   importTransportRemarks?: ImportFreeRemark[];
   importBoeOutRemarks?: ImportFreeRemark[];
+  importCmfcRemarks?: ImportFreeRemark[];
+  importInOutRemarks?: ImportFreeRemark[];
   importAccountsRemarks?: ImportFreeRemark[];
   importIgmAttachment?: FreightForwardDocument;
   /** Required when DO status is set to received. */
@@ -280,6 +286,19 @@ export interface FreightForward {
   importDoPlaceOfDelivery?: string;
   importDoEmptyAttachment?: FreightForwardDocument;
   importDoPortAttachment?: FreightForwardDocument;
+  importDoInvoiceAttachment?: FreightForwardDocument;
+  importDoName?: string;
+  importDoNumber?: string;
+  importDoAddress?: string;
+  importCommercialInvoiceAttachment?: FreightForwardDocument;
+  importPackingListAttachment?: FreightForwardDocument;
+  importInwardBoeAttachment?: FreightForwardDocument;
+  importOccAttachment?: FreightForwardDocument;
+  importTTypeBoeAttachment?: FreightForwardDocument;
+  importCmfcPrintStatus?: ImportCmfcPrintStatus;
+  importCmfcPrintAudit?: ImportAuditStamp;
+  importInOutDocType?: ImportInOutDocType;
+  importInOutLorryType?: string;
   /** Extra named documents captured from Import Add / documents section. */
   otherDocuments?: FreightForwardDocument[];
   /** BOE In — captured after Liner completion. */

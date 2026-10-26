@@ -114,6 +114,14 @@ export function getImportCurrentStatus(
       return getImportLinerCurrentStatus(item);
     case "ztype":
       return getImportZtypeCurrentStatus(item);
+    case "cmfc":
+      return item.importCmfcPrintStatus === "completed"
+        ? "CMFC Print Complete"
+        : "CMFC Print Pending";
+    case "inout":
+      if (item.importEwayBill === "yes") return "E Waybill Yes";
+      if (item.importEwayBill === "no") return "E Waybill No";
+      return "In & Out Pending";
     case "transport":
       return getImportTransportCurrentStatus(item);
     case "ttype":

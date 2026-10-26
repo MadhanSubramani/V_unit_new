@@ -84,6 +84,8 @@ export function canManageImportSupportingDocs(
     canActOnImportModule(user, "ztype") ||
     canActOnImportModule(user, "transport") ||
     canActOnImportModule(user, "ttype") ||
+    canActOnImportModule(user, "cmfc") ||
+    canActOnImportModule(user, "inout") ||
     canActOnImportModule(user, "accounts")
   );
 }

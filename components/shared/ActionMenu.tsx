@@ -32,7 +32,7 @@ export default function ActionMenu({
         <DropdownMenu.Content
           align="end"
           sideOffset={5}
-          className="z-50 w-40 rounded-xl border border-zinc-200 bg-white p-1 shadow-xl"
+          className="z-[80] w-40 rounded-xl border border-zinc-200 bg-white p-1 shadow-xl"
         >
           {showView && (
             <DropdownMenu.Item

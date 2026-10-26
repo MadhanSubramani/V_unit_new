@@ -21,6 +21,7 @@ import HorizontalDragScroll from "@/components/shared/HorizontalDragScroll";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import { getCfsList } from "@/lib/cfs/cfs";
 import { getConfigByCategory } from "@/lib/configurations/configurations";
+import ConfigTypeahead from "@/components/import/ConfigTypeahead";
 import {
   createFreightForward,
   softDeleteFreightForward,
@@ -396,6 +397,7 @@ export default function FreightForwardPage() {
   const [paymentTypes, setPaymentTypes] = useState<ConfigItem[]>([]);
   const [blTypes, setBlTypes] = useState<ConfigItem[]>([]);
   const [tradeTermsList, setTradeTermsList] = useState<ConfigItem[]>([]);
+  const [vesselOptions, setVesselOptions] = useState<ConfigItem[]>([]);
   const [kycList, setKycList] = useState<Kyc[]>([]);
   const [proformaOpen, setProformaOpen] = useState(false);
   const [timelinePopupOpen, setTimelinePopupOpen] = useState(false);
@@ -716,7 +718,7 @@ const handleStatusUpdate = async (
   }, []);
 
   const loadLookups = async () => {
-    const [cfs, sez, sizes, types, payments, blTypeItems, tradeTerms, kyc] = await Promise.all([
+    const [cfs, sez, sizes, types, payments, blTypeItems, tradeTerms, vessels, kyc] = await Promise.all([
       getCfsList(),
       getSezList(),
       getConfigByCategory("container_size"),
@@ -724,6 +726,7 @@ const handleStatusUpdate = async (
       getConfigByCategory("payment_type"),
       getConfigByCategory("bl_type"),
       getConfigByCategory("trade_terms"),
+      getConfigByCategory("vessel"),
       getKyc(),
     ]);
     setCfsList(cfs);
@@ -733,6 +736,7 @@ const handleStatusUpdate = async (
     setPaymentTypes(payments);
     setBlTypes(blTypeItems);
     setTradeTermsList(tradeTerms);
+    setVesselOptions(vessels);
     setKycList(kyc);
   };
 
@@ -1064,7 +1068,11 @@ const handleStatusUpdate = async (
       await reload();
     } catch (err) {
       console.error("Save error:", err);
-      setSubmitError("Unable to save freight forward record. Please try again.");
+      setSubmitError(
+        err instanceof Error
+          ? err.message
+          : "Unable to save freight forward record. Please try again."
+      );
     } finally {
       setSaving(false);
     }
@@ -1502,7 +1510,13 @@ const handleStatusUpdate = async (
         <FormSection title="Voyage & Route" description="Vessel schedule and port movement.">
           <div>
             <label className="mb-1 block text-[11px] font-medium text-zinc-600">Vessel Name</label>
-            <input value={form.vesselName ?? ""} onChange={(e) => setForm({ ...form, vesselName: e.target.value })} className={fieldClass("vesselName")} />
+            <ConfigTypeahead
+              value={form.vesselName ?? ""}
+              options={vesselOptions.map((item) => item.value)}
+              onChange={(value) => setForm({ ...form, vesselName: value })}
+              placeholder="Type vessel name"
+              className={fieldClass("vesselName")}
+            />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">

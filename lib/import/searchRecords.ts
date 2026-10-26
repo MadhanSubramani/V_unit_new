@@ -10,6 +10,10 @@ import {
 import { getTTypeBoeNoDisplay } from "@/lib/import/boeOutWorkflow";
 import { getImportCurrentStatus } from "@/lib/import/currentStatus";
 import type { ImportModuleKey } from "@/lib/import/permissions";
+import {
+  getImportDateFieldValue,
+  type ImportDateField,
+} from "@/lib/import/dateFields";
 
 function push(values: unknown[], target: string[]) {
   for (const value of values) {
@@ -64,6 +68,10 @@ export function buildImportSearchHaystack(
       item.importMovementRemark,
       item.importIgmRemark,
       item.importDoRemark,
+      item.importDoName,
+      item.importDoNumber,
+      item.importInOutDocType,
+      item.importInOutLorryType,
       item.importMovementStatus,
       item.importIgmStatus,
       item.importDoStatus,
@@ -101,15 +109,16 @@ export function buildImportSearchHaystack(
 export function matchesImportDateRange(
   item: FreightForward,
   dateFrom?: string,
-  dateTo?: string
+  dateTo?: string,
+  dateField: ImportDateField = "eta"
 ) {
   const from = dateFrom?.trim().slice(0, 10);
   const to = dateTo?.trim().slice(0, 10);
   if (!from && !to) return true;
-  const eta = (item.eta ?? item.etaSort ?? item.ezDate ?? "").slice(0, 10);
-  if (!eta) return false;
-  if (from && eta < from) return false;
-  if (to && eta > to) return false;
+  const value = getImportDateFieldValue(item, dateField);
+  if (!value) return false;
+  if (from && value < from) return false;
+  if (to && value > to) return false;
   return true;
 }
 

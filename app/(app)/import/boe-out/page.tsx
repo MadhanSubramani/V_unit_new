@@ -15,16 +15,19 @@ import ImportAuditLine from "@/components/import/ImportAuditLine";
 import ImportDoStatusPanel from "@/components/import/ImportDoStatusPanel";
 import ImportJobDocumentsPanel from "@/components/import/ImportJobDocumentsPanel";
 import ImportSectionProgress from "@/components/import/ImportSectionProgress";
+import ImportInOutPanel from "@/components/import/ImportInOutPanel";
 import {
   ImportCoreTableCells,
   ImportCoreTableHeaders,
   ImportSearchDownloadBar,
+  IMPORT_TABLE_HEAD_CLASS,
 } from "@/components/import/ImportTableExtras";
 import {
   ImportCurrentStatusCell,
   useCfsScopedImportRecords,
   useImportTableRows,
 } from "@/components/import/ImportTableState";
+import type { ImportDateField } from "@/lib/import/dateFields";
 import ImportSectionRemarks from "@/components/import/ImportSectionRemarks";
 import {
   changeImportBoeOutVehicle,
@@ -35,8 +38,8 @@ import {
   updateImportBoeOutDuty,
   updateImportBoeOutInwardOcc,
   updateImportBoeOutNewVehicle,
-  updateImportEwayBill,
 } from "@/lib/freightForward/freightForward";
+import ImportNamedFileField from "@/components/import/ImportNamedFileField";
 import {
   getImportTruckDetails,
   getImportVehicleChanges,
@@ -84,7 +87,6 @@ import {
   ImportBoeOutInwardOccStatus,
   ImportTTypeEntry,
   ImportVehicleChange,
-  ImportYesNo,
   INWARD_BOE_NO_REGEX,
 } from "@/types/freightForward";
 
@@ -101,6 +103,7 @@ export default function ImportBoeOutPage() {
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [dateField, setDateField] = useState<ImportDateField>("eta");
   const [page, setPage] = useState(0);
   const [sortKey, setSortKey] = useState<ImportSortKey>("eta");
   const [sortDir, setSortDir] = useState<ImportSortDir>("asc");
@@ -165,6 +168,7 @@ export default function ImportBoeOutPage() {
     search,
     dateFrom,
     dateTo,
+    dateField,
     page,
     pageSize: PAGE_SIZE,
     sortKey,
@@ -235,6 +239,11 @@ export default function ImportBoeOutPage() {
           setPage(0);
           setDateTo(value);
         }}
+        dateField={dateField}
+        onDateFieldChange={(value) => {
+          setPage(0);
+          setDateField(value);
+        }}
         records={filtered}
         filePrefix="import-t-type-be"
       />
@@ -250,7 +259,7 @@ export default function ImportBoeOutPage() {
         className="mt-4 overflow-x-auto rounded-xl border border-zinc-200"
       >
         <table className="min-w-[1280px] w-full text-left text-xs">
-          <thead className="bg-zinc-50 text-[10px] uppercase tracking-wide text-zinc-500">
+          <thead className={IMPORT_TABLE_HEAD_CLASS}>
             <tr>
               <th className="w-9 px-2 py-3" />
               <ImportCoreTableHeaders
@@ -265,13 +274,13 @@ export default function ImportBoeOutPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={25} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={26} className="px-4 py-10 text-center text-zinc-400">
                   Loading T type BE jobs...
                 </td>
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={25} className="px-4 py-10 text-center text-zinc-400">
+                <td colSpan={26} className="px-4 py-10 text-center text-zinc-400">
                   No import jobs found.
                 </td>
               </tr>
@@ -398,7 +407,7 @@ function BoeOutRow({
       </tr>
       {canExpand && expanded && (
         <tr className="border-t border-zinc-100 bg-zinc-100/70">
-          <td colSpan={25} className="p-0">
+          <td colSpan={26} className="p-0">
             <div
               className="sticky left-0 min-w-0 p-3"
               style={panelWidth ? { width: panelWidth } : undefined}
@@ -599,8 +608,11 @@ function BoeOutExpansion({
               T type BE workflow
             </p>
             <h3 className="mt-1 text-sm font-semibold text-zinc-900">
-              {item.jobNumber || "Import"} — inward OOC, T type, duty, e waybill & dispatch
+              {item.jobNumber || "Import"} — inward OOC, T type, duty & dispatch
             </h3>
+            <p className="mt-1 text-[11px] text-zinc-500">
+              EZ Ref {item.ezRefNumber || "—"} · {item.ezDate || "—"}
+            </p>
           </div>
           {isAdmin && (tTypeCompleted || dispatched) && (
             <button
@@ -642,13 +654,28 @@ function BoeOutExpansion({
                     type="radio"
                     name={`inward-occ-${item.id}`}
                     checked={occStatus === status}
-                    disabled={busy || locked}
+                    disabled={
+                      busy ||
+                      locked ||
+                      (status === "occ" &&
+                        !item.importOccAttachment?.url &&
+                        occStatus !== "occ")
+                    }
                     onChange={() => setOcc(status)}
                   />
                   {status === "occ" ? "OOC" : "Pending"}
                 </label>
               )
             )}
+            <ImportNamedFileField
+              item={item}
+              field="importOccAttachment"
+              label="OCC attachment"
+              folder="import/occ"
+              username={username}
+              disabled={busy || locked}
+              onUpdated={onUpdated}
+            />
           </div>
           )}
           <ImportAuditLine audit={item.importBoeOutInwardOccAudit} />
@@ -804,6 +831,15 @@ function BoeOutExpansion({
                   </div>
                 );
               })}
+              <ImportNamedFileField
+                item={item}
+                field="importTTypeBoeAttachment"
+                label="T type BE attachment"
+                folder="import/t-type"
+                username={username}
+                disabled={busy || tTypeLocked}
+                onUpdated={onUpdated}
+              />
               {!tTypeLocked && (
                 <button
                   type="button"
@@ -826,7 +862,10 @@ function BoeOutExpansion({
                       (entry) =>
                         INWARD_BOE_NO_REGEX.test(entry.boeNo.trim()) &&
                         Boolean(entry.boeDate)
-                    )
+                    ) ||
+                    (tTypeShowsComplete &&
+                      (!item.importTTypeBoeAttachment?.url ||
+                        !item.importOccAttachment?.url))
                   }
                   onClick={tTypeShowsComplete ? completeTType : saveTType}
                   className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
@@ -940,31 +979,8 @@ function BoeOutExpansion({
                 <LockKeyhole size={13} />
               )}
             </span>
-            <h3 className="text-sm font-semibold text-zinc-900">E waybill</h3>
+            <h3 className="text-sm font-semibold text-zinc-900">Dispatch</h3>
           </div>
-          {tTypeSaved && (
-            <div
-              className="mt-3 flex gap-4 text-xs"
-              onClick={(event) => event.stopPropagation()}
-            >
-              {(["yes", "no"] as ImportYesNo[]).map((value) => (
-                <label key={value} className="inline-flex items-center gap-1.5 capitalize">
-                  <input
-                    type="radio"
-                    name={`eway-${item.id}`}
-                    checked={item.importEwayBill === value}
-                    disabled={busy || readOnly}
-                    onChange={() =>
-                      void run(() =>
-                        updateImportEwayBill(item.id!, value, username)
-                      )
-                    }
-                  />
-                  {value}
-                </label>
-              ))}
-            </div>
-          )}
           {!ewayUnlocked ? (
             <p className="mt-3 flex items-center gap-1.5 text-[11px] font-medium text-zinc-500">
               <LockKeyhole size={12} />
@@ -1114,6 +1130,18 @@ function BoeOutExpansion({
             </div>
           )}
         </section>
+      </div>
+      <div className="px-4 pb-4">
+        <ImportInOutPanel
+          item={item}
+          busy={busy}
+          canAct={canAct && !readOnly}
+          username={username}
+          onBusy={onBusy}
+          onError={onError}
+          onUpdated={onUpdated}
+          showDocuments={false}
+        />
       </div>
       <ImportSectionRemarks
         remarks={item.importBoeOutRemarks ?? []}

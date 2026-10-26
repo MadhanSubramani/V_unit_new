@@ -5,6 +5,7 @@ import { FreightForward } from "@/types/freightForward";
 import { getImportCurrentStatus } from "@/lib/import/currentStatus";
 import type { ImportModuleKey } from "@/types/importRoles";
 import { matchesImportSearch, matchesImportDateRange } from "@/lib/import/searchRecords";
+import type { ImportDateField } from "@/lib/import/dateFields";
 import {
   ImportSortDir,
   ImportSortKey,
@@ -36,6 +37,7 @@ export function useImportTableRows<T extends FreightForward>({
   excludeFromList,
   dateFrom,
   dateTo,
+  dateField = "eta",
 }: {
   records: T[];
   module: ImportModuleKey;
@@ -49,12 +51,13 @@ export function useImportTableRows<T extends FreightForward>({
   excludeFromList?: (item: T, activeCard: string | null) => boolean;
   dateFrom?: string;
   dateTo?: string;
+  dateField?: ImportDateField;
 }) {
   return useMemo(() => {
     let list = records.filter((item) => {
       if (excludeFromList?.(item, activeCard ?? null)) return false;
       if (activeCard && matchesCard && !matchesCard(item, activeCard)) return false;
-      if (!matchesImportDateRange(item, dateFrom, dateTo)) return false;
+      if (!matchesImportDateRange(item, dateFrom, dateTo, dateField)) return false;
       return matchesImportSearch(item, search, module);
     });
     list = sortImportRecords(list, sortKey, sortDir) as T[];
@@ -74,6 +77,7 @@ export function useImportTableRows<T extends FreightForward>({
     excludeFromList,
     dateFrom,
     dateTo,
+    dateField,
   ]);
 }
 

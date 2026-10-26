@@ -101,7 +101,10 @@ export default function HorizontalDragScroll({
   }, [node]);
 
   return (
-    <div ref={setRefs} className={className}>
+    <div
+      ref={setRefs}
+      className={`relative z-0 isolate max-h-[calc(100vh-240px)] overflow-auto ${className ?? ""}`}
+    >
       {children}
     </div>
   );
