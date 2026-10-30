@@ -3,8 +3,12 @@
 import { useState } from "react";
 import { Download, X } from "lucide-react";
 import { FreightForwardDocument } from "@/types/freightForward";
-import { downloadImportDocument } from "@/lib/import/mergeDocuments";
+import {
+  downloadImportDocument,
+  DownloadFormat,
+} from "@/lib/import/mergeDocuments";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
+import DownloadFormatMenu from "@/components/shared/DownloadFormatMenu";
 
 export default function ImportDocumentLink({
   label,
@@ -32,15 +36,21 @@ export default function ImportDocumentLink({
     );
   }
 
-  const handleClick = async (event: React.MouseEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
+  const handleFormat = async (format: DownloadFormat) => {
     setBusy(true);
     setError("");
     try {
-      await downloadImportDocument(doc);
-    } catch {
-      window.open(doc.url, "_blank", "noopener,noreferrer");
+      await downloadImportDocument(doc, format);
+    } catch (downloadError) {
+      if (format === "pdf") {
+        window.open(doc.url, "_blank", "noopener,noreferrer");
+        return;
+      }
+      setError(
+        downloadError instanceof Error
+          ? downloadError.message
+          : "Unable to download documents."
+      );
     } finally {
       setBusy(false);
     }
@@ -79,15 +89,21 @@ export default function ImportDocumentLink({
   if (variant === "icon") {
     return (
       <span className="inline-flex items-center gap-1">
-        <button
-          type="button"
+        <DownloadFormatMenu
           disabled={busy}
-          title={busy ? "Downloading..." : `${label}: ${doc.name || "Download"}`}
-          onClick={(event) => void handleClick(event)}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-zinc-200 text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
-        >
-          <Download size={14} />
-        </button>
+          onSelect={(format) => void handleFormat(format)}
+          trigger={
+            <button
+              type="button"
+              disabled={busy}
+              title={busy ? "Preparing..." : `${label}: ${doc.name || "Download"}`}
+              onClick={(event) => event.stopPropagation()}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-zinc-200 text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              <Download size={14} />
+            </button>
+          }
+        />
         {removeButton}
         {dialog}
       </span>
@@ -96,20 +112,26 @@ export default function ImportDocumentLink({
 
   return (
     <div className="flex items-start gap-2">
-      <button
-        type="button"
+      <DownloadFormatMenu
         disabled={busy}
-        onClick={(event) => void handleClick(event)}
-        className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-left text-[11px] font-medium text-zinc-800 transition hover:bg-white disabled:opacity-50"
-      >
-        <span className="block text-[10px] uppercase tracking-wide text-zinc-500">
-          {label}
-        </span>
-        <span className="mt-0.5 block truncate">
-          {busy ? "Downloading..." : doc.name || "Download file"}
-        </span>
-        {error && <span className="mt-1 block text-[10px] text-red-500">{error}</span>}
-      </button>
+        onSelect={(format) => void handleFormat(format)}
+        trigger={
+          <button
+            type="button"
+            disabled={busy}
+            onClick={(event) => event.stopPropagation()}
+            className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-left text-[11px] font-medium text-zinc-800 transition hover:bg-white disabled:opacity-50"
+          >
+            <span className="block text-[10px] uppercase tracking-wide text-zinc-500">
+              {label}
+            </span>
+            <span className="mt-0.5 block truncate">
+              {busy ? "Preparing..." : doc.name || "Download file"}
+            </span>
+            {error && <span className="mt-1 block text-[10px] text-red-500">{error}</span>}
+          </button>
+        }
+      />
       {removeButton}
       {dialog}
     </div>

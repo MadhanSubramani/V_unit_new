@@ -112,7 +112,7 @@ export default function ImportInOutPage() {
     <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
       <ModuleHeader
         title="Import — In & Out"
-        description="E waybill, DO party details and delivery challan after T type BE is saved."
+        description="E waybill, delivery challan, vehicle change, and dispatch after duty is final."
       />
       <div className="mt-5 grid grid-cols-3 gap-3">
         {(
@@ -230,6 +230,7 @@ export default function ImportInOutPage() {
                               onBusy={setUpdatingId}
                               onError={setError}
                               onUpdated={applyUpdated}
+                              showDispatch
                             />
                           </div>
                         </td>

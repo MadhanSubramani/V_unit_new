@@ -55,7 +55,7 @@ export function missingDeliveryChallanFields(item: FreightForward) {
     .join(", ");
 
   if (!item.consignmentName?.trim()) missing.push("Consignee name");
-  if (!item.importDoAddress?.trim()) missing.push("Consignee / DO address");
+  if (!item.importDoAddress?.trim()) missing.push("Delivery address");
   if (!item.jobNumber?.trim()) missing.push("Job / DC number");
   if (!item.inwardBoeNo?.trim()) missing.push("Z type BE No");
   if (!item.inwardBoeDate?.trim()) missing.push("Z type BE Date");
@@ -75,9 +75,9 @@ export function missingDeliveryChallanFields(item: FreightForward) {
   if (!(truck?.importDriverPhone ?? item.importDriverPhone)?.trim()) {
     missing.push("Phone No");
   }
-  if (!item.clientName?.trim()) missing.push("Client name");
-  if (!item.importDoName?.trim()) missing.push("DO name");
-  if (!item.importDoNumber?.trim()) missing.push("DO / Client number");
+  if (!item.clientName?.trim()) missing.push("Job client");
+  if (!item.importDoName?.trim()) missing.push("Client name");
+  if (!item.importDoNumber?.trim()) missing.push("Client number");
   if (!item.importDoPlaceOfDelivery?.trim()) missing.push("Place of delivery");
   if (!item.ezRefNumber?.trim()) missing.push("EZ Ref");
   if (!item.ezDate?.trim() && !formatEzDate(item)) missing.push("EZ Date");

@@ -6,8 +6,10 @@ import ImportDocumentLink from "@/components/import/ImportDocumentLink";
 import FileInputWithClip from "@/components/import/FileInputWithClip";
 import {
   downloadMergedImportDocuments,
+  DownloadFormat,
   getImportJobDocuments,
 } from "@/lib/import/mergeDocuments";
+import DownloadFormatMenu from "@/components/shared/DownloadFormatMenu";
 import {
   appendImportOtherDocuments,
   removeImportJobDocument,
@@ -191,12 +193,11 @@ function DocumentsDownloadAll({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const handleDownload = async (event: React.MouseEvent) => {
-    event.stopPropagation();
+  const handleDownload = async (format: DownloadFormat) => {
     setBusy(true);
     setError("");
     try {
-      await downloadMergedImportDocuments(item);
+      await downloadMergedImportDocuments(item, undefined, undefined, format);
     } catch (downloadError) {
       setError(
         downloadError instanceof Error
@@ -210,14 +211,19 @@ function DocumentsDownloadAll({
 
   return (
     <div className="text-right" onClick={(event) => event.stopPropagation()}>
-      <button
-        type="button"
+      <DownloadFormatMenu
         disabled={busy || disabled}
-        onClick={(event) => void handleDownload(event)}
-        className="rounded-lg border border-zinc-200 px-2.5 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
-      >
-        {busy ? "Preparing..." : "Download all"}
-      </button>
+        onSelect={(format) => void handleDownload(format)}
+        trigger={
+          <button
+            type="button"
+            disabled={busy || disabled}
+            className="rounded-lg border border-zinc-200 px-2.5 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+          >
+            {busy ? "Preparing..." : "Download all"}
+          </button>
+        }
+      />
       {error && <p className="mt-1 text-[10px] text-red-500">{error}</p>}
     </div>
   );

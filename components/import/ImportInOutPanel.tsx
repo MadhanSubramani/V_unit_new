@@ -1,20 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import ImportAuditLine from "@/components/import/ImportAuditLine";
 import ImportJobDocumentsPanel from "@/components/import/ImportJobDocumentsPanel";
 import ImportSectionRemarks from "@/components/import/ImportSectionRemarks";
 import {
   addImportSectionRemark,
+  changeImportBoeOutVehicle,
+  dispatchImportBoeOut,
+  updateImportBoeOutNewVehicle,
   updateImportEwayBill,
   updateImportInOutMeta,
 } from "@/lib/freightForward/freightForward";
 import { generateDeliveryChallanPdf } from "@/lib/import/generateDeliveryChallanPdf";
 import { missingDeliveryChallanFields } from "@/lib/import/inOutWorkflow";
 import {
+  canUnlockImportEwaySection,
+  isImportBoeOutDispatched,
+} from "@/lib/import/boeOutWorkflow";
+import {
+  getImportTruckDetails,
+  getImportVehicleChanges,
+  isVehicleChangeComplete,
+} from "@/lib/import/transportWorkflow";
+import {
   FreightForward,
   ImportInOutDocType,
+  ImportVehicleChange,
   ImportYesNo,
 } from "@/types/freightForward";
 
@@ -30,6 +43,7 @@ export default function ImportInOutPanel({
   onError,
   onUpdated,
   showDocuments = true,
+  showDispatch = false,
 }: {
   item: FreightForward;
   busy: boolean;
@@ -39,8 +53,19 @@ export default function ImportInOutPanel({
   onError: (message: string) => void;
   onUpdated: (item: FreightForward) => void;
   showDocuments?: boolean;
+  showDispatch?: boolean;
 }) {
   const [missing, setMissing] = useState<string[] | null>(null);
+  const [vehicleChanges, setVehicleChanges] = useState<ImportVehicleChange[]>(() =>
+    getImportVehicleChanges(item)
+  );
+  const dutyFinal = canUnlockImportEwaySection(item);
+  const dispatched = isImportBoeOutDispatched(item);
+  const trucks = getImportTruckDetails(item);
+
+  useEffect(() => {
+    setVehicleChanges(getImportVehicleChanges(item));
+  }, [item]);
 
   const run = async (task: () => Promise<FreightForward>) => {
     onBusy(item.id ?? null);
@@ -72,15 +97,15 @@ export default function ImportInOutPanel({
       </h3>
       <dl className="mt-3 grid gap-2 text-[11px] sm:grid-cols-2">
         <div>
-          <dt className="text-zinc-500">DO name</dt>
+          <dt className="text-zinc-500">Client name</dt>
           <dd className="font-medium">{item.importDoName || "—"}</dd>
         </div>
         <div>
-          <dt className="text-zinc-500">DO number</dt>
+          <dt className="text-zinc-500">Client number</dt>
           <dd className="font-medium">{item.importDoNumber || "—"}</dd>
         </div>
         <div className="sm:col-span-2">
-          <dt className="text-zinc-500">DO address</dt>
+          <dt className="text-zinc-500">Delivery address</dt>
           <dd className="font-medium">{item.importDoAddress || "—"}</dd>
         </div>
         <div>
@@ -174,6 +199,243 @@ export default function ImportInOutPanel({
         >
           Generate delivery challan
         </button>
+
+        {showDispatch && (
+          <div className="space-y-3 border-t border-zinc-200 pt-3">
+            <p className="font-medium text-zinc-700">Transport / vehicle</p>
+            {!dutyFinal ? (
+              <p className="text-[11px] text-zinc-500">
+                Mark duty as Final before vehicle change or dispatch.
+              </p>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  {trucks.map((truck, index) => (
+                    <div key={index}>
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                        Transport {index + 1}
+                        {truck.containerNumber ? ` — ${truck.containerNumber}` : ""}
+                      </p>
+                      <dl className="mt-1 grid gap-1 text-[11px] text-zinc-700 sm:grid-cols-2">
+                        <div>
+                          <dt className="text-zinc-500">Transporter</dt>
+                          <dd className="font-medium">
+                            {truck.importTransporter?.trim() || "—"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-zinc-500">Vehicle No</dt>
+                          <dd className="font-medium">
+                            {truck.importVehicleNo?.trim() || "—"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-zinc-500">Driver</dt>
+                          <dd className="font-medium">
+                            {truck.importDriverName?.trim() || "—"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-zinc-500">Phone</dt>
+                          <dd className="font-medium">
+                            {truck.importDriverPhone?.trim() || "—"}
+                          </dd>
+                        </div>
+                      </dl>
+                    </div>
+                  ))}
+                </div>
+
+                {!item.importBoeOutVehicleChanged && canAct && !dispatched && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(() => changeImportBoeOutVehicle(item.id!, username))
+                    }
+                    className="rounded-lg border border-zinc-300 px-3 py-1.5 text-[10px] font-semibold text-zinc-700"
+                  >
+                    Change of vehicle
+                  </button>
+                )}
+
+                {item.importBoeOutVehicleChanged && (
+                  <div className="space-y-3 rounded-lg border border-zinc-200 bg-zinc-50/50 p-3">
+                    <ImportAuditLine audit={item.importBoeOutVehicleChangeAudit} />
+                    {vehicleChanges.map((change, index) => (
+                      <div
+                        key={index}
+                        className="space-y-2 rounded-lg border border-zinc-200 bg-white p-3"
+                      >
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                          Vehicle {index + 1}
+                          {change.containerNumber
+                            ? ` — ${change.containerNumber}`
+                            : ""}
+                        </p>
+                        <dl className="grid gap-1 text-[11px] text-zinc-700 sm:grid-cols-2">
+                          <div>
+                            <dt className="text-zinc-500">Old transporter</dt>
+                            <dd className="font-medium">
+                              {change.oldTransporter || "—"}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="text-zinc-500">Old vehicle</dt>
+                            <dd className="font-medium">
+                              {change.oldVehicleNo || "—"}
+                            </dd>
+                          </div>
+                        </dl>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <label className="block text-xs sm:col-span-2">
+                            <span className="font-medium text-zinc-700">
+                              New transporter
+                            </span>
+                            <input
+                              value={change.newTransporter ?? ""}
+                              disabled={busy || !canAct || dispatched}
+                              onChange={(event) =>
+                                setVehicleChanges((current) =>
+                                  current.map((row, i) =>
+                                    i === index
+                                      ? {
+                                          ...row,
+                                          newTransporter: event.target.value,
+                                        }
+                                      : row
+                                  )
+                                )
+                              }
+                              className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
+                            />
+                          </label>
+                          <label className="block text-xs">
+                            <span className="font-medium text-zinc-700">
+                              New vehicle No
+                            </span>
+                            <input
+                              value={change.newVehicleNo ?? ""}
+                              disabled={busy || !canAct || dispatched}
+                              onChange={(event) =>
+                                setVehicleChanges((current) =>
+                                  current.map((row, i) =>
+                                    i === index
+                                      ? {
+                                          ...row,
+                                          newVehicleNo:
+                                            event.target.value.toUpperCase(),
+                                        }
+                                      : row
+                                  )
+                                )
+                              }
+                              className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
+                            />
+                          </label>
+                          <label className="block text-xs">
+                            <span className="font-medium text-zinc-700">
+                              New driver
+                            </span>
+                            <input
+                              value={change.newDriverName ?? ""}
+                              disabled={busy || !canAct || dispatched}
+                              onChange={(event) =>
+                                setVehicleChanges((current) =>
+                                  current.map((row, i) =>
+                                    i === index
+                                      ? {
+                                          ...row,
+                                          newDriverName: event.target.value,
+                                        }
+                                      : row
+                                  )
+                                )
+                              }
+                              className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
+                            />
+                          </label>
+                          <label className="block text-xs sm:col-span-2">
+                            <span className="font-medium text-zinc-700">Ph no</span>
+                            <input
+                              value={change.newDriverPhone ?? ""}
+                              disabled={busy || !canAct || dispatched}
+                              onChange={(event) =>
+                                setVehicleChanges((current) =>
+                                  current.map((row, i) =>
+                                    i === index
+                                      ? {
+                                          ...row,
+                                          newDriverPhone: event.target.value
+                                            .replace(/\D/g, "")
+                                            .slice(0, 10),
+                                        }
+                                      : row
+                                  )
+                                )
+                              }
+                              placeholder="10 digits"
+                              className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                    {canAct && !dispatched && (
+                      <button
+                        type="button"
+                        disabled={
+                          busy || !vehicleChanges.every(isVehicleChangeComplete)
+                        }
+                        onClick={() =>
+                          void run(() =>
+                            updateImportBoeOutNewVehicle(
+                              item.id!,
+                              vehicleChanges,
+                              username
+                            )
+                          )
+                        }
+                        className="rounded-lg border border-zinc-300 px-3 py-1.5 text-[10px] font-semibold text-zinc-700 disabled:opacity-40"
+                      >
+                        Save new vehicles
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                <div className="border-t border-zinc-200 pt-3">
+                  <p className="font-medium text-zinc-700">Dispatch</p>
+                  {dispatched ? (
+                    <p className="mt-2 text-[11px] font-medium text-zinc-700">
+                      Dispatched
+                    </p>
+                  ) : canAct ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        void run(() => dispatchImportBoeOut(item.id!, username))
+                      }
+                      className="mt-2 rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
+                    >
+                      Dispatch
+                    </button>
+                  ) : (
+                    <p className="mt-2 text-[11px] text-zinc-500">
+                      Dispatch is pending.
+                    </p>
+                  )}
+                  <ImportAuditLine
+                    audit={item.importBoeOutDispatchAudit}
+                    byLabel="Dispatched by"
+                    emptyLabel="Not dispatched yet."
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
       <ImportAuditLine audit={item.importEwayBillAudit} />
       <ImportSectionRemarks

@@ -115,6 +115,7 @@ export function getImportCurrentStatus(
     case "ztype":
       return getImportZtypeCurrentStatus(item);
     case "cmfc":
+      if (getBoeFilingStatus(item) !== "filed") return "BOE pending";
       return item.importCmfcPrintStatus === "completed"
         ? "CMFC Print Complete"
         : "CMFC Print Pending";

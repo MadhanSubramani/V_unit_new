@@ -992,7 +992,7 @@ function StageCard({
             />
           </label>
           <label className="block text-xs">
-            <span className="font-medium text-zinc-700">DO name</span>
+            <span className="font-medium text-zinc-700">Client name</span>
             <input
               defaultValue={item.importDoName ?? ""}
               disabled={busy || !canAct}
@@ -1008,7 +1008,7 @@ function StageCard({
             />
           </label>
           <label className="block text-xs">
-            <span className="font-medium text-zinc-700">DO number</span>
+            <span className="font-medium text-zinc-700">Client number</span>
             <input
               defaultValue={item.importDoNumber ?? ""}
               disabled={busy || !canAct}
@@ -1024,7 +1024,7 @@ function StageCard({
             />
           </label>
           <label className="block text-xs sm:col-span-2">
-            <span className="font-medium text-zinc-700">DO address</span>
+            <span className="font-medium text-zinc-700">Delivery address</span>
             <input
               defaultValue={item.importDoAddress ?? ""}
               disabled={busy || !canAct}

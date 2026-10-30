@@ -15,7 +15,6 @@ import ImportAuditLine from "@/components/import/ImportAuditLine";
 import ImportDoStatusPanel from "@/components/import/ImportDoStatusPanel";
 import ImportJobDocumentsPanel from "@/components/import/ImportJobDocumentsPanel";
 import ImportSectionProgress from "@/components/import/ImportSectionProgress";
-import ImportInOutPanel from "@/components/import/ImportInOutPanel";
 import {
   ImportCoreTableCells,
   ImportCoreTableHeaders,
@@ -30,25 +29,16 @@ import {
 import type { ImportDateField } from "@/lib/import/dateFields";
 import ImportSectionRemarks from "@/components/import/ImportSectionRemarks";
 import {
-  changeImportBoeOutVehicle,
   addImportSectionRemark,
-  dispatchImportBoeOut,
   getImportLinerRecords,
   saveImportTTypeBoe,
   updateImportBoeOutDuty,
   updateImportBoeOutInwardOcc,
-  updateImportBoeOutNewVehicle,
 } from "@/lib/freightForward/freightForward";
 import ImportNamedFileField from "@/components/import/ImportNamedFileField";
 import {
-  getImportTruckDetails,
-  getImportVehicleChanges,
-  isVehicleChangeComplete,
-} from "@/lib/import/transportWorkflow";
-import {
   canTakeTTypeAction,
   canUnlockImportDutySection,
-  canUnlockImportEwaySection,
   canUnlockImportTTypeSection,
   computeImportBoeOutCounts,
   createEmptyTTypeEntry,
@@ -56,11 +46,9 @@ import {
   getImportBoeOutInwardOccStatus,
   getImportBoeOutRecords,
   getImportTTypeEntries,
-  getTTypeBoeNoDisplay,
   ImportBoeOutCard,
   isImportBoeOutDispatched,
   isImportBoeOutInwardOccDone,
-  isImportTTypeBoeSaved,
   isImportTTypeSectionCompleted,
   isTTypeEntryCompleted,
   matchesImportBoeOutCard,
@@ -68,7 +56,6 @@ import {
   T_TYPE_CLEARANCE_OPTIONS,
 } from "@/lib/import/boeOutWorkflow";
 import { getImportModuleProgressSteps } from "@/lib/import/sectionProgress";
-import { getInwardBoeNoDisplay } from "@/lib/import/linerWorkflow";
 import {
   canActOnImportModule,
   canExpandImportRow,
@@ -86,7 +73,6 @@ import {
   ImportBoeOutDutyStatus,
   ImportBoeOutInwardOccStatus,
   ImportTTypeEntry,
-  ImportVehicleChange,
   INWARD_BOE_NO_REGEX,
 } from "@/types/freightForward";
 
@@ -190,7 +176,7 @@ export default function ImportBoeOutPage() {
     <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
       <ModuleHeader
         title="Import — T type BE"
-        description="All Import jobs. Complete inward OOC, T type filing, duty, and dispatch after Transport."
+        description="All Import jobs. Complete inward OOC, T type filing, and duty after Transport. Dispatch is in In & Out."
       />
 
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -454,10 +440,8 @@ function BoeOutExpansion({
   const readOnly = (dispatched && !(isAdmin && adminEdit)) || !canAct;
   const transportReady = canTakeTTypeAction(item);
   const occDone = isImportBoeOutInwardOccDone(item);
-  const tTypeSaved = isImportTTypeBoeSaved(item);
   const tTypeCompleted = isImportTTypeSectionCompleted(item);
   const dutyUnlocked = canUnlockImportDutySection(item);
-  const ewayUnlocked = canUnlockImportEwaySection(item);
   const dutyStatus = getImportBoeOutDutyStatus(item);
   const occStatus = getImportBoeOutInwardOccStatus(item);
 
@@ -471,16 +455,11 @@ function BoeOutExpansion({
   const [dutyAccValue, setDutyAccValue] = useState(item.importBoeOutDutyAccValue ?? "");
   const [dutyAmt, setDutyAmt] = useState(item.importBoeOutDutyAmt ?? "");
 
-  const [vehicleChanges, setVehicleChanges] = useState<ImportVehicleChange[]>(() =>
-    getImportVehicleChanges(item)
-  );
-
   useEffect(() => {
     const existing = getImportTTypeEntries(item);
     setTTypeEntries(existing.length ? existing : [createEmptyTTypeEntry()]);
     setDutyAccValue(item.importBoeOutDutyAccValue ?? "");
     setDutyAmt(item.importBoeOutDutyAmt ?? "");
-    setVehicleChanges(getImportVehicleChanges(item));
   }, [item]);
 
   const run = async (task: () => Promise<FreightForward>) => {
@@ -582,20 +561,6 @@ function BoeOutExpansion({
     );
   };
 
-  const startVehicleChange = () => {
-    void run(() => changeImportBoeOutVehicle(item.id!, username));
-  };
-
-  const saveNewVehicle = () => {
-    void run(() =>
-      updateImportBoeOutNewVehicle(item.id!, vehicleChanges, username)
-    );
-  };
-
-  const dispatch = () => {
-    void run(() => dispatchImportBoeOut(item.id!, username));
-  };
-
   const tTypeLocked = readOnly || (tTypeCompleted && !(isAdmin && adminEdit));
   const locked = readOnly;
 
@@ -608,7 +573,7 @@ function BoeOutExpansion({
               T type BE workflow
             </p>
             <h3 className="mt-1 text-sm font-semibold text-zinc-900">
-              {item.jobNumber || "Import"} — inward OOC, T type, duty & dispatch
+              {item.jobNumber || "Import"} — inward OOC, T type & duty
             </h3>
             <p className="mt-1 text-[11px] text-zinc-500">
               EZ Ref {item.ezRefNumber || "—"} · {item.ezDate || "—"}
@@ -654,28 +619,13 @@ function BoeOutExpansion({
                     type="radio"
                     name={`inward-occ-${item.id}`}
                     checked={occStatus === status}
-                    disabled={
-                      busy ||
-                      locked ||
-                      (status === "occ" &&
-                        !item.importOccAttachment?.url &&
-                        occStatus !== "occ")
-                    }
+                    disabled={busy || locked}
                     onChange={() => setOcc(status)}
                   />
                   {status === "occ" ? "OOC" : "Pending"}
                 </label>
               )
             )}
-            <ImportNamedFileField
-              item={item}
-              field="importOccAttachment"
-              label="OCC attachment"
-              folder="import/occ"
-              username={username}
-              disabled={busy || locked}
-              onUpdated={onUpdated}
-            />
           </div>
           )}
           <ImportAuditLine audit={item.importBoeOutInwardOccAudit} />
@@ -744,18 +694,33 @@ function BoeOutExpansion({
                         className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
                       />
                     </label>
-                    <label className="block text-xs">
-                      <span className="font-medium text-zinc-700">Date</span>
-                      <input
-                        type="date"
-                        value={entry.boeDate}
-                        disabled={busy || tTypeLocked}
-                        onChange={(event) =>
-                          updateEntry(entry.id, { boeDate: event.target.value })
-                        }
-                        className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
-                      />
-                    </label>
+                    <div
+                      className={`grid items-end gap-2 ${index === 0 ? "sm:grid-cols-2" : ""}`}
+                    >
+                      <label className="block text-xs">
+                        <span className="font-medium text-zinc-700">Date</span>
+                        <input
+                          type="date"
+                          value={entry.boeDate}
+                          disabled={busy || tTypeLocked}
+                          onChange={(event) =>
+                            updateEntry(entry.id, { boeDate: event.target.value })
+                          }
+                          className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
+                        />
+                      </label>
+                      {index === 0 && (
+                        <ImportNamedFileField
+                          item={item}
+                          field="importTTypeBoeAttachment"
+                          label="T type BE attachment"
+                          folder="import/t-type"
+                          username={username}
+                          disabled={busy || tTypeLocked}
+                          onUpdated={onUpdated}
+                        />
+                      )}
+                    </div>
                     <div className="grid gap-2 sm:grid-cols-2">
                       <label className="block text-xs">
                         <span className="font-medium text-zinc-700">Weight</span>
@@ -831,15 +796,6 @@ function BoeOutExpansion({
                   </div>
                 );
               })}
-              <ImportNamedFileField
-                item={item}
-                field="importTTypeBoeAttachment"
-                label="T type BE attachment"
-                folder="import/t-type"
-                username={username}
-                disabled={busy || tTypeLocked}
-                onUpdated={onUpdated}
-              />
               {!tTypeLocked && (
                 <button
                   type="button"
@@ -863,9 +819,7 @@ function BoeOutExpansion({
                         INWARD_BOE_NO_REGEX.test(entry.boeNo.trim()) &&
                         Boolean(entry.boeDate)
                     ) ||
-                    (tTypeShowsComplete &&
-                      (!item.importTTypeBoeAttachment?.url ||
-                        !item.importOccAttachment?.url))
+                    (tTypeShowsComplete && !item.importTTypeBoeAttachment?.url)
                   }
                   onClick={tTypeShowsComplete ? completeTType : saveTType}
                   className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
@@ -959,189 +913,6 @@ function BoeOutExpansion({
           )}
           <ImportAuditLine audit={item.importBoeOutDutyAudit} />
         </section>
-
-        <section
-          className={`rounded-xl border p-4 ${
-            ewayUnlocked ? "border-zinc-200 bg-white" : "border-zinc-200 bg-zinc-50/80"
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <span
-              className={`flex h-7 w-7 items-center justify-center rounded-lg text-[11px] font-bold ${
-                ewayUnlocked ? "bg-zinc-900 text-white" : "bg-zinc-200 text-zinc-500"
-              }`}
-            >
-              {dispatched ? (
-                <Check size={14} strokeWidth={3} />
-              ) : ewayUnlocked ? (
-                "4"
-              ) : (
-                <LockKeyhole size={13} />
-              )}
-            </span>
-            <h3 className="text-sm font-semibold text-zinc-900">Dispatch</h3>
-          </div>
-          {!ewayUnlocked ? (
-            <p className="mt-3 flex items-center gap-1.5 text-[11px] font-medium text-zinc-500">
-              <LockKeyhole size={12} />
-              Mark duty as Final first
-            </p>
-          ) : (
-            <div
-              className="mt-3 space-y-3"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <TransportTrucksReadOnly item={item} />
-
-              {!item.importBoeOutVehicleChanged && !readOnly && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={startVehicleChange}
-                  className="rounded-lg border border-zinc-300 px-3 py-1.5 text-[10px] font-semibold text-zinc-700"
-                >
-                  Change of vehicle
-                </button>
-              )}
-
-              {item.importBoeOutVehicleChanged && (
-                <div className="space-y-3 rounded-lg border border-zinc-200 bg-zinc-50/50 p-3">
-                  <ImportAuditLine audit={item.importBoeOutVehicleChangeAudit} />
-                  {vehicleChanges.map((change, index) => (
-                    <div key={index} className="space-y-2 rounded-lg border border-zinc-200 bg-white p-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-                        Vehicle {index + 1}
-                        {change.containerNumber ? ` — ${change.containerNumber}` : ""}
-                      </p>
-                      <dl className="grid gap-1 text-[11px] text-zinc-700 sm:grid-cols-2">
-                        <div>
-                          <dt className="text-zinc-500">Old transporter</dt>
-                          <dd className="font-medium">{change.oldTransporter || "—"}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-zinc-500">Old vehicle</dt>
-                          <dd className="font-medium">{change.oldVehicleNo || "—"}</dd>
-                        </div>
-                      </dl>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <label className="block text-xs sm:col-span-2">
-                          <span className="font-medium text-zinc-700">New transporter</span>
-                          <input
-                            value={change.newTransporter ?? ""}
-                            disabled={busy || locked}
-                            onChange={(event) =>
-                              setVehicleChanges((current) =>
-                                current.map((row, i) =>
-                                  i === index
-                                    ? { ...row, newTransporter: event.target.value }
-                                    : row
-                                )
-                              )
-                            }
-                            className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
-                          />
-                        </label>
-                        <label className="block text-xs">
-                          <span className="font-medium text-zinc-700">New vehicle No</span>
-                          <input
-                            value={change.newVehicleNo ?? ""}
-                            disabled={busy || locked}
-                            onChange={(event) =>
-                              setVehicleChanges((current) =>
-                                current.map((row, i) =>
-                                  i === index
-                                    ? { ...row, newVehicleNo: event.target.value.toUpperCase() }
-                                    : row
-                                )
-                              )
-                            }
-                            className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
-                          />
-                        </label>
-                        <label className="block text-xs">
-                          <span className="font-medium text-zinc-700">New driver</span>
-                          <input
-                            value={change.newDriverName ?? ""}
-                            disabled={busy || locked}
-                            onChange={(event) =>
-                              setVehicleChanges((current) =>
-                                current.map((row, i) =>
-                                  i === index
-                                    ? { ...row, newDriverName: event.target.value }
-                                    : row
-                                )
-                              )
-                            }
-                            className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
-                          />
-                        </label>
-                        <label className="block text-xs sm:col-span-2">
-                          <span className="font-medium text-zinc-700">Ph no</span>
-                          <input
-                            value={change.newDriverPhone ?? ""}
-                            disabled={busy || locked}
-                            onChange={(event) =>
-                              setVehicleChanges((current) =>
-                                current.map((row, i) =>
-                                  i === index
-                                    ? {
-                                        ...row,
-                                        newDriverPhone: event.target.value
-                                          .replace(/\D/g, "")
-                                          .slice(0, 10),
-                                      }
-                                    : row
-                                )
-                              )
-                            }
-                            placeholder="10 digits"
-                            className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
-                          />
-                        </label>
-                      </div>
-                    </div>
-                  ))}
-                  {!readOnly && (
-                    <button
-                      type="button"
-                      disabled={
-                        busy || !vehicleChanges.every(isVehicleChangeComplete)
-                      }
-                      onClick={saveNewVehicle}
-                      className="rounded-lg border border-zinc-300 px-3 py-1.5 text-[10px] font-semibold text-zinc-700 disabled:opacity-40"
-                    >
-                      Save new vehicles
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {!readOnly && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={dispatch}
-                  className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
-                >
-                  Dispatch
-                </button>
-              )}
-              <ImportAuditLine audit={item.importBoeOutDispatchAudit} />
-            </div>
-          )}
-        </section>
-      </div>
-      <div className="px-4 pb-4">
-        <ImportInOutPanel
-          item={item}
-          busy={busy}
-          canAct={canAct && !readOnly}
-          username={username}
-          onBusy={onBusy}
-          onError={onError}
-          onUpdated={onUpdated}
-          showDocuments={false}
-        />
       </div>
       <ImportSectionRemarks
         remarks={item.importBoeOutRemarks ?? []}
@@ -1159,40 +930,6 @@ function BoeOutExpansion({
         onUpdated={onUpdated}
       />
       <ImportSectionProgress steps={getImportModuleProgressSteps(item)} />
-    </div>
-  );
-}
-
-function TransportTrucksReadOnly({ item }: { item: FreightForward }) {
-  const trucks = getImportTruckDetails(item);
-  return (
-    <div className="space-y-2">
-      {trucks.map((truck, index) => (
-        <div key={index}>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-            Transport {index + 1}
-            {truck.containerNumber ? ` — ${truck.containerNumber}` : ""}
-          </p>
-          <dl className="mt-2 grid gap-1 text-[11px] text-zinc-700 sm:grid-cols-2">
-            <div>
-              <dt className="text-zinc-500">Transporter</dt>
-              <dd className="font-medium">{truck.importTransporter?.trim() || "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-zinc-500">Vehicle No</dt>
-              <dd className="font-medium">{truck.importVehicleNo?.trim() || "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-zinc-500">Driver</dt>
-              <dd className="font-medium">{truck.importDriverName?.trim() || "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-zinc-500">Phone</dt>
-              <dd className="font-medium">{truck.importDriverPhone?.trim() || "—"}</dd>
-            </div>
-          </dl>
-        </div>
-      ))}
     </div>
   );
 }

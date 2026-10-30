@@ -6,9 +6,11 @@ import { formatImportAuditDate } from "@/lib/import/auditDisplay";
 export default function ImportAuditLine({
   audit,
   emptyLabel = "No update yet.",
+  byLabel = "Updated by",
 }: {
   audit?: ImportAuditStamp;
   emptyLabel?: string;
+  byLabel?: string;
 }) {
   if (!audit?.updatedBy) {
     return <p className="mt-3 text-[11px] text-zinc-400">{emptyLabel}</p>;
@@ -17,7 +19,7 @@ export default function ImportAuditLine({
   return (
     <div className="mt-3 border-t border-zinc-200/70 pt-3 text-[11px] text-zinc-500">
       <p>
-        Updated by{" "}
+        {byLabel}{" "}
         <span className="font-medium text-zinc-800">{audit.updatedBy}</span>
       </p>
       <p className="mt-0.5 text-zinc-400">

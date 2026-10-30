@@ -12,6 +12,9 @@ import { parseGstActiveStatus, isGstActive } from "@/lib/gst/parseGstStatus";
 import { generateFileNo } from "@/lib/kyc/generateFileNo";
 import { normalizeDocArray } from "@/lib/kyc/normalizeKyc";
 import { buildKycFirestoreData } from "@/lib/kyc/buildKycPayload";
+import { downloadKycDocument } from "@/lib/kyc/kycDocuments";
+import DownloadFormatMenu from "@/components/shared/DownloadFormatMenu";
+import type { DownloadFormat } from "@/lib/import/mergeDocuments";
 
 interface Props {
   open: boolean;
@@ -735,20 +738,31 @@ function Field({
 
 function FileChip({
   name,
+  doc,
   onRemove,
-  onDownload,
 }: {
   name: string;
+  doc?: KycDocument;
   onRemove?: () => void;
-  onDownload?: () => void;
 }) {
   return (
     <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[11px] text-zinc-700">
       <span className="truncate">{name}</span>
-      {onDownload && (
-        <button type="button" onClick={onDownload} className="shrink-0 text-zinc-500 hover:text-zinc-900">
-          <Download size={12} />
-        </button>
+      {doc?.url && (
+        <DownloadFormatMenu
+          onSelect={(format: DownloadFormat) => {
+            void downloadKycDocument(doc, format);
+          }}
+          trigger={
+            <button
+              type="button"
+              className="shrink-0 text-zinc-500 hover:text-zinc-900"
+              title="Download"
+            >
+              <Download size={12} />
+            </button>
+          }
+        />
       )}
       {onRemove && (
         <button type="button" onClick={onRemove} className="shrink-0 text-zinc-400 hover:text-red-500">
@@ -830,7 +844,7 @@ function FieldWithFile({
         {existingFile && !file && (
           <FileChip
             name={existingFile.name}
-            onDownload={() => window.open(existingFile.url, "_blank")}
+            doc={existingFile}
             onRemove={onRemoveExisting}
           />
         )}
@@ -883,7 +897,7 @@ function SingleFileField({
         {existingFile && !file && (
           <FileChip
             name={existingFile.name}
-            onDownload={() => window.open(existingFile.url, "_blank")}
+            doc={existingFile}
             onRemove={onRemoveExisting}
           />
         )}
@@ -1008,7 +1022,7 @@ function MultiFileField({
           <FileChip
             key={`existing-${doc.url}-${i}`}
             name={doc.name}
-            onDownload={() => window.open(doc.url, "_blank")}
+            doc={doc}
             onRemove={() => onExistingRemove(i)}
           />
         ))}

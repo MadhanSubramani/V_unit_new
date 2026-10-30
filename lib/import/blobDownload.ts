@@ -20,7 +20,15 @@ export function sanitizeDownloadFileName(name: string, fallback = "document.pdf"
     .replace(/\s+/g, "_")
     .trim();
   if (!cleaned) return fallback;
-  return cleaned.toLowerCase().endsWith(".pdf") ? cleaned : `${cleaned}.pdf`;
+  if (/\.[a-z0-9]{2,5}$/i.test(cleaned)) return cleaned;
+  return `${cleaned}.pdf`;
+}
+
+function pickerTypes(fileName: string) {
+  if (fileName.toLowerCase().endsWith(".zip")) {
+    return [{ description: "ZIP", accept: { "application/zip": [".zip"] } }];
+  }
+  return [{ description: "PDF", accept: { "application/pdf": [".pdf"] } }];
 }
 
 const blobUrls = new Set<string>();
@@ -48,7 +56,7 @@ async function saveWithFilePicker(blob: Blob, fileName: string) {
   try {
     const handle = await pickerWindow.showSaveFilePicker({
       suggestedName: fileName,
-      types: [{ description: "PDF", accept: { "application/pdf": [".pdf"] } }],
+      types: pickerTypes(fileName),
     });
     const writable = await handle.createWritable();
     await writable.write(blob);
@@ -93,7 +101,7 @@ export async function triggerBrowserDownload(blob: Blob, fileName: string) {
   scheduleBlobUrlRevoke(url);
 }
 
-export async function savePdfBytes(bytes: Uint8Array, fileName: string) {
+function assertPdfBytes(bytes: Uint8Array) {
   const copy = bytes.slice();
   if (!looksLikePdf(copy)) {
     const preview = new TextDecoder().decode(copy.slice(0, 120)).trimStart();
@@ -104,5 +112,23 @@ export async function savePdfBytes(bytes: Uint8Array, fileName: string) {
     }
     throw new Error("Downloaded file is not a valid PDF.");
   }
+  return copy;
+}
+
+export async function savePdfBytes(bytes: Uint8Array, fileName: string) {
+  const copy = assertPdfBytes(bytes);
   await triggerBrowserDownload(bytesToBlob(copy, "application/pdf"), fileName);
+}
+
+/** Open the PDF in a new tab so it can be printed there. */
+export function openPdfInNewTab(bytes: Uint8Array, fileName: string) {
+  const copy = assertPdfBytes(bytes);
+  const url = URL.createObjectURL(bytesToBlob(copy, "application/pdf"));
+  const tab = window.open(url, "_blank");
+  if (!tab) {
+    void triggerBrowserDownload(bytesToBlob(copy, "application/pdf"), fileName);
+    URL.revokeObjectURL(url);
+    return;
+  }
+  scheduleBlobUrlRevoke(url);
 }

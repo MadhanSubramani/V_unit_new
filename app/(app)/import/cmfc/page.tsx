@@ -28,10 +28,18 @@ import {
   getImportCmfcPrintStatus,
   getImportCmfcRecords,
   ImportCmfcCard,
+  ImportCmfcZone,
   matchesImportCmfcCard,
+  matchesImportCmfcZone,
 } from "@/lib/import/cmfcWorkflow";
 import { collectCmfcPrintDocuments } from "@/lib/import/collectJobDocuments";
-import { downloadMergedImportDocuments } from "@/lib/import/mergeDocuments";
+import {
+  downloadMergedImportDocuments,
+  DownloadFormat,
+} from "@/lib/import/mergeDocuments";
+import DownloadFormatMenu from "@/components/shared/DownloadFormatMenu";
+import { getCfsList } from "@/lib/cfs/cfs";
+import { getSezList } from "@/lib/sez/sez";
 import {
   canActOnImportModule,
   canExpandImportRow,
@@ -52,7 +60,7 @@ export default function ImportCmfcPage() {
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [activeCard, setActiveCard] = useState<ImportCmfcCard | null>("not_completed");
+  const [activeCard, setActiveCard] = useState<ImportCmfcCard | null>("pending");
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -61,6 +69,8 @@ export default function ImportCmfcPage() {
   const [sortKey, setSortKey] = useState<ImportSortKey>("eta");
   const [sortDir, setSortDir] = useState<ImportSortDir>("asc");
   const [error, setError] = useState("");
+  const [zones, setZones] = useState<ImportCmfcZone[]>([]);
+  const [zone, setZone] = useState("all");
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const [panelWidth, setPanelWidth] = useState(0);
   const [user] = useState(() => parseImportSessionUser());
@@ -85,6 +95,34 @@ export default function ImportCmfcPage() {
   }, []);
 
   useEffect(() => {
+    let active = true;
+    Promise.all([getCfsList(), getSezList()])
+      .then(([cfsList, sezList]) => {
+        if (!active) return;
+        setZones([
+          ...cfsList.map((entry) => ({
+            id: `cfs:${entry.code}`,
+            kind: "cfs" as const,
+            code: entry.code,
+            name: entry.name,
+          })),
+          ...sezList.map((entry) => ({
+            id: `sez:${entry.code}`,
+            kind: "sez" as const,
+            code: entry.code,
+            name: entry.name,
+          })),
+        ]);
+      })
+      .catch(() => {
+        if (active) setError("Unable to load zones.");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     const container = tableScrollRef.current;
     if (!container) return;
     const observer = new ResizeObserver(([entry]) => {
@@ -95,9 +133,16 @@ export default function ImportCmfcPage() {
   }, []);
 
   const scoped = useCfsScopedImportRecords(records);
-  const counts = useMemo(() => computeImportCmfcCounts(scoped), [scoped]);
+  const zoneFiltered = useMemo(
+    () => scoped.filter((item) => matchesImportCmfcZone(item, zone, zones)),
+    [scoped, zone, zones]
+  );
+  const counts = useMemo(
+    () => computeImportCmfcCounts(zoneFiltered),
+    [zoneFiltered]
+  );
   const { filtered, totalPages, visibleRows } = useImportTableRows({
-    records: scoped,
+    records: zoneFiltered,
     module: "cmfc",
     search,
     dateFrom,
@@ -121,14 +166,15 @@ export default function ImportCmfcPage() {
     <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
       <ModuleHeader
         title="Import — CMFC"
-        description="Filed BOE jobs. Print IGM, BL, CI, PL and other documents, then mark print complete."
+        description="Pending, filed, and printed jobs. Filter by zone, print the document pack, then mark print complete."
       />
-      <div className="mt-5 grid grid-cols-3 gap-3">
+      <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
         {(
           [
+            { key: "pending", label: "Pending", value: counts.pending },
             { key: "filedBoe", label: "Filed BOE", value: counts.filedBoe },
             { key: "not_completed", label: "Print not completed", value: counts.not_completed },
-            { key: "completed", label: "Print completed", value: counts.completed },
+            { key: "completed", label: "Printed", value: counts.completed },
           ] as { key: ImportCmfcCard; label: string; value: number }[]
         ).map((card) => (
           <button
@@ -150,6 +196,26 @@ export default function ImportCmfcPage() {
             <p className="mt-1 text-2xl font-bold text-zinc-900">{card.value}</p>
           </button>
         ))}
+        <label className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-left">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
+            Zone
+          </span>
+          <select
+            value={zone}
+            onChange={(event) => {
+              setPage(0);
+              setZone(event.target.value);
+            }}
+            className="mt-2 w-full rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-xs outline-none focus:border-zinc-500"
+          >
+            <option value="all">All</option>
+            {zones.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.name ? `${entry.name} (${entry.code})` : entry.code}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
       <ImportSearchDownloadBar
         search={search}
@@ -208,7 +274,7 @@ export default function ImportCmfcPage() {
             ) : visibleRows.length === 0 ? (
               <tr>
                 <td colSpan={26} className="px-4 py-10 text-center text-zinc-400">
-                  No filed BOE jobs.
+                  No jobs for this filter.
                 </td>
               </tr>
             ) : (
@@ -257,20 +323,26 @@ export default function ImportCmfcPage() {
                                 Prints IGM, BL, commercial invoice, packing list and other supporting documents.
                               </p>
                               <div className="mt-3 flex flex-wrap gap-2">
-                                <button
-                                  type="button"
+                                <DownloadFormatMenu
                                   disabled={busy || !collectCmfcPrintDocuments(item).length}
-                                  onClick={() => {
+                                  onSelect={(format: DownloadFormat) => {
                                     void downloadMergedImportDocuments(
                                       item,
                                       `${item.jobNumber}-cmfc`,
-                                      collectCmfcPrintDocuments(item)
+                                      collectCmfcPrintDocuments(item),
+                                      format
                                     );
                                   }}
-                                  className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
-                                >
-                                  Print documents
-                                </button>
+                                  trigger={
+                                    <button
+                                      type="button"
+                                      disabled={busy || !collectCmfcPrintDocuments(item).length}
+                                      className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
+                                    >
+                                      Print documents
+                                    </button>
+                                  }
+                                />
                                 {canAct && (
                                   <button
                                     type="button"
@@ -298,7 +370,11 @@ export default function ImportCmfcPage() {
                                   </button>
                                 )}
                               </div>
-                              <ImportAuditLine audit={item.importCmfcPrintAudit} />
+                              <ImportAuditLine
+                                audit={item.importCmfcPrintAudit}
+                                byLabel={printed ? "Printed by" : "Updated by"}
+                                emptyLabel="Print not completed yet."
+                              />
                               <ImportSectionRemarks
                                 remarks={item.importCmfcRemarks ?? []}
                                 busy={busy}

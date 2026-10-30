@@ -1424,10 +1424,6 @@ export async function updateImportBoeOutInwardOcc(
   if (!["pending", "occ"].includes(status)) {
     throw new Error("Invalid inward OCC status.");
   }
-  if (status === "occ" && !before.importOccAttachment?.url) {
-    throw new Error("Upload the OCC attachment before OOC.");
-  }
-
   const audit = status === "occ" ? stamp(updatedBy) : undefined;
   const patch: Record<string, unknown> = {
     importBoeOutInwardOccStatus: status,

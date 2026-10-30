@@ -44,8 +44,8 @@ export async function generateDeliveryChallanPdf(item: FreightForward) {
   const consigneeAddress = [
     item.consignmentName,
     item.importDoAddress,
-    item.importDoName ? `DO: ${item.importDoName}` : "",
-    item.importDoNumber ? `DO No: ${item.importDoNumber}` : "",
+    item.importDoName ? `Client: ${item.importDoName}` : "",
+    item.importDoNumber ? `Client No: ${item.importDoNumber}` : "",
   ]
     .filter(Boolean)
     .join("\n");

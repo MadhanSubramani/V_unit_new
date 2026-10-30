@@ -7,8 +7,11 @@ import { normalizeDocArray } from "@/lib/kyc/normalizeKyc";
 import { isGstActive } from "@/lib/gst/parseGstStatus";
 import {
   collectKycDocuments,
+  downloadKycDocument,
   downloadMergedKycDocuments,
 } from "@/lib/kyc/kycDocuments";
+import DownloadFormatMenu from "@/components/shared/DownloadFormatMenu";
+import { DownloadFormat } from "@/lib/import/mergeDocuments";
 
 interface Props {
   open: boolean;
@@ -175,13 +178,30 @@ function EmptyValue() {
   );
 }
 
-function FileChip({ name, onDownload }: { name: string; onDownload: () => void }) {
+function FileChip({ doc }: { doc: KycDocument }) {
+  const [busy, setBusy] = useState(false);
+
+  const choose = async (format: DownloadFormat) => {
+    setBusy(true);
+    try {
+      await downloadKycDocument(doc, format);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-100 px-2.5 py-1 text-[11px] text-zinc-700">
-      <span className="truncate">{name}</span>
-      <button type="button" onClick={onDownload} className="shrink-0 text-zinc-500 hover:text-zinc-900">
-        <Download size={12} />
-      </button>
+      <span className="truncate">{doc.name}</span>
+      <DownloadFormatMenu
+        disabled={busy}
+        onSelect={(format) => void choose(format)}
+        trigger={
+          <button type="button" className="shrink-0 text-zinc-500 hover:text-zinc-900" title="Download">
+            <Download size={12} />
+          </button>
+        }
+      />
     </span>
   );
 }
@@ -205,7 +225,7 @@ function FieldWithDoc({
       )}
       {doc ? (
         <div className={value !== undefined ? "mt-2" : ""}>
-          <FileChip name={doc.name} onDownload={() => window.open(doc.url, "_blank")} />
+          <FileChip doc={doc} />
         </div>
       ) : (
         <p className={`${value !== undefined ? "mt-1.5" : ""} text-[11px] text-zinc-400`}>
@@ -243,11 +263,7 @@ function MultiDocField({ label, docs }: { label: string; docs: KycDocument[] }) 
       {docs.length ? (
         <div className="flex flex-wrap gap-1.5">
           {docs.map((doc, i) => (
-            <FileChip
-              key={`${doc.url}-${i}`}
-              name={doc.name}
-              onDownload={() => window.open(doc.url, "_blank")}
-            />
+            <FileChip key={`${doc.url}-${i}`} doc={doc} />
           ))}
         </div>
       ) : (
@@ -262,11 +278,11 @@ function KycDownloadAllFooter({ kyc }: { kyc: Kyc }) {
   const [error, setError] = useState("");
   const documents = collectKycDocuments(kyc);
 
-  const handleDownload = async () => {
+  const handleDownload = async (format: DownloadFormat) => {
     setBusy(true);
     setError("");
     try {
-      await downloadMergedKycDocuments(kyc);
+      await downloadMergedKycDocuments(kyc, format);
     } catch (downloadError) {
       setError(
         downloadError instanceof Error
@@ -291,14 +307,19 @@ function KycDownloadAllFooter({ kyc }: { kyc: Kyc }) {
               : "No files uploaded"}
           </p>
         </div>
-        <button
-          type="button"
+        <DownloadFormatMenu
           disabled={busy || !documents.length}
-          onClick={() => void handleDownload()}
-          className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
-        >
-          {busy ? "Preparing..." : "Download all"}
-        </button>
+          onSelect={(format) => void handleDownload(format)}
+          trigger={
+            <button
+              type="button"
+              disabled={busy || !documents.length}
+              className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
+            >
+              {busy ? "Preparing..." : "Download all"}
+            </button>
+          }
+        />
       </div>
       {error && <p className="mt-2 text-[11px] text-red-500">{error}</p>}
     </div>

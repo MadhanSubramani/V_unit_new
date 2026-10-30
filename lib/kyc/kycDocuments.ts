@@ -3,7 +3,14 @@
 import { Kyc, KycDocument } from "@/types/kyc";
 import { normalizeDocArray } from "@/lib/kyc/normalizeKyc";
 import { mergeImportDocumentsClient } from "@/lib/import/clientDocumentMerge";
-import { savePdfBytes } from "@/lib/import/blobDownload";
+import { DownloadFormat } from "@/lib/import/mergeDocuments";
+import {
+  bytesToBlob,
+  openPdfInNewTab,
+  sanitizeDownloadFileName,
+  triggerBrowserDownload,
+} from "@/lib/import/blobDownload";
+import { zipStoredFile } from "@/lib/import/zipBytes";
 
 export function collectKycDocuments(kyc: Kyc): KycDocument[] {
   const docs: KycDocument[] = [];
@@ -28,7 +35,10 @@ export function collectKycDocuments(kyc: Kyc): KycDocument[] {
   });
 }
 
-export async function downloadMergedKycDocuments(kyc: Kyc) {
+export async function downloadMergedKycDocuments(
+  kyc: Kyc,
+  format: DownloadFormat = "pdf"
+) {
   const documents = collectKycDocuments(kyc);
   if (!documents.length) {
     throw new Error("No documents available to download.");
@@ -38,5 +48,36 @@ export async function downloadMergedKycDocuments(kyc: Kyc) {
   const label = (kyc.fileNo || kyc.companyName || "kyc")
     .replace(/[\\/:*?"<>|]+/g, "_")
     .trim();
-  await savePdfBytes(pdfBytes, `${label}-documents.pdf`);
+  const pdfName = sanitizeDownloadFileName(`${label}-documents.pdf`);
+  if (format === "zip") {
+    const zipName = pdfName.replace(/\.pdf$/i, ".zip");
+    await triggerBrowserDownload(
+      bytesToBlob(zipStoredFile(pdfName, pdfBytes), "application/zip"),
+      zipName
+    );
+    return;
+  }
+  openPdfInNewTab(pdfBytes, pdfName);
+}
+
+export async function downloadKycDocument(doc: KycDocument, format: DownloadFormat) {
+  if (format === "zip") {
+    const pdfBytes = await mergeImportDocumentsClient([doc]);
+    const pdfName = sanitizeDownloadFileName(doc.name || "document.pdf");
+    const zipName = pdfName.replace(/\.pdf$/i, ".zip");
+    await triggerBrowserDownload(
+      bytesToBlob(zipStoredFile(pdfName, pdfBytes), "application/zip"),
+      zipName
+    );
+    return;
+  }
+  try {
+    const pdfBytes = await mergeImportDocumentsClient([doc]);
+    openPdfInNewTab(
+      pdfBytes,
+      sanitizeDownloadFileName(doc.name || "document.pdf")
+    );
+  } catch {
+    window.open(doc.url, "_blank");
+  }
 }
