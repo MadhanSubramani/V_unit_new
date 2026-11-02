@@ -36,6 +36,7 @@ import {
   updateImportBoeOutInwardOcc,
 } from "@/lib/freightForward/freightForward";
 import ImportNamedFileField from "@/components/import/ImportNamedFileField";
+import { hasNamedAttachment } from "@/lib/import/attachments";
 import {
   canTakeTTypeAction,
   canUnlockImportDutySection,
@@ -819,7 +820,8 @@ function BoeOutExpansion({
                         INWARD_BOE_NO_REGEX.test(entry.boeNo.trim()) &&
                         Boolean(entry.boeDate)
                     ) ||
-                    (tTypeShowsComplete && !item.importTTypeBoeAttachment?.url)
+                    (tTypeShowsComplete &&
+                      !hasNamedAttachment(item.importTTypeBoeAttachment))
                   }
                   onClick={tTypeShowsComplete ? completeTType : saveTType}
                   className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"

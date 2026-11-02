@@ -24,6 +24,19 @@ export function sanitizeDownloadFileName(name: string, fallback = "document.pdf"
   return `${cleaned}.pdf`;
 }
 
+/** Open a URL in a new tab without relying on window.open (avoids popup blockers). */
+export function openUrlInNewTab(url: string) {
+  if (!url) throw new Error("Document URL is missing.");
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.target = "_blank";
+  anchor.rel = "noopener noreferrer";
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+}
+
 function pickerTypes(fileName: string) {
   if (fileName.toLowerCase().endsWith(".zip")) {
     return [{ description: "ZIP", accept: { "application/zip": [".zip"] } }];

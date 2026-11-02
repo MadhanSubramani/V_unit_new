@@ -35,6 +35,11 @@ export interface FreightForwardDocument {
   url: string;
 }
 
+/** Single file or multi-file attachment value (legacy single still supported). */
+export type ImportAttachmentValue =
+  | FreightForwardDocument
+  | FreightForwardDocument[];
+
 export interface FreightContainer {
   containerNumber: string;
   containerSize?: string;
@@ -98,6 +103,8 @@ export interface ImportTruckDetail {
   containerNumber?: string;
   importTransporter?: string;
   importTruckStash?: boolean;
+  /** Required when stash is Yes before further truck fields / complete. */
+  importTruckStashAttachment?: ImportAttachmentValue;
   importVehicleNo?: string;
   importDriverName?: string;
   importDriverPhone?: string;
@@ -278,23 +285,26 @@ export interface FreightForward {
   importCmfcRemarks?: ImportFreeRemark[];
   importInOutRemarks?: ImportFreeRemark[];
   importAccountsRemarks?: ImportFreeRemark[];
-  importIgmAttachment?: FreightForwardDocument;
+  importIgmAttachment?: ImportAttachmentValue;
   /** Required when DO status is set to received. */
   importDoEmptyValidity?: string;
   /** Port validity date (legacy field name: importDoPostValidity). */
   importDoPostValidity?: string;
   importDoPlaceOfDelivery?: string;
-  importDoEmptyAttachment?: FreightForwardDocument;
-  importDoPortAttachment?: FreightForwardDocument;
-  importDoInvoiceAttachment?: FreightForwardDocument;
+  importDoEmptyAttachment?: ImportAttachmentValue;
+  importDoPortAttachment?: ImportAttachmentValue;
+  importDoInvoiceAttachment?: ImportAttachmentValue;
   importDoName?: string;
   importDoNumber?: string;
   importDoAddress?: string;
-  importCommercialInvoiceAttachment?: FreightForwardDocument;
-  importPackingListAttachment?: FreightForwardDocument;
-  importInwardBoeAttachment?: FreightForwardDocument;
-  importOccAttachment?: FreightForwardDocument;
-  importTTypeBoeAttachment?: FreightForwardDocument;
+  importCommercialInvoiceAttachment?: ImportAttachmentValue;
+  importPackingListAttachment?: ImportAttachmentValue;
+  importInwardBoeAttachment?: ImportAttachmentValue;
+  importOccAttachment?: ImportAttachmentValue;
+  importTTypeBoeAttachment?: ImportAttachmentValue;
+  importEwayBillAttachment?: ImportAttachmentValue;
+  importDispatchAdviceAttachment?: ImportAttachmentValue;
+  importAccountsTaxInvoiceAttachment?: ImportAttachmentValue;
   importCmfcPrintStatus?: ImportCmfcPrintStatus;
   importCmfcPrintAudit?: ImportAuditStamp;
   importInOutDocType?: ImportInOutDocType;
@@ -304,7 +314,7 @@ export interface FreightForward {
   /** BOE In — captured after Liner completion. */
   importBoeChecklist?: ImportBoeChecklist;
   importBoeChecklistAudit?: ImportAuditStamp;
-  importBoeChecklistAttachment?: FreightForwardDocument;
+  importBoeChecklistAttachment?: ImportAttachmentValue;
   importBoeChecklistCheckedAt?: Partial<
     Record<keyof ImportBoeChecklist, Timestamp | Date | unknown>
   >;

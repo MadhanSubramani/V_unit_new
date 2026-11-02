@@ -47,6 +47,10 @@ import {
   IMPORT_DO_REMARK_OPTIONS,
 } from "@/types/freightForward";
 import {
+  hasNamedAttachment,
+  normalizeAttachments,
+} from "@/lib/import/attachments";
+import {
   ensureFreightForwardCounterSeeded,
   ensureImportLinerCounterSeeded,
   formatFreightJobNumber,
@@ -647,7 +651,11 @@ export async function updateImportLinerStage(
     if (section === "igm" && !canUpdateImportIgm(before)) {
       throw new Error("Complete Movement before updating IGM.");
     }
-    if (section === "igm" && status === "inward" && !before.importIgmAttachment?.url) {
+    if (
+      section === "igm" &&
+      status === "inward" &&
+      !hasNamedAttachment(before.importIgmAttachment)
+    ) {
       throw new Error("Upload the IGM attachment before setting Inward.");
     }
     if (section === "do" && !canUpdateImportDo(before)) {
@@ -664,7 +672,10 @@ export async function updateImportLinerStage(
       if (!place) {
         throw new Error("Place of delivery is required.");
       }
-      if (!before.importDoEmptyAttachment?.url || !before.importDoPortAttachment?.url) {
+      if (
+        !hasNamedAttachment(before.importDoEmptyAttachment) ||
+        !hasNamedAttachment(before.importDoPortAttachment)
+      ) {
         throw new Error("Upload Empty and Port attachments before Received.");
       }
     }
@@ -676,8 +687,8 @@ export async function updateImportLinerStage(
       if (!ready) {
         throw new Error("Mark DO Received before Completed.");
       }
-      if (!before.importDoInvoiceAttachment?.url) {
-        throw new Error("Upload the invoice file before Completing DO.");
+      if (!hasNamedAttachment(before.importDoInvoiceAttachment)) {
+        throw new Error("Upload the DO invoice file before Completing DO.");
       }
     }
 
@@ -1083,7 +1094,7 @@ export async function saveImportBoeInInward(
     updatedBy,
     updatedAt: serverTimestamp(),
   };
-  if (complete && !before.importInwardBoeAttachment?.url) {
+  if (complete && !hasNamedAttachment(before.importInwardBoeAttachment)) {
     throw new Error("Upload the Z type BE attachment before Complete.");
   }
   if (complete) {
@@ -1298,8 +1309,14 @@ function normalizeOneTruck(
       : undefined
     : undefined;
 
+  const stashYes = data.importTruckStash === true;
+  const stashAttachments = normalizeAttachments(data.importTruckStashAttachment);
+
   if (requireComplete) {
     const label = `Truck ${index + 1}`;
+    if (stashYes && !stashAttachments.length) {
+      throw new Error(`${label}: Upload stash attachment before Complete.`);
+    }
     if (!importTransporter) throw new Error(`${label}: Transporter is required.`);
     if (!importVehicleNo) throw new Error(`${label}: Vehicle No is required.`);
     if (!importDriverName) throw new Error(`${label}: Driver name is required.`);
@@ -1312,12 +1329,15 @@ function normalizeOneTruck(
   const truck: ImportTruckDetail = {
     containerNumber: data.containerNumber ?? "",
     importTransporter,
-    importTruckStash: data.importTruckStash ?? false,
+    importTruckStash: stashYes,
     importVehicleNo,
     importDriverName,
     importDriverPhone,
     importScanningEnabled,
   };
+  if (stashAttachments.length) {
+    truck.importTruckStashAttachment = stashAttachments;
+  }
   if (importScanningResult) {
     truck.importScanningResult = importScanningResult;
   }
@@ -1529,7 +1549,7 @@ export async function saveImportTTypeBoe(
   } else {
     payload.importTTypeBoeClearanceStatus = deleteField();
   }
-  if (allCompleted && !before.importTTypeBoeAttachment?.url) {
+  if (allCompleted && !hasNamedAttachment(before.importTTypeBoeAttachment)) {
     throw new Error("Upload the T type BE attachment before Complete.");
   }
   if (allCompleted) {
@@ -1938,6 +1958,12 @@ export async function updateImportAccountsBilling(
   if (status === "completed" && !importAccountsBillingRemark) {
     throw new Error("Completion remark is required.");
   }
+  if (
+    status === "completed" &&
+    !hasNamedAttachment(before.importAccountsTaxInvoiceAttachment)
+  ) {
+    throw new Error("Upload the tax invoice attachment before completing billing.");
+  }
 
   const audit = stamp(updatedBy);
   await updateDoc(docRef, {
@@ -2111,14 +2137,41 @@ export async function removeImportJobDocument(
     "importInwardBoeAttachment",
     "importOccAttachment",
     "importTTypeBoeAttachment",
+    "importEwayBillAttachment",
+    "importDispatchAdviceAttachment",
+    "importAccountsTaxInvoiceAttachment",
     "mblUrl",
     "hblUrl",
   ] as const;
   for (const field of named) {
-    if (before[field]?.url === url) {
+    const current = normalizeAttachments(
+      before[field] as FreightForwardDocument | FreightForwardDocument[] | undefined
+    );
+    if (!current.some((doc) => doc.url === url)) continue;
+    const next = current.filter((doc) => doc.url !== url);
+    if (next.length) {
+      patch[field] = next;
+      Object.assign(after, { [field]: next });
+    } else {
       patch[field] = deleteField();
-      after[field] = undefined;
+      Object.assign(after, { [field]: undefined });
     }
+  }
+
+  if ((before.importTruckDetails ?? []).some((truck) =>
+    normalizeAttachments(truck.importTruckStashAttachment).some((doc) => doc.url === url)
+  )) {
+    const importTruckDetails = (before.importTruckDetails ?? []).map((truck) => {
+      const next = normalizeAttachments(truck.importTruckStashAttachment).filter(
+        (doc) => doc.url !== url
+      );
+      return {
+        ...truck,
+        importTruckStashAttachment: next.length ? next : undefined,
+      };
+    });
+    patch.importTruckDetails = importTruckDetails;
+    after.importTruckDetails = importTruckDetails;
   }
 
   if ((before.mblDocs ?? []).some((doc) => doc.url === url)) {
@@ -2166,23 +2219,33 @@ export type ImportNamedAttachmentField =
   | "importPackingListAttachment"
   | "importInwardBoeAttachment"
   | "importOccAttachment"
-  | "importTTypeBoeAttachment";
+  | "importTTypeBoeAttachment"
+  | "importEwayBillAttachment"
+  | "importDispatchAdviceAttachment"
+  | "importAccountsTaxInvoiceAttachment";
 
 export async function clearImportNamedAttachment(
   id: string,
   field: ImportNamedAttachmentField,
-  updatedBy: string
+  updatedBy: string,
+  url?: string
 ) {
   const { docRef, before } = await loadActiveImportJob(id);
-  const existing = before[field];
-  await deleteStorageFileByUrl(existing?.url);
+  const existing = normalizeAttachments(before[field]);
+  const targetUrl = url ?? existing[0]?.url;
+  if (targetUrl) await deleteStorageFileByUrl(targetUrl);
+  const next = existing.filter((doc) => doc.url !== targetUrl);
   await updateDoc(docRef, {
-    [field]: deleteField(),
+    [field]: next.length ? next : deleteField(),
     updatedBy,
     updatedAt: serverTimestamp(),
   });
   invalidateFreightForwardListCache();
-  return { ...before, [field]: undefined, updatedBy } as FreightForward;
+  return {
+    ...before,
+    [field]: next.length ? next : undefined,
+    updatedBy,
+  } as FreightForward;
 }
 
 export async function saveImportNamedAttachment(
@@ -2192,13 +2255,14 @@ export async function saveImportNamedAttachment(
   updatedBy: string
 ) {
   const { docRef, before } = await loadActiveImportJob(id);
+  const next = [...normalizeAttachments(before[field]), file];
   await updateDoc(docRef, {
-    [field]: file,
+    [field]: next,
     updatedBy,
     updatedAt: serverTimestamp(),
   });
   invalidateFreightForwardListCache();
-  return { ...before, [field]: file, updatedBy } as FreightForward;
+  return { ...before, [field]: next, updatedBy } as FreightForward;
 }
 
 /** Import worklist / ETA scope: IMP* or useForImport jobs. */
@@ -2211,7 +2275,7 @@ export async function findImportJobsByVesselName(vesselName: string) {
     .filter(
       (item) =>
         isImportWorklistJob(item) &&
-        (item.vesselName ?? "").trim().toLowerCase() === needle
+        (item.vesselName ?? "").trim().toLowerCase().includes(needle)
     )
     .sort((a, b) => (a.jobNumber ?? "").localeCompare(b.jobNumber ?? ""));
 }

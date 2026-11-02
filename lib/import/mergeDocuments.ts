@@ -1,17 +1,20 @@
 "use client";
 
 import { FreightForward, FreightForwardDocument } from "@/types/freightForward";
-import { collectJobDocuments } from "@/lib/import/collectJobDocuments";
+import {
+  buildZipEntryPaths,
+  collectJobDocuments,
+} from "@/lib/import/collectJobDocuments";
 import { fetchDocumentBytes } from "@/lib/import/fetchDocumentBytes";
 import {
   bytesToBlob,
-  looksLikePdf,
   openPdfInNewTab,
+  openUrlInNewTab,
   sanitizeDownloadFileName,
   triggerBrowserDownload,
 } from "@/lib/import/blobDownload";
 import { mergeImportDocumentsClient } from "@/lib/import/clientDocumentMerge";
-import { zipStoredFile } from "@/lib/import/zipBytes";
+import { zipStoredFiles } from "@/lib/import/zipBytes";
 
 export type DownloadFormat = "pdf" | "zip";
 
@@ -19,46 +22,44 @@ export function getImportJobDocuments(item: FreightForward) {
   return collectJobDocuments(item);
 }
 
-async function deliverPdf(bytes: Uint8Array, fileName: string, format: DownloadFormat) {
-  const pdfName = sanitizeDownloadFileName(fileName);
-  if (format === "zip") {
-    const zipName = pdfName.replace(/\.pdf$/i, ".zip");
-    const zipped = zipStoredFile(pdfName, bytes);
-    await triggerBrowserDownload(
-      bytesToBlob(zipped, "application/zip"),
-      zipName
-    );
-    return;
-  }
-  openPdfInNewTab(bytes, pdfName);
+/** Open the file URL in a new tab (view / download from the browser), like KYC. */
+export function downloadImportDocument(doc: FreightForwardDocument) {
+  openUrlInNewTab(doc.url);
 }
 
-export async function downloadImportDocument(
-  doc: FreightForwardDocument,
-  format: DownloadFormat = "pdf"
+async function downloadDocumentsAsZip(
+  item: FreightForward,
+  documents: FreightForwardDocument[],
+  jobLabel?: string
 ) {
-  if (format === "zip") {
-    const pdfBytes = await mergeImportDocumentsClient([doc]);
-    await deliverPdf(pdfBytes, doc.name?.trim() || "document.pdf", "zip");
-    return;
+  const folder = sanitizeDownloadFileName(
+    `${jobLabel || item.jobNumber || "import"}-documents`,
+    "import-documents"
+  ).replace(/\.pdf$/i, "");
+  const entries = buildZipEntryPaths(documents, folder);
+  const files: { path: string; data: Uint8Array }[] = [];
+
+  for (const entry of entries) {
+    try {
+      const bytes = await fetchDocumentBytes(entry.doc);
+      if (bytes.length) files.push({ path: entry.path, data: bytes });
+    } catch {
+      // Skip files that fail to fetch; continue with the rest.
+    }
   }
 
-  const bytes = await fetchDocumentBytes(doc);
-  const lower = `${doc.name ?? ""} ${doc.url}`.toLowerCase();
-  const isPdf = lower.includes(".pdf") || looksLikePdf(bytes);
-
-  if (isPdf) {
-    openPdfInNewTab(bytes, doc.name?.trim() || "document.pdf");
-    return;
+  if (!files.length) {
+    throw new Error("Unable to download documents for ZIP.");
   }
 
+  const zipped = zipStoredFiles(files);
   await triggerBrowserDownload(
-    bytesToBlob(bytes, "application/octet-stream"),
-    doc.name?.trim() || "document"
+    bytesToBlob(zipped, "application/zip"),
+    `${folder}.zip`
   );
 }
 
-/** Merge documents, then open the PDF for printing or download it as a ZIP. */
+/** Merge to PDF for print, or ZIP original files inside one folder. */
 export async function downloadMergedImportDocuments(
   item: FreightForward,
   jobLabel?: string,
@@ -69,7 +70,12 @@ export async function downloadMergedImportDocuments(
     throw new Error("No documents available to download.");
   }
 
+  if (format === "zip") {
+    await downloadDocumentsAsZip(item, documents, jobLabel);
+    return;
+  }
+
   const pdfBytes = await mergeImportDocumentsClient(documents);
   const fileName = `${jobLabel || item.jobNumber || "import"}-documents.pdf`;
-  await deliverPdf(pdfBytes, fileName, format);
+  openPdfInNewTab(pdfBytes, fileName);
 }

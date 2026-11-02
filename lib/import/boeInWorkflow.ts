@@ -3,6 +3,7 @@ import {
   ImportBoeChecklist,
   ImportBoeFilingStatus,
 } from "@/types/freightForward";
+import { hasNamedAttachment } from "@/lib/import/attachments";
 import { isImportWorklistJob } from "@/lib/import/linerWorkflow";
 
 export type ImportBoeInCard =
@@ -28,7 +29,7 @@ export function isBoeChecklistComplete(item: FreightForward) {
   const itemsDone = BOE_CHECKLIST_ITEMS.every(
     (entry) => checklist[entry.key] === true
   );
-  return itemsDone && Boolean(item.importBoeChecklistAttachment?.url);
+  return itemsDone && hasNamedAttachment(item.importBoeChecklistAttachment);
 }
 
 export function getBoeFilingStatus(item: FreightForward): ImportBoeFilingStatus {

@@ -1,5 +1,6 @@
 import { FreightForward } from "@/types/freightForward";
 import { getContainersFromRecord } from "@/lib/freightForward/containers";
+import { hasNamedAttachment } from "@/lib/import/attachments";
 import {
   getTTypeBoeDateDisplay,
   getTTypeBoeNoDisplay,
@@ -82,6 +83,12 @@ export function missingDeliveryChallanFields(item: FreightForward) {
   if (!item.ezRefNumber?.trim()) missing.push("EZ Ref");
   if (!item.ezDate?.trim() && !formatEzDate(item)) missing.push("EZ Date");
   if (!item.importEwayBill) missing.push("E waybill (Yes / No)");
+  if (
+    item.importEwayBill === "yes" &&
+    !hasNamedAttachment(item.importEwayBillAttachment)
+  ) {
+    missing.push("E-waybill attachment");
+  }
   if (!item.descriptionOfGoods?.trim()) missing.push("Description of goods");
   if (!packages) missing.push("No. of packages");
   if (!containers.length && !item.containerNumber?.trim()) {

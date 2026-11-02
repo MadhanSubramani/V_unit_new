@@ -25,6 +25,7 @@ import {
   useImportTableRows,
 } from "@/components/import/ImportTableState";
 import type { ImportDateField } from "@/lib/import/dateFields";
+import ImportNamedFileField from "@/components/import/ImportNamedFileField";
 import ImportSectionRemarks from "@/components/import/ImportSectionRemarks";
 import {
   completeImportAccounts,
@@ -33,6 +34,7 @@ import {
   updateImportAccountsBilling,
   updateImportAccountsPayment,
 } from "@/lib/freightForward/freightForward";
+import { hasNamedAttachment } from "@/lib/import/attachments";
 import {
   canTakeAccountsAction,
   computeImportAccountsCounts,
@@ -514,12 +516,32 @@ function AccountsExpansion({
                     disabled={busy || readOnly}
                     onChange={() => {
                       if (status === "completed" && !billingRemark.trim()) return;
+                      if (
+                        status === "completed" &&
+                        !hasNamedAttachment(item.importAccountsTaxInvoiceAttachment)
+                      ) {
+                        return;
+                      }
                       setBilling(status);
                     }}
                   />
                   {status}
                 </label>
               )
+            )}
+            <ImportNamedFileField
+              item={item}
+              field="importAccountsTaxInvoiceAttachment"
+              label="Tax invoice"
+              folder="import/tax-invoice"
+              username={username}
+              disabled={busy || readOnly}
+              onUpdated={onUpdated}
+            />
+            {!hasNamedAttachment(item.importAccountsTaxInvoiceAttachment) && (
+              <p className="text-[10px] text-amber-700">
+                Tax invoice attachment is required before completing billing.
+              </p>
             )}
             <label className="mt-2 block text-xs">
               <span className="font-medium text-zinc-700">
@@ -540,7 +562,8 @@ function AccountsExpansion({
             </label>
             {!readOnly &&
               billingStatus === "pending" &&
-              billingRemark.trim() && (
+              billingRemark.trim() &&
+              hasNamedAttachment(item.importAccountsTaxInvoiceAttachment) && (
                 <button
                   type="button"
                   disabled={busy}

@@ -7,10 +7,13 @@ import { DownloadFormat } from "@/lib/import/mergeDocuments";
 import {
   bytesToBlob,
   openPdfInNewTab,
+  openUrlInNewTab,
   sanitizeDownloadFileName,
   triggerBrowserDownload,
 } from "@/lib/import/blobDownload";
-import { zipStoredFile } from "@/lib/import/zipBytes";
+import { uniqueAttachmentName } from "@/lib/import/attachments";
+import { fetchDocumentBytes } from "@/lib/import/fetchDocumentBytes";
+import { zipStoredFiles } from "@/lib/import/zipBytes";
 
 export function collectKycDocuments(kyc: Kyc): KycDocument[] {
   const docs: KycDocument[] = [];
@@ -44,40 +47,44 @@ export async function downloadMergedKycDocuments(
     throw new Error("No documents available to download.");
   }
 
-  const pdfBytes = await mergeImportDocumentsClient(documents);
   const label = (kyc.fileNo || kyc.companyName || "kyc")
     .replace(/[\\/:*?"<>|]+/g, "_")
     .trim();
-  const pdfName = sanitizeDownloadFileName(`${label}-documents.pdf`);
+
   if (format === "zip") {
-    const zipName = pdfName.replace(/\.pdf$/i, ".zip");
+    const folder = sanitizeDownloadFileName(
+      `${label}-documents`,
+      "kyc-documents"
+    ).replace(/\.pdf$/i, "");
+    const used = new Set<string>();
+    const files: { path: string; data: Uint8Array }[] = [];
+    for (const [index, doc] of documents.entries()) {
+      try {
+        const bytes = await fetchDocumentBytes(doc);
+        if (!bytes.length) continue;
+        files.push({
+          path: `${folder}/${uniqueAttachmentName(doc.name, used, `document-${index + 1}`)}`,
+          data: bytes,
+        });
+      } catch {
+        // Skip failed files.
+      }
+    }
+    if (!files.length) {
+      throw new Error("Unable to download documents for ZIP.");
+    }
     await triggerBrowserDownload(
-      bytesToBlob(zipStoredFile(pdfName, pdfBytes), "application/zip"),
-      zipName
+      bytesToBlob(zipStoredFiles(files), "application/zip"),
+      `${folder}.zip`
     );
     return;
   }
-  openPdfInNewTab(pdfBytes, pdfName);
+
+  const pdfBytes = await mergeImportDocumentsClient(documents);
+  openPdfInNewTab(pdfBytes, sanitizeDownloadFileName(`${label}-documents.pdf`));
 }
 
-export async function downloadKycDocument(doc: KycDocument, format: DownloadFormat) {
-  if (format === "zip") {
-    const pdfBytes = await mergeImportDocumentsClient([doc]);
-    const pdfName = sanitizeDownloadFileName(doc.name || "document.pdf");
-    const zipName = pdfName.replace(/\.pdf$/i, ".zip");
-    await triggerBrowserDownload(
-      bytesToBlob(zipStoredFile(pdfName, pdfBytes), "application/zip"),
-      zipName
-    );
-    return;
-  }
-  try {
-    const pdfBytes = await mergeImportDocumentsClient([doc]);
-    openPdfInNewTab(
-      pdfBytes,
-      sanitizeDownloadFileName(doc.name || "document.pdf")
-    );
-  } catch {
-    window.open(doc.url, "_blank");
-  }
+/** Open the file URL in a new tab so the user can view and download it there. */
+export function downloadKycDocument(doc: KycDocument) {
+  openUrlInNewTab(doc.url);
 }

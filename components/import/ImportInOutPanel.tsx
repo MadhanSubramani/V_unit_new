@@ -5,6 +5,7 @@ import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import ImportAuditLine from "@/components/import/ImportAuditLine";
 import ImportJobDocumentsPanel from "@/components/import/ImportJobDocumentsPanel";
 import ImportSectionRemarks from "@/components/import/ImportSectionRemarks";
+import ImportNamedFileField from "@/components/import/ImportNamedFileField";
 import {
   addImportSectionRemark,
   changeImportBoeOutVehicle,
@@ -19,6 +20,7 @@ import {
   canUnlockImportEwaySection,
   isImportBoeOutDispatched,
 } from "@/lib/import/boeOutWorkflow";
+import { hasNamedAttachment } from "@/lib/import/attachments";
 import {
   getImportTruckDetails,
   getImportVehicleChanges,
@@ -62,6 +64,11 @@ export default function ImportInOutPanel({
   const dutyFinal = canUnlockImportEwaySection(item);
   const dispatched = isImportBoeOutDispatched(item);
   const trucks = getImportTruckDetails(item);
+  const ewayYes = item.importEwayBill === "yes";
+  const ewayReady =
+    item.importEwayBill === "no" ||
+    (ewayYes && hasNamedAttachment(item.importEwayBillAttachment));
+  const furtherLocked = !ewayReady;
 
   useEffect(() => {
     setVehicleChanges(getImportVehicleChanges(item));
@@ -137,11 +144,27 @@ export default function ImportInOutPanel({
             </label>
           ))}
         </div>
+        {ewayYes && (
+          <ImportNamedFileField
+            item={item}
+            field="importEwayBillAttachment"
+            label="E-waybill attachment"
+            folder="import/eway"
+            username={username}
+            disabled={busy || !canAct}
+            onUpdated={onUpdated}
+          />
+        )}
+        {ewayYes && !hasNamedAttachment(item.importEwayBillAttachment) && (
+          <p className="text-[11px] text-amber-700">
+            Upload the e-waybill attachment before filling further fields.
+          </p>
+        )}
         <label className="block">
           <span className="font-medium text-zinc-700">Doc type</span>
           <select
             value={item.importInOutDocType ?? ""}
-            disabled={busy || !canAct}
+            disabled={busy || !canAct || furtherLocked}
             onChange={(event) =>
               void run(() =>
                 updateImportInOutMeta(
@@ -168,7 +191,7 @@ export default function ImportInOutPanel({
           <span className="font-medium text-zinc-700">Lorry type</span>
           <select
             value={item.importInOutLorryType ?? ""}
-            disabled={busy || !canAct}
+            disabled={busy || !canAct || furtherLocked}
             onChange={(event) =>
               void run(() =>
                 updateImportInOutMeta(
@@ -193,14 +216,24 @@ export default function ImportInOutPanel({
         </label>
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || furtherLocked}
           onClick={tryChallan}
           className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
         >
           Generate delivery challan
         </button>
 
-        {showDispatch && (
+        <ImportNamedFileField
+          item={item}
+          field="importDispatchAdviceAttachment"
+          label="Dispatch advice"
+          folder="import/dispatch"
+          username={username}
+          disabled={busy || !canAct || furtherLocked}
+          onUpdated={onUpdated}
+        />
+
+        {showDispatch && !furtherLocked && (
           <div className="space-y-3 border-t border-zinc-200 pt-3">
             <p className="font-medium text-zinc-700">Transport / vehicle</p>
             {!dutyFinal ? (

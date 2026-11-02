@@ -1,4 +1,5 @@
 import { FreightForward, ImportAuditStamp, ImportWorkflowSection } from "@/types/freightForward";
+import { attachmentLabel } from "@/lib/import/attachments";
 import { formatImportAuditDate } from "@/lib/import/auditDisplay";
 import {
   getImportDoStatus,
@@ -142,7 +143,7 @@ function linerDetails(item: FreightForward): ImportProgressDetail[] {
       );
     });
   rows.push(
-    detail("IGM attachment", item.importIgmAttachment?.name?.trim() || (item.importIgmAttachment?.url ? "Uploaded" : "Not uploaded"))
+    detail("IGM attachment", attachmentLabel(item.importIgmAttachment))
   );
   if (item.importIgmRemark?.trim()) {
     rows.push(detail("IGM remark", item.importIgmRemark.trim(), item.importIgmRemarkAudit));
@@ -172,16 +173,8 @@ function linerDetails(item: FreightForward): ImportProgressDetail[] {
     detail("Place of delivery", item.importDoPlaceOfDelivery?.trim() || "—"),
     detail("Port validity", item.importDoPostValidity?.trim() || "—"),
     detail("Empty validity", item.importDoEmptyValidity?.trim() || "—"),
-    detail(
-      "Port attachment",
-      item.importDoPortAttachment?.name?.trim() ||
-        (item.importDoPortAttachment?.url ? "Uploaded" : "Not uploaded")
-    ),
-    detail(
-      "Empty attachment",
-      item.importDoEmptyAttachment?.name?.trim() ||
-        (item.importDoEmptyAttachment?.url ? "Uploaded" : "Not uploaded")
-    )
+    detail("Port attachment", attachmentLabel(item.importDoPortAttachment)),
+    detail("Empty attachment", attachmentLabel(item.importDoEmptyAttachment))
   );
   if (item.importDoRemark?.trim()) {
     rows.push(detail("DO remark", item.importDoRemark.trim()));

@@ -121,7 +121,7 @@ export default function ImportEtaUpdaterPage() {
             type="text"
             value={vesselName}
             onChange={(e) => setVesselName(e.target.value)}
-            placeholder="Enter exact vessel name"
+            placeholder="Type vessel name to filter"
             className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
           />
         </div>

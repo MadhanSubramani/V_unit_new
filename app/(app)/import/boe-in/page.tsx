@@ -27,9 +27,6 @@ import {
 } from "@/components/import/ImportTableState";
 import type { ImportDateField } from "@/lib/import/dateFields";
 import ImportSectionRemarks from "@/components/import/ImportSectionRemarks";
-import FileInputWithClip from "@/components/import/FileInputWithClip";
-import ImportDocumentLink from "@/components/import/ImportDocumentLink";
-import { uploadDocument } from "@/lib/kyc/uploadDocument";
 import { formatImportAuditDate } from "@/lib/import/auditDisplay";
 import {
   completeImportBoeIn,
@@ -37,12 +34,11 @@ import {
   getImportLinerRecords,
   revertImportBoeInAdmin,
   saveImportBoeInInward,
-  saveImportNamedAttachment,
-  clearImportNamedAttachment,
   updateImportBoeChecklist,
   updateImportBoeFiling,
 } from "@/lib/freightForward/freightForward";
 import ImportNamedFileField from "@/components/import/ImportNamedFileField";
+import { hasNamedAttachment } from "@/lib/import/attachments";
 import {
   BOE_CHECKLIST_ITEMS,
   computeImportBoeInCounts,
@@ -486,8 +482,8 @@ function BoeExpansion({
     if (
       key === "docReceived" &&
       checked &&
-      (!item.importCommercialInvoiceAttachment?.url ||
-        !item.importPackingListAttachment?.url)
+      (!hasNamedAttachment(item.importCommercialInvoiceAttachment) ||
+        !hasNamedAttachment(item.importPackingListAttachment))
     ) {
       onError("Upload invoice and packing list before checking Doc received.");
       return;
@@ -590,8 +586,8 @@ function BoeExpansion({
                     readOnly ||
                     (entry.key === "docReceived" &&
                       !item.importBoeChecklist?.docReceived &&
-                      (!item.importCommercialInvoiceAttachment?.url ||
-                        !item.importPackingListAttachment?.url))
+                      (!hasNamedAttachment(item.importCommercialInvoiceAttachment) ||
+                        !hasNamedAttachment(item.importPackingListAttachment)))
                   }
                   onChange={(event) =>
                     toggleCheck(entry.key, event.target.checked)
@@ -633,46 +629,16 @@ function BoeExpansion({
               </div>
             ))}
             <div className="pt-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-                Checklist attachment
-              </p>
-              {item.importBoeChecklistAttachment?.url ? (
-                <ImportDocumentLink
-                  label="Checklist file"
-                  doc={item.importBoeChecklistAttachment}
-                  removeDisabled={busy || readOnly}
-                  onRemove={() => {
-                    if (!item.id || readOnly) return;
-                    void run(() =>
-                      clearImportNamedAttachment(
-                        item.id!,
-                        "importBoeChecklistAttachment",
-                        username
-                      )
-                    );
-                  }}
-                />
-              ) : (
-                <FileInputWithClip
-                  disabled={busy || readOnly}
-                  onChange={(file) => {
-                    if (!file || !item.id) return;
-                    void run(async () => {
-                      const uploaded = await uploadDocument(
-                        file,
-                        "import/checklist"
-                      );
-                      return saveImportNamedAttachment(
-                        item.id!,
-                        "importBoeChecklistAttachment",
-                        { name: file.name, url: uploaded.url },
-                        username
-                      );
-                    });
-                  }}
-                />
-              )}
-              {!item.importBoeChecklistAttachment?.url && (
+              <ImportNamedFileField
+                item={item}
+                field="importBoeChecklistAttachment"
+                label="Checklist attachment"
+                folder="import/checklist"
+                username={username}
+                disabled={busy || readOnly}
+                onUpdated={onUpdated}
+              />
+              {!hasNamedAttachment(item.importBoeChecklistAttachment) && (
                 <p className="mt-1 text-[10px] text-amber-700">
                   Attachment is required before filing.
                 </p>
@@ -852,7 +818,7 @@ function BoeExpansion({
                         busy ||
                         !INWARD_BOE_NO_REGEX.test(inwardNo.trim()) ||
                         !inwardDate ||
-                        !item.importInwardBoeAttachment?.url
+                        !hasNamedAttachment(item.importInwardBoeAttachment)
                       }
                       onClick={complete}
                       className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"

@@ -14,6 +14,7 @@ import {
 } from "@/lib/import/exportImportExcel";
 import { ImportTableCell } from "@/components/import/ImportJobTableCells";
 import ImportDocumentLink from "@/components/import/ImportDocumentLink";
+import { normalizeAttachments } from "@/lib/import/attachments";
 import { ImportLocationCell } from "@/components/import/ImportLocationCell";
 import ImportSortableHeader from "@/components/import/ImportSortableHeader";
 import { formatContainersDisplay } from "@/lib/freightForward/containers";
@@ -44,23 +45,25 @@ export function ImportDoTableCells({ item }: { item: FreightForward }) {
       </td>
       <td className="px-3 py-3">
         <span className="block text-[11px]">{getImportDoPortDisplay(item)}</span>
-        {item.importDoPortAttachment?.url ? (
+        {normalizeAttachments(item.importDoPortAttachment).map((doc, index) => (
           <ImportDocumentLink
+            key={`port-${doc.url}-${index}`}
             label="Port file"
-            doc={item.importDoPortAttachment}
+            doc={doc}
             variant="icon"
           />
-        ) : null}
+        ))}
       </td>
       <td className="px-3 py-3">
         <span className="block text-[11px]">{getImportDoEmptyDisplay(item)}</span>
-        {item.importDoEmptyAttachment?.url ? (
+        {normalizeAttachments(item.importDoEmptyAttachment).map((doc, index) => (
           <ImportDocumentLink
+            key={`empty-${doc.url}-${index}`}
             label="Empty file"
-            doc={item.importDoEmptyAttachment}
+            doc={doc}
             variant="icon"
           />
-        ) : null}
+        ))}
       </td>
       <ImportTableCell value={getImportDoPlaceOfDelivery(item)} width={140} />
     </>

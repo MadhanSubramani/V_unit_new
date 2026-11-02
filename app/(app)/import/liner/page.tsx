@@ -12,11 +12,9 @@ import ModuleHeader from "@/components/ModuleHeader";
 import HorizontalDragScroll from "@/components/shared/HorizontalDragScroll";
 import ImportJobEditDrawer from "@/components/import/ImportJobEditDrawer";
 import ImportJobDocumentsPanel from "@/components/import/ImportJobDocumentsPanel";
-import FileInputWithClip from "@/components/import/FileInputWithClip";
-import ImportDocumentLink from "@/components/import/ImportDocumentLink";
-import { uploadDocument } from "@/lib/kyc/uploadDocument";
 import ImportSectionProgress from "@/components/import/ImportSectionProgress";
 import ImportSectionRemarks from "@/components/import/ImportSectionRemarks";
+import { hasNamedAttachment } from "@/lib/import/attachments";
 import {
   ImportSearchDownloadBar,
   ImportCoreTableHeaders,
@@ -35,8 +33,6 @@ import {
   getImportLinerRecords,
   addImportDoRemark,
   addImportSectionRemark,
-  clearImportNamedAttachment,
-  saveImportNamedAttachment,
   updateImportDoParty,
   updateImportLinerRemark,
   updateImportLinerStage,
@@ -805,7 +801,10 @@ function StageCard({
         setDoDateError("Enter Port, Empty, and Place of delivery before Received.");
         return;
       }
-      if (!item.importDoEmptyAttachment?.url || !item.importDoPortAttachment?.url) {
+      if (
+        !hasNamedAttachment(item.importDoEmptyAttachment) ||
+        !hasNamedAttachment(item.importDoPortAttachment)
+      ) {
         setDoDateError("Upload Empty and Port attachments before Received.");
         return;
       }
@@ -830,8 +829,8 @@ function StageCard({
     (emptyValidity.trim().length > 0 &&
       postValidity.trim().length > 0 &&
       placeOfDelivery.trim().length > 0 &&
-      Boolean(item.importDoEmptyAttachment?.url) &&
-      Boolean(item.importDoPortAttachment?.url));
+      hasNamedAttachment(item.importDoEmptyAttachment) &&
+      hasNamedAttachment(item.importDoPortAttachment));
 
   const remarkAudit =
     section === "movement"
@@ -903,11 +902,11 @@ function StageCard({
                   value !== "completed") ||
                 (section === "do" &&
                   optionValue === "completed" &&
-                  !item.importDoInvoiceAttachment?.url &&
+                  !hasNamedAttachment(item.importDoInvoiceAttachment) &&
                   value !== "completed") ||
                 (section === "igm" &&
                   optionValue === "inward" &&
-                  !item.importIgmAttachment?.url &&
+                  !hasNamedAttachment(item.importIgmAttachment) &&
                   value !== "inward")
               }
             >
@@ -918,45 +917,16 @@ function StageCard({
       </div>
 
       {section === "igm" && !locked && (
-        <div className="mt-3 space-y-1" onClick={(event) => event.stopPropagation()}>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-            IGM attachment
-          </p>
-          {item.importIgmAttachment?.url ? (
-            <ImportDocumentLink
-              label="IGM file"
-              doc={item.importIgmAttachment}
-              removeDisabled={busy || !canAct}
-              onRemove={() => {
-                if (!item.id || !canAct) return;
-                void (async () => {
-                  const updated = await clearImportNamedAttachment(
-                    item.id!,
-                    "importIgmAttachment",
-                    igmUsername
-                  );
-                  onJobUpdated?.(updated);
-                })();
-              }}
-            />
-          ) : (
-            <FileInputWithClip
-              disabled={busy || !canAct}
-              onChange={(file) => {
-                if (!file || !item.id) return;
-                void (async () => {
-                  const uploaded = await uploadDocument(file, "import/igm");
-                  const updated = await saveImportNamedAttachment(
-                    item.id!,
-                    "importIgmAttachment",
-                    { name: file.name, url: uploaded.url },
-                    igmUsername
-                  );
-                  onJobUpdated?.(updated);
-                })();
-              }}
-            />
-          )}
+        <div className="mt-3" onClick={(event) => event.stopPropagation()}>
+          <ImportNamedFileField
+            item={item}
+            field="importIgmAttachment"
+            label="IGM attachment"
+            folder="import/igm"
+            username={igmUsername}
+            disabled={busy || !canAct}
+            onUpdated={(updated) => onJobUpdated?.(updated)}
+          />
         </div>
       )}
 
@@ -1051,87 +1021,29 @@ function StageCard({
               className="mt-1 w-full rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-zinc-500"
             />
           </label>
-          <div className="text-xs">
-            <p className="font-medium text-zinc-700">Port attachment</p>
-            {item.importDoPortAttachment?.url ? (
-              <ImportDocumentLink
-                label="Port file"
-                doc={item.importDoPortAttachment}
-                removeDisabled={busy || complete || !canAct}
-                onRemove={() => {
-                  if (!item.id || !canAct) return;
-                  void (async () => {
-                    const updated = await clearImportNamedAttachment(
-                      item.id!,
-                      "importDoPortAttachment",
-                      igmUsername
-                    );
-                    onJobUpdated?.(updated);
-                  })();
-                }}
-              />
-            ) : (
-              <FileInputWithClip
-                disabled={busy || complete || !canAct}
-                onChange={(file) => {
-                  if (!file || !item.id) return;
-                  void (async () => {
-                    const uploaded = await uploadDocument(file, "import/do");
-                    const updated = await saveImportNamedAttachment(
-                      item.id!,
-                      "importDoPortAttachment",
-                      { name: file.name, url: uploaded.url },
-                      "Unknown"
-                    );
-                    onJobUpdated?.(updated);
-                  })();
-                }}
-              />
-            )}
-          </div>
-          <div className="text-xs">
-            <p className="font-medium text-zinc-700">Empty attachment</p>
-            {item.importDoEmptyAttachment?.url ? (
-              <ImportDocumentLink
-                label="Empty file"
-                doc={item.importDoEmptyAttachment}
-                removeDisabled={busy || complete || !canAct}
-                onRemove={() => {
-                  if (!item.id || !canAct) return;
-                  void (async () => {
-                    const updated = await clearImportNamedAttachment(
-                      item.id!,
-                      "importDoEmptyAttachment",
-                      igmUsername
-                    );
-                    onJobUpdated?.(updated);
-                  })();
-                }}
-              />
-            ) : (
-              <FileInputWithClip
-                disabled={busy || complete || !canAct}
-                onChange={(file) => {
-                  if (!file || !item.id) return;
-                  void (async () => {
-                    const uploaded = await uploadDocument(file, "import/do");
-                    const updated = await saveImportNamedAttachment(
-                      item.id!,
-                      "importDoEmptyAttachment",
-                      { name: file.name, url: uploaded.url },
-                      "Unknown"
-                    );
-                    onJobUpdated?.(updated);
-                  })();
-                }}
-              />
-            )}
-          </div>
+          <ImportNamedFileField
+            item={item}
+            field="importDoPortAttachment"
+            label="Port attachment"
+            folder="import/do"
+            username={igmUsername}
+            disabled={busy || complete || !canAct}
+            onUpdated={(updated) => onJobUpdated?.(updated)}
+          />
+          <ImportNamedFileField
+            item={item}
+            field="importDoEmptyAttachment"
+            label="Empty attachment"
+            folder="import/do"
+            username={igmUsername}
+            disabled={busy || complete || !canAct}
+            onUpdated={(updated) => onJobUpdated?.(updated)}
+          />
           <div className="sm:col-span-2">
             <ImportNamedFileField
               item={item}
               field="importDoInvoiceAttachment"
-              label="Invoice file"
+              label="DO invoice"
               folder="import/do"
               username={igmUsername}
               disabled={busy || !canAct}

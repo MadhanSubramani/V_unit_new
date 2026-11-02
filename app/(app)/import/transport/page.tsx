@@ -21,6 +21,8 @@ import {
 } from "@/components/import/ImportTableState";
 import type { ImportDateField } from "@/lib/import/dateFields";
 import ImportSectionRemarks from "@/components/import/ImportSectionRemarks";
+import FileInputWithClip from "@/components/import/FileInputWithClip";
+import ImportDocumentLink from "@/components/import/ImportDocumentLink";
 import {
   ImportCoreTableCells,
   ImportCoreTableHeaders,
@@ -45,6 +47,10 @@ import {
   isImportTransportCompleted,
   matchesImportTransportCard,
 } from "@/lib/import/transportWorkflow";
+import {
+  hasNamedAttachment,
+  normalizeAttachments,
+} from "@/lib/import/attachments";
 import { getImportModuleProgressSteps } from "@/lib/import/sectionProgress";
 import {
   canActOnImportModule,
@@ -56,6 +62,8 @@ import {
   ImportSortKey,
   toggleImportSort,
 } from "@/lib/import/sortImportRecords";
+import { uploadDocument } from "@/lib/kyc/uploadDocument";
+import { deleteStorageFileByUrl } from "@/lib/freightForward/deleteStorage";
 import { FreightForward, ImportCfsReachedStatus, ImportPortDirection, ImportScanningResult, ImportTruckDetail } from "@/types/freightForward";
 
 const PAGE_SIZE = 10;
@@ -484,7 +492,9 @@ function TruckDetailCard({
       Boolean(truck.importVehicleNo?.trim()) &&
       Boolean(truck.importDriverName?.trim()) &&
       Boolean(truck.importDriverPhone?.trim()) &&
-      (!truck.importScanningEnabled || Boolean(truck.importScanningResult))
+      (!truck.importScanningEnabled || Boolean(truck.importScanningResult)) &&
+      (truck.importTruckStash !== true ||
+        hasNamedAttachment(truck.importTruckStashAttachment))
   );
 
   return (
@@ -513,7 +523,12 @@ function TruckDetailCard({
           </span>
           <h3 className="text-sm font-semibold text-zinc-900">Truck status</h3>
         </div>
-        {trucks.map((truck, index) => (
+        {trucks.map((truck, index) => {
+          const stashYes = truck.importTruckStash === true;
+          const stashDocs = normalizeAttachments(truck.importTruckStashAttachment);
+          const stashReady = !stashYes || stashDocs.length > 0;
+          const fieldsLocked = busy || !editable || (stashYes && !stashReady);
+          return (
           <div key={index} className="rounded-lg border border-zinc-200 p-3">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
               Truck {index + 1}
@@ -525,7 +540,7 @@ function TruckDetailCard({
                 <input
                   type="radio"
                   name={`stash-${item.id}-${index}`}
-                  checked={truck.importTruckStash === true}
+                  checked={stashYes}
                   disabled={busy || !editable}
                   onChange={() => updateTruck(index, { importTruckStash: true })}
                 />
@@ -535,19 +550,71 @@ function TruckDetailCard({
                 <input
                   type="radio"
                   name={`stash-${item.id}-${index}`}
-                  checked={truck.importTruckStash !== true}
+                  checked={!stashYes}
                   disabled={busy || !editable}
-                  onChange={() => updateTruck(index, { importTruckStash: false })}
+                  onChange={() =>
+                    updateTruck(index, {
+                      importTruckStash: false,
+                      importTruckStashAttachment: undefined,
+                    })
+                  }
                 />
                 No
               </label>
             </div>
+            {stashYes && (
+              <div className="mt-3 space-y-2 text-xs">
+                <p className="font-medium text-zinc-700">Stash attachment</p>
+                {stashDocs.map((doc, docIndex) => (
+                  <ImportDocumentLink
+                    key={`${doc.url}-${docIndex}`}
+                    label={`Stash file ${stashDocs.length > 1 ? docIndex + 1 : ""}`.trim()}
+                    doc={doc}
+                    removeDisabled={busy || !editable}
+                    onRemove={() => {
+                      void (async () => {
+                        await deleteStorageFileByUrl(doc.url);
+                        const next = stashDocs.filter((row) => row.url !== doc.url);
+                        updateTruck(index, {
+                          importTruckStashAttachment: next.length ? next : undefined,
+                        });
+                      })();
+                    }}
+                  />
+                ))}
+                <FileInputWithClip
+                  disabled={busy || !editable}
+                  multiple
+                  onChange={(file) => {
+                    if (!file) return;
+                    void (async () => {
+                      const uploaded = await uploadDocument(
+                        file,
+                        "import/transport-stash"
+                      );
+                      updateTruck(index, {
+                        importTruckStashAttachment: [
+                          ...stashDocs,
+                          { name: file.name, url: uploaded.url },
+                        ],
+                      });
+                    })();
+                  }}
+                />
+                {!hasNamedAttachment(truck.importTruckStashAttachment) && (
+                  <p className="text-[10px] text-amber-700">
+                    Upload stash attachment before filling further truck fields.
+                    Draft save is still allowed without it.
+                  </p>
+                )}
+              </div>
+            )}
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               <label className="block text-xs sm:col-span-2">
                 <span className="font-medium text-zinc-700">Transporter</span>
                 <input
                   value={truck.importTransporter ?? ""}
-                  disabled={busy || !editable}
+                  disabled={fieldsLocked}
                   onChange={(event) =>
                     updateTruck(index, { importTransporter: event.target.value })
                   }
@@ -558,7 +625,7 @@ function TruckDetailCard({
                 <span className="font-medium text-zinc-700">Vehicle No</span>
                 <input
                   value={truck.importVehicleNo ?? ""}
-                  disabled={busy || !editable}
+                  disabled={fieldsLocked}
                   onChange={(event) =>
                     updateTruck(index, {
                       importVehicleNo: event.target.value.toUpperCase(),
@@ -571,7 +638,7 @@ function TruckDetailCard({
                 <span className="font-medium text-zinc-700">Driver name</span>
                 <input
                   value={truck.importDriverName ?? ""}
-                  disabled={busy || !editable}
+                  disabled={fieldsLocked}
                   onChange={(event) =>
                     updateTruck(index, { importDriverName: event.target.value })
                   }
@@ -582,7 +649,7 @@ function TruckDetailCard({
                 <span className="font-medium text-zinc-700">Ph no</span>
                 <input
                   value={truck.importDriverPhone ?? ""}
-                  disabled={busy || !editable}
+                  disabled={fieldsLocked}
                   onChange={(event) =>
                     updateTruck(index, {
                       importDriverPhone: event.target.value.replace(/\D/g, "").slice(0, 10),
@@ -601,7 +668,7 @@ function TruckDetailCard({
                     type="radio"
                     name={`scan-${item.id}-${index}`}
                     checked={truck.importScanningEnabled === true}
-                    disabled={busy || !editable}
+                    disabled={fieldsLocked}
                     onChange={() => updateTruck(index, { importScanningEnabled: true })}
                   />
                   Yes
@@ -611,7 +678,7 @@ function TruckDetailCard({
                     type="radio"
                     name={`scan-${item.id}-${index}`}
                     checked={truck.importScanningEnabled !== true}
-                    disabled={busy || !editable}
+                    disabled={fieldsLocked}
                     onChange={() =>
                       updateTruck(index, {
                         importScanningEnabled: false,
@@ -627,7 +694,7 @@ function TruckDetailCard({
                   <span className="font-medium text-zinc-700">Scanning result</span>
                   <select
                     value={truck.importScanningResult ?? ""}
-                    disabled={busy || !editable}
+                    disabled={fieldsLocked}
                     onChange={(event) =>
                       updateTruck(index, {
                         importScanningResult: event.target.value as ImportScanningResult,
@@ -643,7 +710,8 @@ function TruckDetailCard({
               )}
             </div>
           </div>
-        ))}
+          );
+        })}
         {!completed && canAct && (
           <div className="mt-3 flex flex-wrap gap-2">
             <button

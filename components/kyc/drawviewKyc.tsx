@@ -179,29 +179,17 @@ function EmptyValue() {
 }
 
 function FileChip({ doc }: { doc: KycDocument }) {
-  const [busy, setBusy] = useState(false);
-
-  const choose = async (format: DownloadFormat) => {
-    setBusy(true);
-    try {
-      await downloadKycDocument(doc, format);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-100 px-2.5 py-1 text-[11px] text-zinc-700">
       <span className="truncate">{doc.name}</span>
-      <DownloadFormatMenu
-        disabled={busy}
-        onSelect={(format) => void choose(format)}
-        trigger={
-          <button type="button" className="shrink-0 text-zinc-500 hover:text-zinc-900" title="Download">
-            <Download size={12} />
-          </button>
-        }
-      />
+      <button
+        type="button"
+        className="shrink-0 text-zinc-500 hover:text-zinc-900"
+        title="Open"
+        onClick={() => downloadKycDocument(doc)}
+      >
+        <Download size={12} />
+      </button>
     </span>
   );
 }
