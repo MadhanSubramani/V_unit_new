@@ -103,7 +103,7 @@ export interface ImportTruckDetail {
   containerNumber?: string;
   importTransporter?: string;
   importTruckStash?: boolean;
-  /** Required when stash is Yes before further truck fields / complete. */
+  /** Required when stash is Yes before further fields, Save, or Complete. */
   importTruckStashAttachment?: ImportAttachmentValue;
   importVehicleNo?: string;
   importDriverName?: string;
@@ -315,6 +315,8 @@ export interface FreightForward {
   importBoeChecklist?: ImportBoeChecklist;
   importBoeChecklistAudit?: ImportAuditStamp;
   importBoeChecklistAttachment?: ImportAttachmentValue;
+  /** Other documents uploaded in Z type checklist (used by CMFC pack). */
+  importZtypeOtherAttachments?: ImportAttachmentValue;
   importBoeChecklistCheckedAt?: Partial<
     Record<keyof ImportBoeChecklist, Timestamp | Date | unknown>
   >;

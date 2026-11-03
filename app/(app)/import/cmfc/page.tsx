@@ -320,7 +320,7 @@ export default function ImportCmfcPage() {
                                 <h3 className="text-sm font-semibold">CMFC print pack</h3>
                               </div>
                               <p className="mt-2 text-[11px] text-zinc-500">
-                                Prints IGM, BL, commercial invoice, packing list and other supporting documents.
+                                IGM, Invoice, Packing list, MBL, HBL, and Z-type other documents.
                               </p>
                               <div className="mt-3 flex flex-wrap gap-2">
                                 <DownloadFormatMenu
@@ -393,6 +393,8 @@ export default function ImportCmfcPage() {
                                 canManage={canAct}
                                 username={user?.username ?? "Unknown"}
                                 onUpdated={applyUpdated}
+                                collectDocuments={collectCmfcPrintDocuments}
+                                downloadLabel="Download all"
                               />
                             </div>
                           </div>

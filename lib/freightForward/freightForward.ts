@@ -1207,6 +1207,7 @@ export async function revertImportBoeInAdmin(
     patch.importBoeChecklistAudit = deleteField();
     patch.importBoeChecklistCheckedAt = deleteField();
     patch.importBoeChecklistAttachment = deleteField();
+    patch.importZtypeOtherAttachments = deleteField();
     patch.importBoeFilingStatus = "unfiled";
     patch.importBoeFilingAudit = deleteField();
     patch.inwardBoeNo = deleteField();
@@ -1311,12 +1312,13 @@ function normalizeOneTruck(
 
   const stashYes = data.importTruckStash === true;
   const stashAttachments = normalizeAttachments(data.importTruckStashAttachment);
+  const label = `Truck ${index + 1}`;
+
+  if (stashYes && !stashAttachments.length) {
+    throw new Error(`${label}: Upload stash attachment before saving.`);
+  }
 
   if (requireComplete) {
-    const label = `Truck ${index + 1}`;
-    if (stashYes && !stashAttachments.length) {
-      throw new Error(`${label}: Upload stash attachment before Complete.`);
-    }
     if (!importTransporter) throw new Error(`${label}: Transporter is required.`);
     if (!importVehicleNo) throw new Error(`${label}: Vehicle No is required.`);
     if (!importDriverName) throw new Error(`${label}: Driver name is required.`);
@@ -2129,6 +2131,7 @@ export async function removeImportJobDocument(
   const named = [
     "importIgmAttachment",
     "importBoeChecklistAttachment",
+    "importZtypeOtherAttachments",
     "importDoEmptyAttachment",
     "importDoPortAttachment",
     "importDoInvoiceAttachment",
@@ -2215,6 +2218,7 @@ export type ImportNamedAttachmentField =
   | "importDoPortAttachment"
   | "importDoInvoiceAttachment"
   | "importBoeChecklistAttachment"
+  | "importZtypeOtherAttachments"
   | "importCommercialInvoiceAttachment"
   | "importPackingListAttachment"
   | "importInwardBoeAttachment"
@@ -2319,7 +2323,7 @@ export async function getFreightForwardForExport(etaFrom: string, etaTo: string)
     .filter((item) => !item.isDeleted && !isImportJobNumber(item.jobNumber));
 }
 
-/** Active (non-deleted) jobs whose vessel name matches (case-insensitive, exact trim). */
+/** Active (non-deleted) jobs whose vessel name partially matches (case-insensitive). */
 export async function findFreightByVesselName(vesselName: string) {
   const needle = vesselName.trim().toLowerCase();
   if (!needle) return [] as FreightForward[];
@@ -2330,18 +2334,23 @@ export async function findFreightByVesselName(vesselName: string) {
       (item) =>
         !item.isDeleted &&
         !isImportJobNumber(item.jobNumber) &&
-        (item.vesselName ?? "").trim().toLowerCase() === needle
+        (item.vesselName ?? "").trim().toLowerCase().includes(needle)
     )
     .sort((a, b) => (a.jobNumber ?? "").localeCompare(b.jobNumber ?? ""));
 }
 
-/** Set the same ETA on every active job with this vessel name. */
+/** Set the same ETA on matching freight jobs (optionally limited to jobIds). */
 export async function updateEtaByVesselName(
   vesselName: string,
   eta: string,
-  updatedBy: string
+  updatedBy: string,
+  jobIds?: string[]
 ) {
-  const matches = await findFreightByVesselName(vesselName);
+  let matches = await findFreightByVesselName(vesselName);
+  if (jobIds?.length) {
+    const allowed = new Set(jobIds);
+    matches = matches.filter((item) => item.id && allowed.has(item.id));
+  }
   if (!matches.length) return { updated: 0 };
 
   const etaValue = eta.trim().slice(0, 10);

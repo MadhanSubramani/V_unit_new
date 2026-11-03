@@ -624,6 +624,17 @@ function BoeExpansion({
                     disabled={busy || readOnly}
                     onUpdated={onUpdated}
                   />
+                  <div className="sm:col-span-2">
+                    <ImportNamedFileField
+                      item={item}
+                      field="importZtypeOtherAttachments"
+                      label="Other documents"
+                      folder="import/ztype-other"
+                      username={username}
+                      disabled={busy || readOnly}
+                      onUpdated={onUpdated}
+                    />
+                  </div>
                 </div>
               )}
               </div>

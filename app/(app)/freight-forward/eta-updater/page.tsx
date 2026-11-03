@@ -81,7 +81,8 @@ export default function FreightForwardEtaUpdaterPage() {
       const result = await updateEtaByVesselName(
         name,
         eta,
-        user?.username ?? "unknown"
+        user?.username ?? "unknown",
+        matches.map((item) => item.id).filter((id): id is string => Boolean(id))
       );
       setMessage(`Updated ETA to ${eta} on ${result.updated} job(s).`);
       const rows = await findFreightByVesselName(name);
@@ -109,7 +110,7 @@ export default function FreightForwardEtaUpdaterPage() {
             type="text"
             value={vesselName}
             onChange={(e) => setVesselName(e.target.value)}
-            placeholder="Enter exact vessel name"
+            placeholder="Type vessel name to filter"
             className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
           />
         </div>

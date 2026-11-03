@@ -68,6 +68,12 @@ export function collectJobDocuments(item: FreightForward): FreightForwardDocumen
     push(docs, entry.file ? withFallbackName(entry.file, `HBL-${index + 1}`) : undefined)
   );
 
+  normalizeAttachments(item.importZtypeOtherAttachments).forEach((doc, index) =>
+    push(
+      docs,
+      withFallbackName(doc, `OTHER DOCS${index ? `-${index + 1}` : ""}`)
+    )
+  );
   (item.otherDocuments ?? []).forEach((doc, index) =>
     push(docs, withFallbackName(doc, `OTHER SUPPORTING DOCS-${index + 1}`))
   );
@@ -108,18 +114,43 @@ export function collectJobDocuments(item: FreightForward): FreightForwardDocumen
   return dedupe(docs);
 }
 
-/** CMFC merge order: IGM → CI → PL → BL → other. */
+/**
+ * CMFC download / merge order:
+ * IGM, INVOICE, PACKING LIST, MBL, HBL, OTHER DOCS (ztype other docs)
+ */
 export function collectCmfcPrintDocuments(item: FreightForward): FreightForwardDocument[] {
   const docs: FreightForwardDocument[] = [];
-  pushAll(docs, item.importIgmAttachment);
-  pushAll(docs, item.importCommercialInvoiceAttachment);
-  pushAll(docs, item.importPackingListAttachment);
-  push(docs, item.mblUrl);
-  (item.mblDocs ?? []).forEach((doc) => push(docs, doc));
-  push(docs, item.hblUrl);
-  (item.hblDocs ?? []).forEach((doc) => push(docs, doc));
-  getHblEntries(item).forEach((entry) => push(docs, entry.file));
-  (item.otherDocuments ?? []).forEach((doc) => push(docs, doc));
+
+  normalizeAttachments(item.importIgmAttachment).forEach((doc, index) =>
+    push(docs, withFallbackName(doc, `IGM${index ? `-${index + 1}` : ""}`))
+  );
+  normalizeAttachments(item.importCommercialInvoiceAttachment).forEach((doc, index) =>
+    push(docs, withFallbackName(doc, `INVOICE${index ? `-${index + 1}` : ""}`))
+  );
+  normalizeAttachments(item.importPackingListAttachment).forEach((doc, index) =>
+    push(docs, withFallbackName(doc, `PACKING LIST${index ? `-${index + 1}` : ""}`))
+  );
+
+  push(docs, item.mblUrl ? withFallbackName(item.mblUrl, "MBL") : undefined);
+  (item.mblDocs ?? []).forEach((doc, index) =>
+    push(docs, withFallbackName(doc, `MBL-${index + 1}`))
+  );
+
+  push(docs, item.hblUrl ? withFallbackName(item.hblUrl, "HBL") : undefined);
+  (item.hblDocs ?? []).forEach((doc, index) =>
+    push(docs, withFallbackName(doc, `HBL-${index + 1}`))
+  );
+  getHblEntries(item).forEach((entry, index) =>
+    push(docs, entry.file ? withFallbackName(entry.file, `HBL-${index + 1}`) : undefined)
+  );
+
+  normalizeAttachments(item.importZtypeOtherAttachments).forEach((doc, index) =>
+    push(
+      docs,
+      withFallbackName(doc, `OTHER DOCS${index ? `-${index + 1}` : ""}`)
+    )
+  );
+
   return dedupe(docs);
 }
 

@@ -25,13 +25,17 @@ export default function ImportJobDocumentsPanel({
   canManage = false,
   username = "Unknown",
   onUpdated,
+  collectDocuments = getImportJobDocuments,
+  downloadLabel,
 }: {
   item: FreightForward;
   canManage?: boolean;
   username?: string;
   onUpdated?: (item: FreightForward) => void;
+  collectDocuments?: (item: FreightForward) => FreightForwardDocument[];
+  downloadLabel?: string;
 }) {
-  const documents = getImportJobDocuments(item);
+  const documents = collectDocuments(item);
   const [name, setName] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -103,7 +107,12 @@ export default function ImportJobDocumentsPanel({
         <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
           Documents
         </p>
-        <DocumentsDownloadAll item={item} disabled={!documents.length} />
+        <DocumentsDownloadAll
+          item={item}
+          documents={documents}
+          disabled={!documents.length}
+          downloadLabel={downloadLabel}
+        />
       </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {documents.length === 0 ? (
@@ -185,10 +194,14 @@ export default function ImportJobDocumentsPanel({
 
 function DocumentsDownloadAll({
   item,
+  documents,
   disabled,
+  downloadLabel = "Download all",
 }: {
   item: FreightForward;
+  documents: FreightForwardDocument[];
   disabled: boolean;
+  downloadLabel?: string;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -197,7 +210,12 @@ function DocumentsDownloadAll({
     setBusy(true);
     setError("");
     try {
-      await downloadMergedImportDocuments(item, undefined, undefined, format);
+      await downloadMergedImportDocuments(
+        item,
+        item.jobNumber ? `${item.jobNumber}-documents` : undefined,
+        documents,
+        format
+      );
     } catch (downloadError) {
       setError(
         downloadError instanceof Error
@@ -220,7 +238,7 @@ function DocumentsDownloadAll({
             disabled={busy || disabled}
             className="rounded-lg border border-zinc-200 px-2.5 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
           >
-            {busy ? "Preparing..." : "Download all"}
+            {busy ? "Preparing..." : downloadLabel}
           </button>
         }
       />

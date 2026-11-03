@@ -486,6 +486,12 @@ function TruckDetailCard({
     }
   };
 
+  const stashAttachmentsReady = trucks.every(
+    (truck) =>
+      truck.importTruckStash !== true ||
+      hasNamedAttachment(truck.importTruckStashAttachment)
+  );
+
   const allTrucksReady = trucks.every(
     (truck) =>
       Boolean(truck.importTransporter?.trim()) &&
@@ -603,8 +609,8 @@ function TruckDetailCard({
                 />
                 {!hasNamedAttachment(truck.importTruckStashAttachment) && (
                   <p className="text-[10px] text-amber-700">
-                    Upload stash attachment before filling further truck fields.
-                    Draft save is still allowed without it.
+                    Upload stash attachment to unlock further truck fields and
+                    Save.
                   </p>
                 )}
               </div>
@@ -716,7 +722,7 @@ function TruckDetailCard({
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
-              disabled={busy || !actionable}
+              disabled={busy || !actionable || !stashAttachmentsReady}
               onClick={() => void saveDraft()}
               className="rounded-lg border border-zinc-300 px-3 py-1.5 text-[10px] font-semibold text-zinc-700 disabled:opacity-40"
             >
