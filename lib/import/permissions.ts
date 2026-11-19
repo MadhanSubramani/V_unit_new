@@ -96,36 +96,82 @@ function normalizeNames(names?: string[]) {
     .filter(Boolean);
 }
 
+/** CFS/SEZ master row used to match job codes against user-assigned names. */
+export type ImportZoneMaster = { code?: string; name?: string };
+
+export type ImportZoneLookup = {
+  cfsList?: ImportZoneMaster[];
+  sezList?: ImportZoneMaster[];
+};
+
+/** Expand assigned names/codes to include both name and code from masters. */
+function expandAllowedZoneTokens(
+  assigned: string[],
+  masters: ImportZoneMaster[] = []
+) {
+  const allowed = new Set(normalizeNames(assigned));
+  for (const master of masters) {
+    const name = (master.name ?? "").trim().toLowerCase();
+    const code = (master.code ?? "").trim().toLowerCase();
+    if (!name && !code) continue;
+    if ((name && allowed.has(name)) || (code && allowed.has(code))) {
+      if (name) allowed.add(name);
+      if (code) allowed.add(code);
+    }
+  }
+  return allowed;
+}
+
+function storedLocationMatchesAllowed(
+  stored: string | undefined,
+  allowed: Set<string>
+) {
+  const value = (stored ?? "").trim().toLowerCase();
+  if (!value || !allowed.size) return false;
+  if (allowed.has(value)) return true;
+  const codePart = value.split(/\s*[-–|]\s*/)[0]?.trim() ?? value;
+  return Boolean(codePart) && allowed.has(codePart);
+}
+
 export function canActOnImportLocation(
   user: ImportSessionUser | null,
-  item: { cfs?: string; sez?: string; locationType?: string }
+  item: { cfs?: string; sez?: string; locationType?: string },
+  zones?: ImportZoneLookup
 ) {
   if (!user || isImportAdmin(user)) return true;
   const cfsNames = normalizeNames(user.importCfsNames);
   const sezNames = normalizeNames(user.importSezNames);
   if (!cfsNames.length && !sezNames.length) return true;
 
-  const isSez = item.locationType === "sez";
+  const locationType =
+    item.locationType ?? (item.sez && !item.cfs ? "sez" : "cfs");
+  const isSez = locationType === "sez";
   if (isSez) {
     if (!sezNames.length) return false;
-    return sezNames.includes((item.sez ?? "").trim().toLowerCase());
+    return storedLocationMatchesAllowed(
+      item.sez,
+      expandAllowedZoneTokens(user.importSezNames ?? [], zones?.sezList)
+    );
   }
   if (!cfsNames.length) return false;
-  return cfsNames.includes((item.cfs ?? "").trim().toLowerCase());
+  return storedLocationMatchesAllowed(
+    item.cfs,
+    expandAllowedZoneTokens(user.importCfsNames ?? [], zones?.cfsList)
+  );
 }
 
 export function filterImportRecordsByUserCfs<
   T extends { cfs?: string; sez?: string; locationType?: string },
->(records: T[], user: ImportSessionUser | null) {
-  return filterImportRecordsByUserZones(records, user);
+>(records: T[], user: ImportSessionUser | null, zones?: ImportZoneLookup) {
+  return filterImportRecordsByUserZones(records, user, zones);
 }
 
 export function filterImportRecordsByUserZones<
   T extends { cfs?: string; sez?: string; locationType?: string },
->(records: T[], user: ImportSessionUser | null) {
+>(records: T[], user: ImportSessionUser | null, zones?: ImportZoneLookup) {
   if (!user || isImportAdmin(user)) return records;
   const cfsNames = normalizeNames(user.importCfsNames);
   const sezNames = normalizeNames(user.importSezNames);
   if (!cfsNames.length && !sezNames.length) return records;
-  return records.filter((item) => canActOnImportLocation(user, item));
+  return records.filter((item) => canActOnImportLocation(user, item, zones));
 }

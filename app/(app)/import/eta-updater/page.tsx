@@ -14,7 +14,10 @@ import {
   canActOnImportModule,
   filterImportRecordsByUserZones,
   parseImportSessionUser,
+  type ImportZoneLookup,
 } from "@/lib/import/permissions";
+import { getCfsList } from "@/lib/cfs/cfs";
+import { getSezList } from "@/lib/sez/sez";
 
 export default function ImportEtaUpdaterPage() {
   const [vesselName, setVesselName] = useState("");
@@ -25,6 +28,7 @@ export default function ImportEtaUpdaterPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [user, setUser] = useState<ReturnType<typeof parseImportSessionUser>>(null);
+  const [zones, setZones] = useState<ImportZoneLookup>({});
   const canAct = canActOnImportModule(user, "eta");
 
   useEffect(() => {
@@ -38,6 +42,20 @@ export default function ImportEtaUpdaterPage() {
     }
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([getCfsList(), getSezList()])
+      .then(([cfsList, sezList]) => {
+        if (!cancelled) setZones({ cfsList, sezList });
+      })
+      .catch(() => {
+        if (!cancelled) setZones({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const searchVessel = useCallback(async (name: string) => {
     const trimmed = name.trim();
     setMessage("");
@@ -49,14 +67,14 @@ export default function ImportEtaUpdaterPage() {
     setSearching(true);
     try {
       const rows = await findImportJobsByVesselName(trimmed);
-      setMatches(filterImportRecordsByUserZones(rows, user));
+      setMatches(filterImportRecordsByUserZones(rows, user, zones));
     } catch {
       setError("Unable to search Import jobs for this vessel.");
       setMatches([]);
     } finally {
       setSearching(false);
     }
-  }, [user]);
+  }, [user, zones]);
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -97,7 +115,7 @@ export default function ImportEtaUpdaterPage() {
       );
       setMessage(`Updated ETA to ${eta} on ${result.updated} Import job(s).`);
       const rows = await findImportJobsByVesselName(name);
-      setMatches(filterImportRecordsByUserZones(rows, user));
+      setMatches(filterImportRecordsByUserZones(rows, user, zones));
     } catch {
       setError("Unable to update ETA. Please try again.");
     } finally {

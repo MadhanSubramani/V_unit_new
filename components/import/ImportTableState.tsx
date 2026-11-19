@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FreightForward } from "@/types/freightForward";
 import { getImportCurrentStatus } from "@/lib/import/currentStatus";
 import type { ImportModuleKey } from "@/types/importRoles";
@@ -14,13 +14,32 @@ import {
 import {
   filterImportRecordsByUserCfs,
   parseImportSessionUser,
+  type ImportZoneLookup,
 } from "@/lib/import/permissions";
+import { getCfsList } from "@/lib/cfs/cfs";
+import { getSezList } from "@/lib/sez/sez";
 
 export function useCfsScopedImportRecords(records: FreightForward[]) {
   const user = parseImportSessionUser();
+  const [zones, setZones] = useState<ImportZoneLookup>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([getCfsList(), getSezList()])
+      .then(([cfsList, sezList]) => {
+        if (!cancelled) setZones({ cfsList, sezList });
+      })
+      .catch(() => {
+        if (!cancelled) setZones({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return useMemo(
-    () => filterImportRecordsByUserCfs(records, user),
-    [records, user]
+    () => filterImportRecordsByUserCfs(records, user, zones),
+    [records, user, zones]
   );
 }
 
